@@ -9,6 +9,7 @@
 #include <QTabletEvent>
 #include <QSettings>
 #include <cmath>
+#include "appinfo.h"
 
 bool CanvasWidget::event(QEvent *event)
 {
@@ -370,7 +371,7 @@ void CanvasWidget::paintEvent(QPaintEvent *) {
 }
 
 void CanvasWidget::reloadSettings() {
-    QSettings s("PaintDali", "PaintDali");
+    QSettings s(AppInfo::kId, AppInfo::kId);
     m_checkerBrightness = s.value("canvas/checkerBrightness", 80).toInt();
     update();
 }

@@ -1,5 +1,4 @@
 #include "colorspanel.h"
-#include "i18n.h"
 #include <QTimer>
 #include <QDockWidget>
 #include <QMainWindow>
@@ -174,12 +173,12 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
     headerLayout->setContentsMargins(0, 0, 0, 0);
     m_slotCombo = new QComboBox;
     auto *primaryCombo = m_slotCombo;
-    primaryCombo->addItem(TR("Primaire"));
-    primaryCombo->addItem(TR("Secondaire"));
+    primaryCombo->addItem(QStringLiteral("Primary"));
+    primaryCombo->addItem(QStringLiteral("Secondary"));
     primaryCombo->setFixedHeight(20);
     headerLayout->addWidget(primaryCombo);
     headerLayout->addStretch();
-    auto *moreBtn = new QPushButton(TR("Plus >>"));
+    auto *moreBtn = new QPushButton(QStringLiteral("More >>"));
     moreBtn->setFixedHeight(20);
     headerLayout->addWidget(moreBtn);
     layout->addLayout(headerLayout);
@@ -209,7 +208,7 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
 
     m_swapBtn = new QPushButton;   // icon drawn by refreshIcons(), scheme-aware
     m_swapBtn->setFixedSize(20, 20);
-    m_swapBtn->setToolTip(TR("Permuter les couleurs"));
+    m_swapBtn->setToolTip(QStringLiteral("Swap colors"));
     m_swapBtn->setParent(swatchContainer);
     m_swapBtn->move(50, 0);
 
@@ -233,7 +232,7 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
     utilRow->setSpacing(2);
     m_resetBtn = new QToolButton;   // icon drawn by refreshIcons(), scheme-aware
     m_resetBtn->setFixedSize(20, 20);
-    m_resetBtn->setToolTip(TR("Réinitialiser les couleurs par défaut"));
+    m_resetBtn->setToolTip(QStringLiteral("Reset to the default colors"));
     connect(m_resetBtn, &QToolButton::clicked, this, [this]() {
         if (m_document) { m_document->setPrimaryColor(Qt::black); m_document->setSecondaryColor(Qt::white); }
     });
@@ -243,13 +242,12 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
     utilRow->addStretch();
     layout->addLayout(utilRow);
 
-    // RGB sliders — visible by default, labeled RVB (French)
+    // RGB sliders, visible by default
     m_slidersWidget = new QWidget;
     auto *sliderGrid = new QGridLayout(m_slidersWidget);
     sliderGrid->setContentsMargins(0, 0, 0, 0);
     sliderGrid->setSpacing(1);
-    // RVB header
-    auto *rvbHeader = new QLabel(TR("RVB"));
+    auto *rvbHeader = new QLabel(QStringLiteral("RGB"));
     rvbHeader->setStyleSheet("font-weight: bold; font-size: 10px; color: #555;");
     sliderGrid->addWidget(rvbHeader, 0, 0, 1, 3);
     auto makeSlider = [&](const QString &label, int row, QSlider *&slider, QSpinBox *&spin) {
@@ -269,10 +267,10 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
         connect(slider, &QSlider::valueChanged, this, &ColorsPanel::onSlidersChanged);
     };
 
-    makeSlider(TR("R:|rgb"), 1, m_redSlider, m_redSpin);
-    makeSlider(TR("V:|vert"), 2, m_greenSlider, m_greenSpin);
-    makeSlider(TR("B:|rgb"), 3, m_blueSlider, m_blueSpin);
-    makeSlider(TR("A:|alpha"), 4, m_alphaSlider, m_alphaSpin);
+    makeSlider(QStringLiteral("R:"), 1, m_redSlider, m_redSpin);
+    makeSlider(QStringLiteral("G:"), 2, m_greenSlider, m_greenSpin);
+    makeSlider(QStringLiteral("B:"), 3, m_blueSlider, m_blueSpin);
+    makeSlider(QStringLiteral("A:"), 4, m_alphaSlider, m_alphaSpin);
     m_alphaSlider->setValue(255);
     // Collapsed by default (paint.net opens with the "More >>" panel closed).
     m_slidersWidget->setVisible(false);
@@ -285,7 +283,7 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
     hsvGrid->setSpacing(1);
 
     // HSV header label
-    auto *hsvHeader = new QLabel(TR("TSV"));
+    auto *hsvHeader = new QLabel(QStringLiteral("HSV"));
     hsvHeader->setStyleSheet("font-weight: bold; font-size: 10px; color: #555;");
     hsvGrid->addWidget(hsvHeader, 0, 0, 1, 3);
 
@@ -306,9 +304,9 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
         connect(slider, &QSlider::valueChanged, this, &ColorsPanel::onHsvSlidersChanged);
     };
 
-    makeHsvSlider(TR("T:|teinte"), 1, 360, m_hueSlider, m_hueSpin);
-    makeHsvSlider(TR("S:|saturation"), 2, 100, m_satSlider, m_satSpin);
-    makeHsvSlider(TR("V:|valeur"), 3, 100, m_valSlider, m_valSpin);
+    makeHsvSlider(QStringLiteral("H:"), 1, 360, m_hueSlider, m_hueSpin);
+    makeHsvSlider(QStringLiteral("S:"), 2, 100, m_satSlider, m_satSpin);
+    makeHsvSlider(QStringLiteral("V:"), 3, 100, m_valSlider, m_valSpin);
     m_hsvWidget->setVisible(false);
     layout->addWidget(m_hsvWidget);
 
@@ -316,7 +314,7 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
     m_hexWidget = new QWidget;
     auto *hexLayout = new QHBoxLayout(m_hexWidget);
     hexLayout->setContentsMargins(0, 0, 0, 0);
-    hexLayout->addWidget(new QLabel(TR("Hexa :")));
+    hexLayout->addWidget(new QLabel(QStringLiteral("Hex:")));
     hexLayout->addWidget(m_hexEdit);
     m_hexWidget->setVisible(false);
     layout->addWidget(m_hexWidget);
@@ -334,7 +332,7 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
         m_slidersWidget->setVisible(show);
         m_hsvWidget->setVisible(show);
         m_hexWidget->setVisible(show);
-        moreBtn->setText(show ? TR("<< Moins") : TR("Plus >>"));
+        moreBtn->setText(show ? QStringLiteral("<< Less") : QStringLiteral("More >>"));
         shrinkToFit();
     });
 }
@@ -663,18 +661,18 @@ void ColorsPanel::createSwatches(QBoxLayout *parentLayout) {
     auto *addBtn = new QToolButton;
     addBtn->setText("+");
     addBtn->setFixedSize(20, 20);
-    addBtn->setToolTip(TR("Ajouter la couleur à la palette"));
+    addBtn->setToolTip(QStringLiteral("Add colour to palette"));
     connect(addBtn, &QToolButton::clicked, this, &ColorsPanel::addCurrentColorToPalette);
     paletteHeader->addWidget(addBtn);
 
     auto *menuBtn = new QToolButton;
-    menuBtn->setText(TR("Palette"));
+    menuBtn->setText(QStringLiteral("Palette"));
     menuBtn->setFixedHeight(20);
     menuBtn->setPopupMode(QToolButton::InstantPopup);
     auto *menu = new QMenu(menuBtn);
-    menu->addAction(TR("Enregistrer la palette..."), this, &ColorsPanel::savePalette);
-    menu->addAction(TR("Charger une palette..."), this, &ColorsPanel::openPalette);
-    menu->addAction(TR("Réinitialiser la palette"), this, &ColorsPanel::resetPalette);
+    menu->addAction(QStringLiteral("Save Palette..."), this, &ColorsPanel::savePalette);
+    menu->addAction(QStringLiteral("Open Palette..."), this, &ColorsPanel::openPalette);
+    menu->addAction(QStringLiteral("Reset Palette"), this, &ColorsPanel::resetPalette);
     menuBtn->setMenu(menu);
     paletteHeader->addWidget(menuBtn);
     paletteHeader->addStretch();
@@ -720,7 +718,7 @@ void ColorsPanel::rebuildSwatchGrid() {
                                    " max-width: %2px; max-height: %2px; }")
                                .arg(hex).arg(kSwatch - 2));
         btn->setToolTip(QString("<b>%1</b><br>%2")
-            .arg(hex, TR("Clic : couleur primaire · Clic droit : couleur secondaire")));
+            .arg(hex, QStringLiteral("Click: primary color · Right-click: secondary color")));
         connect(btn, &QToolButton::clicked, this, [this, c]() { onSwatchClicked(c); });
 
         // Right-click assigns the swatch to the *other* slot, like paint.net.
@@ -744,8 +742,8 @@ void ColorsPanel::addCurrentColorToPalette() {
 
 void ColorsPanel::savePalette() {
     const QString path = QFileDialog::getSaveFileName(
-        this, TR("Enregistrer la palette..."), QString(),
-        TR("Palettes (*.txt);;Tous les fichiers (*)"));
+        this, QStringLiteral("Save Palette..."), QString(),
+        QStringLiteral("Palettes (*.txt);;All files (*)"));
     if (path.isEmpty()) return;
     QFile f(path);
     if (!f.open(QIODevice::WriteOnly | QIODevice::Text)) return;
@@ -755,8 +753,8 @@ void ColorsPanel::savePalette() {
 
 void ColorsPanel::openPalette() {
     const QString path = QFileDialog::getOpenFileName(
-        this, TR("Charger une palette..."), QString(),
-        TR("Palettes (*.txt);;Tous les fichiers (*)"));
+        this, QStringLiteral("Open Palette..."), QString(),
+        QStringLiteral("Palettes (*.txt);;All files (*)"));
     if (path.isEmpty()) return;
     QFile f(path);
     if (!f.open(QIODevice::ReadOnly | QIODevice::Text)) return;

@@ -15,63 +15,81 @@ Claude sessions and milestones, not in hours of human work.
 - Stack: C++17, Qt 6 Widgets, CMake. Keep it; do not port to another toolkit.
 - Distribution: public and meant for other people too, so license and branding
   must be clean.
-- Delivery: an AppImage that adds a start-menu entry on first launch.
+- Delivery: an AppImage that adds a start-menu entry on first launch. A `.deb`
+  is built on demand as well.
 - Target desktop of the owner: Kubuntu, KDE Plasma, Wayland session.
-- v1 must-haves: .pdn import, layers, brushes, basic tools including selection,
-  color adjustments (brightness/contrast and similar), and a smudge tool
-  (German "verwischen"), which Paint.NET does not have. Confirm with the owner
-  that "smudge" is what they mean before building it.
-- Name: Paint.with.me. The rebrand away from "paint.software" is still open
-  (FORK.md lists every place).
+- Interface: English only. No translation system.
+- File formats: no format of our own. Layered: open `.pdn` (Paint.NET), open
+  and save `.psd` (Adobe). Flat: PNG, JPEG, BMP, GIF, TIFF, WebP and the like.
+  The inherited `.psw` format is to be removed.
+- Undo: to be reworked into a memory-efficient history (store only what
+  changed, with a memory budget instead of a fixed step count).
+- New tools: a smudge tool (German "verwischen", drags color like a finger
+  through wet paint) and a blur brush. Paint.NET has neither.
+- Clean up code that is badly structured, as part of the work.
+
+## Roadmap (owner may reorder)
+
+1. Rebrand and English-only UI. Done 2026-11-05.
+2. AppImage for Kubuntu: start-menu entry on first launch, Wayland platform
+   plugin, current Qt, release on GitHub.
+3. File formats: remove `.psw`; layered PSD read and write; autosave keeps
+   layers.
+4. Undo rework.
+5. Code cleanup, especially `src/mainwindow.cpp` and a tool registry.
+6. Smudge tool and blur brush.
 
 ## Rules
 
+- Push directly to `main`; no pull requests needed. Small, focused commits.
 - Never force-push and never rewrite published history.
-- Work on a branch (`claude/<topic>`), open a pull request, and let CI pass.
-  The owner merges unless they say otherwise.
-- Keep the upstream copyright line in LICENSE. Keep upstream file headers.
+- Leave the upstream repository alone: never push to it, open issues or pull
+  requests there, or comment. Reading and merging from it is fine.
+- Keep the upstream copyright line in LICENSE and the credits in the About
+  dialog and AppStream metadata.
 - Do not use the name "Paint.NET", its logo or its icons in the product name,
   icons or app ID. Mentioning it to describe compatibility is fine.
 - Never copy code from current Paint.NET (closed source). Paint.NET 3.36 code is
   MIT but is C#; porting algorithms from it requires keeping its notice.
 - Keep `tests/data/pdn/LICENSE-pypdn` with the pypdn test files.
-- Publishing workflows are manual-only until the rebrand. Do not re-enable
-  their push triggers without the owner's go-ahead.
-- Write documentation and English UI text in American English. Dates as
-  yyyy-mm-dd, times in 24-hour format, SI units.
+- Write documentation and UI text in American English. Dates as yyyy-mm-dd,
+  times in 24-hour format, SI units. Menus use "..." (three dots), not "…".
+- Every change keeps all four test suites passing; new behavior gets a test.
 
 ## Build and test
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-cmake --build build --target paintdotnet_tests paintdotnet_brush_tests \
-  paintdotnet_paste_tests paintdotnet_preview_tests
+cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
 Ubuntu 24.04 packages: `qt6-base-dev qt6-image-formats-plugins libgl1-mesa-dev
-zlib1g-dev cmake ninja-build`. Qt 6.4 is the minimum.
+zlib1g-dev cmake ninja-build`. Qt 6.4 is the minimum. On a 2-core machine the
+test targets take about 15 minutes to build, because three of them compile
+`mainwindow.cpp` again.
 
 ## Code map
 
 | Area | Where |
 |---|---|
+| App names, IDs, version macro | `src/appinfo.h` |
 | Main window, menus, tool registration, shortcuts | `src/mainwindow.cpp` (about 3,800 lines) |
 | Document, layers, selection, undo history | `src/core/` |
 | `.pdn` reader (own MS-NRBF parser, read-only) | `src/core/pdnformat.cpp` |
-| Native layered format `.psw` (QDataStream of QImages) | `Document::saveNative` in `src/core/document.cpp` |
+| Inherited `.psw` format (to be removed) | `Document::saveNative` in `src/core/document.cpp` |
 | Canvas widget, zoom, rendering | `src/canvas/canvaswidget.cpp` |
 | Tools (one class per tool, base `Tool`) | `src/tools/` |
 | Adjustments (base `Adjustment::apply(QImage)`) | `src/adjustments/` |
 | Effects (base `Effect::apply(QImage)`) | `src/effects/` |
 | Panels: layers, colors, history, tool options | `src/panels/` |
 | Tool icons, drawn in code (no image files) | `src/toolicons.cpp` |
-| UI translations | `src/i18n.cpp` |
-| Plugin C ABI | `src/plugins/plugin_api.h` |
+| App icon (SVG source and PNG sizes) | `packaging/icons/` |
+| Plugin C ABI (kept compatible with paint.software) | `src/plugins/plugin_api.h` |
 | Tests (custom harness, not QTest) | `tests/` |
 
-### Adding a tool touches all of these
+### Adding a tool touches all of these (until the cleanup adds a registry)
 
 1. `ToolType` enum in `src/tools/tool.h`.
 2. New `src/tools/<name>tool.{h,cpp}`, listed in `TOOLS_SOURCES` in CMakeLists.txt.
@@ -79,11 +97,9 @@ zlib1g-dev cmake ninja-build`. Qt 6.4 is the minimum.
    status-bar hint, the tool-grid entry and the per-tool `switch` statements.
 4. `src/toolicons.cpp`: draw the icon.
 5. `src/panels/tooloptionspanel.cpp`: name list and which options are shown.
-6. `src/i18n.cpp`: translations.
-7. A test in `tests/`.
+6. A test in `tests/`.
 
-### Translations
+### Settings
 
-UI source strings are **French**. `TR("…")` looks them up in a French-to-English
-table in `src/i18n.cpp`; there is no German yet. Write new UI strings in French
-inside `TR()` and add the English entry, or plan a move to Qt Linguist first.
+All settings go through `QSettings(AppInfo::kId, AppInfo::kId)`, stored in
+`~/.config/paint-with-me/paint-with-me.conf`.

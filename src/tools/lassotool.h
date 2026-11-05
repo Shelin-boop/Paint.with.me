@@ -6,7 +6,7 @@
 class LassoTool : public Tool {
 public:
     ToolType type() const override { return ToolType::LassoSelection; }
-    QString name() const override { return "Lasso de sélection"; }
+    QString name() const override { return "Lasso Select"; }
     QCursor cursor() const override { return Qt::CrossCursor; }
 
     void mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;

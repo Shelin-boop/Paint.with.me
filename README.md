@@ -4,19 +4,29 @@ A free, open-source raster image editor for Linux with the familiar look and
 workflow of Paint.NET: layers, blend modes, selections, adjustments and effects,
 built natively in C++17 and Qt 6. No Wine, no .NET runtime.
 
-> **Status: early fork.** This project is a fork of
+![Paint.with.me with an image open](docs/screenshot.png)
+
+> **Status: early development.** Paint.with.me is a fork of
 > [paint.software](https://github.com/Univers4craft/paint.software) by
-> Univers4craft, taken at upstream commit `db9691f` (2026-10-31). The code is
-> still identical to upstream apart from repository setup. Rebranding (program
-> name, icon, app ID, packages) has not happened yet, so a build still calls
-> itself "paint.software". See [FORK.md](FORK.md).
+> Univers4craft, taken at upstream commit `db9691f` (2026-10-31). See
+> [FORK.md](FORK.md) for what has changed since.
 
 ## Goals
 
 - Look and feel close to Paint.NET, on Linux.
 - Open Paint.NET `.pdn` files with their layers.
+- Keep layered work in common formats only, no format of its own.
 - A portable AppImage that adds itself to the start menu.
-- New tools Paint.NET does not have, starting with a smudge tool.
+- New tools Paint.NET does not have: a smudge tool and a blur brush.
+
+## Roadmap
+
+1. Rebrand and English-only interface (done)
+2. AppImage for Kubuntu and other distributions, with a start-menu entry
+3. File formats: layered PSD instead of the inherited `.psw` format
+4. A memory-efficient undo history
+5. Code cleanup
+6. Smudge tool and blur brush
 
 ## Build from source
 
@@ -30,14 +40,14 @@ sudo apt install build-essential cmake ninja-build qt6-base-dev \
 
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-./build/paintdotnet
+./build/paint-with-me
 ```
 
 Run the headless test suite:
 
 ```bash
-cmake --build build --target paintdotnet_tests paintdotnet_brush_tests \
-  paintdotnet_paste_tests paintdotnet_preview_tests
+cmake --build build --target pwm_tests pwm_brush_tests \
+  pwm_paste_tests pwm_preview_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 

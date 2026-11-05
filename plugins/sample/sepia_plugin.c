@@ -1,5 +1,5 @@
 /*
- * Sample paint.software plugin: a sepia-tone effect with an "Intensity" slider.
+ * Sample Paint.with.me plugin: a sepia-tone effect with an "Intensity" slider.
  *
  * Build (Linux):
  *   gcc -shared -fPIC -I../../src/plugins sepia_plugin.c -o sample_sepia_plugin.so
@@ -36,11 +36,11 @@ static void sepia_process(unsigned char *rgba, int width, int height,
 }
 
 static const PswParam sepia_params[] = {
-    { "Intensité", 0, 100, 80, "%" }
+    { "Intensity", 0, 100, 80, "%" }
 };
 
 static const PswEffect sepia_effect = {
-    "Sépia (plugin externe)",   /* name shown in Effets ▸ Plugins */
+    "Sepia (external plugin)",   /* name shown in Effects ▸ Plugins */
     "Photo",                    /* category hint */
     1,                          /* paramCount */
     sepia_params,               /* params */

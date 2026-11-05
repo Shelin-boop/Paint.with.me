@@ -1,5 +1,4 @@
 #include "layerpropertiesdialog.h"
-#include "../i18n.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QFormLayout>
@@ -9,19 +8,19 @@
 LayerPropertiesDialog::LayerPropertiesDialog(Layer *layer, QWidget *parent)
     : QDialog(parent)
 {
-    setWindowTitle(TR("Propriétés du calque"));
+    setWindowTitle(QStringLiteral("Layer Properties"));
     setFixedWidth(340);
 
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(8);
 
     // Section générale
-    auto *generalGroup = new QGroupBox(TR("Général"));
+    auto *generalGroup = new QGroupBox(QStringLiteral("General"));
     auto *generalForm = new QFormLayout(generalGroup);
     generalForm->setSpacing(6);
 
     m_nameEdit = new QLineEdit(layer->name());
-    generalForm->addRow("Nom :", m_nameEdit);
+    generalForm->addRow("Name:", m_nameEdit);
 
     m_visibleCheck = new QCheckBox("Visible");
     m_visibleCheck->setChecked(layer->isVisible());
@@ -30,7 +29,7 @@ LayerPropertiesDialog::LayerPropertiesDialog(Layer *layer, QWidget *parent)
     layout->addWidget(generalGroup);
 
     // Section mode de fusion
-    auto *blendGroup = new QGroupBox(TR("Mode de fusion"));
+    auto *blendGroup = new QGroupBox(QStringLiteral("Blend mode"));
     auto *blendLayout = new QVBoxLayout(blendGroup);
 
     m_blendModeCombo = new QComboBox;
@@ -42,7 +41,7 @@ LayerPropertiesDialog::LayerPropertiesDialog(Layer *layer, QWidget *parent)
     layout->addWidget(blendGroup);
 
     // Section opacité
-    auto *opacityGroup = new QGroupBox(TR("Opacité"));
+    auto *opacityGroup = new QGroupBox(QStringLiteral("Opacity"));
     auto *opacityLayout = new QHBoxLayout(opacityGroup);
 
     m_opacitySlider = new QSlider(Qt::Horizontal);

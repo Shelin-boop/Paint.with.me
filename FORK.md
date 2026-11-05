@@ -12,46 +12,60 @@
 The full upstream history (108 commits) was merged into this repository on
 2026-11-05, so every upstream author stays visible in `git log`.
 
+Paint.with.me does not push to, open pull requests on, or otherwise change the
+upstream repository. It only reads from it.
+
 ## License obligations
 
 - `LICENSE` keeps the upstream copyright line next to this fork's. Do not remove it.
 - Code copied from upstream stays under MIT with its original notice.
 - `tests/data/pdn/` contains test files from pypdn (MIT); keep `LICENSE-pypdn`.
+- The About dialog and the AppStream metadata credit paint.software.
 
-## What differs from upstream so far
+## What differs from upstream
 
-1. `README.md`, `FORK.md`, `CLAUDE.md`, `SECURITY.md` and `.github/CODEOWNERS`
-   are fork-specific.
-2. The publishing workflows (`appimage.yml`, `apt-repo.yml`, `flatpak.yml`,
-   `package.yml`) are manual-only. Upstream runs them on every push to `main`;
-   here they would publish packages still named "paint.software". The CI
-   workflow (`ci.yml`, build and tests) runs on every push and pull request as
-   upstream.
+### 2026-11-05: rebrand and English-only interface
 
-The application code is unchanged.
+- New name, icon and IDs:
 
-## Still upstream-branded (to change in the rebrand)
+  | | Upstream | Paint.with.me |
+  |---|---|---|
+  | Executable | `paintdotnet` | `paint-with-me` |
+  | Desktop and AppStream ID | `io.github.univers4craft.PaintSoftware` | `io.github.shelin_boop.PaintWithMe` |
+  | Settings | `~/.config/PaintDali/PaintDali.conf` | `~/.config/paint-with-me/paint-with-me.conf` |
+  | Data folder | `~/.local/share/PaintDali/paint.software` | `~/.local/share/paint-with-me` |
+  | System plugins | `/usr/lib/paint.software/plugins` | `/usr/lib/paint-with-me/plugins` |
+  | Version macro | `PAINTSW_VERSION_STR` | `PWM_VERSION_STR` |
+  | Test targets | `paintdotnet_*` | `pwm_*` |
 
-- Executable name `paintdotnet` and test targets `paintdotnet_*` (CMakeLists.txt).
-- CMake project `PaintDali`, version macro `PAINTSW_VERSION`, QSettings
-  organization `PaintDali` and application name `paint.software` (src/main.cpp).
-- App ID `io.github.univers4craft.PaintSoftware`, desktop file, AppStream
-  metainfo, Flatpak manifests, AUR files, APT pages (packaging/).
-- Logo `src/resources/paintdali-logo.png`.
-- Window title (src/mainwindow.cpp) and UI strings that say "paint.software".
-- Settings path: every `QSettings("PaintDali", "PaintDali")` call, which stores
-  settings in `~/.config/PaintDali/PaintDali.conf`.
-- CONTRIBUTING.md, SIGNING.md and packaging/DISTRIBUTION.md.
-- Plugin API names (`psw_register_plugin`, `PSW_*`). Renaming these breaks
-  existing plugins, so decide deliberately.
+  The names live in `src/appinfo.h`.
+- The interface is English only. Upstream wrote its UI strings in French and
+  translated them through its own table (`src/i18n.cpp`). That table, the
+  language setting and the "retranslate" code are gone; the strings are English
+  in the source. About 20 strings that upstream never translated (history
+  entries, dialog labels, file filters) were translated along the way.
+- Distribution: AppImage (main) and `.deb`, both built by GitHub Actions on
+  demand. Upstream's signed APT repository, Flatpak and AUR files are removed,
+  because they were tied to upstream's accounts and signing keys.
+- New icon (`packaging/icons/`), original artwork.
+- The plugin C interface (`psw_register_plugin`, `PSW_*`) is unchanged, so
+  plugins written for paint.software still load.
+
+### Repository setup
+
+- `README.md`, `FORK.md`, `CLAUDE.md`, `SECURITY.md`, `CONTRIBUTING.md` and
+  `.github/CODEOWNERS` are fork-specific.
 
 ## Pulling in upstream changes
 
+Upstream code is French-sourced and uses `TR("...")`; this fork is not.
+Merging upstream changes therefore needs care: new upstream UI strings have to
+be converted to English by hand.
+
 ```bash
 git fetch upstream
-git switch -c sync/upstream-YYYY-MM-DD
 git merge upstream/main
-# resolve conflicts, build, run the tests, then open a pull request
+# resolve conflicts, convert new French strings, build, run the tests
 ```
 
 The remote `upstream` points to https://github.com/Univers4craft/paint.software.git.

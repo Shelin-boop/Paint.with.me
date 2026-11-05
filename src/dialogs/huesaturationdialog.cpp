@@ -1,5 +1,4 @@
 #include "huesaturationdialog.h"
-#include "../i18n.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -62,7 +61,7 @@ private:
 };
 
 HueSaturationDialog::HueSaturationDialog(QWidget *parent) : QDialog(parent) {
-    setWindowTitle(TR("Teinte / Saturation"));
+    setWindowTitle(QStringLiteral("Hue / Saturation"));
     setFixedSize(420, 220);
 
     auto *mainLayout = new QVBoxLayout(this);
@@ -73,7 +72,7 @@ HueSaturationDialog::HueSaturationDialog(QWidget *parent) : QDialog(parent) {
     grid->setColumnStretch(1, 1);
 
     // Hue
-    auto *hueLabel = new QLabel(TR("Teinte"));
+    auto *hueLabel = new QLabel(QStringLiteral("Hue"));
     hueLabel->setFixedWidth(70);
     grid->addWidget(hueLabel, 0, 0);
     m_hueSlider = new GradientSlider(GradientSlider::Hue);
@@ -89,7 +88,7 @@ HueSaturationDialog::HueSaturationDialog(QWidget *parent) : QDialog(parent) {
     grid->addWidget(hueReset, 0, 3);
 
     // Saturation
-    auto *satLabel = new QLabel(TR("Saturation"));
+    auto *satLabel = new QLabel(QStringLiteral("Saturation"));
     grid->addWidget(satLabel, 1, 0);
     m_satSlider = new GradientSlider(GradientSlider::Saturation);
     m_satSlider->setRange(0, 200);
@@ -105,7 +104,7 @@ HueSaturationDialog::HueSaturationDialog(QWidget *parent) : QDialog(parent) {
     grid->addWidget(satReset, 1, 3);
 
     // Lightness
-    auto *lightLabel = new QLabel(TR("Luminosité|hsl"));
+    auto *lightLabel = new QLabel(QStringLiteral("Lightness"));
     grid->addWidget(lightLabel, 2, 0);
     m_lightnessSlider = new GradientSlider(GradientSlider::Lightness);
     m_lightnessSlider->setRange(-100, 100);
@@ -126,7 +125,7 @@ HueSaturationDialog::HueSaturationDialog(QWidget *parent) : QDialog(parent) {
     btnLayout->addStretch();
     auto *okBtn = new QPushButton("OK");
     okBtn->setFixedWidth(80);
-    auto *cancelBtn = new QPushButton(TR("Annuler|bouton"));
+    auto *cancelBtn = new QPushButton(QStringLiteral("Cancel"));
     cancelBtn->setFixedWidth(80);
     btnLayout->addWidget(okBtn);
     btnLayout->addWidget(cancelBtn);

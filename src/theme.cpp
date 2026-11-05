@@ -5,6 +5,7 @@
 #include <QPalette>
 #include <QProcess>
 #include <QStyleHints>
+#include "appinfo.h"
 
 namespace {
 
@@ -278,7 +279,7 @@ QString canvasBackdrop() {
 }
 
 void loadFromSettings() {
-    QSettings s("PaintDali", "PaintDali");
+    QSettings s(AppInfo::kId, AppInfo::kId);
     const QString v = s.value("ui/colorScheme", "default").toString();
     if (v == "light") g_scheme = Scheme::Light;
     else if (v == "dark") g_scheme = Scheme::Dark;
@@ -286,7 +287,7 @@ void loadFromSettings() {
 }
 
 void saveToSettings() {
-    QSettings s("PaintDali", "PaintDali");
+    QSettings s(AppInfo::kId, AppInfo::kId);
     const char *v = (g_scheme == Scheme::Light) ? "light"
                   : (g_scheme == Scheme::Dark)  ? "dark" : "default";
     s.setValue("ui/colorScheme", v);

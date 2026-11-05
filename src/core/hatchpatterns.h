@@ -13,7 +13,7 @@ namespace Hatch {
 // Number of fill styles, including Solid at index 0.
 int count();
 
-// Human-readable name of a fill style (English source; goes through TR()).
+// Human-readable name of a fill style.
 QString name(int index);
 
 // A brush that paints fill style `index` using `fg` for the pattern lines/dots

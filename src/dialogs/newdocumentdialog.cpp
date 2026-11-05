@@ -1,5 +1,4 @@
 #include "newdocumentdialog.h"
-#include "../i18n.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGridLayout>
@@ -10,7 +9,7 @@
 #include <QColorDialog>
 
 NewDocumentDialog::NewDocumentDialog(QWidget *parent) : QDialog(parent) {
-    setWindowTitle("Nouveau");
+    setWindowTitle("New");
     setFixedWidth(360);
     m_ratio = 800.0 / 600.0;
     auto *layout = new QVBoxLayout(this);
@@ -18,9 +17,9 @@ NewDocumentDialog::NewDocumentDialog(QWidget *parent) : QDialog(parent) {
 
     // Préréglage
     auto *presetLayout = new QHBoxLayout;
-    presetLayout->addWidget(new QLabel(TR("Préréglage :")));
+    presetLayout->addWidget(new QLabel(QStringLiteral("Preset:")));
     m_presetCombo = new QComboBox;
-    m_presetCombo->addItem(TR("Personnalisé"));
+    m_presetCombo->addItem(QStringLiteral("Custom"));
     m_presetCombo->addItem("640 \u00d7 480");
     m_presetCombo->addItem("800 \u00d7 600");
     m_presetCombo->addItem("1024 \u00d7 768");
@@ -33,44 +32,44 @@ NewDocumentDialog::NewDocumentDialog(QWidget *parent) : QDialog(parent) {
     layout->addLayout(presetLayout);
 
     // Section taille
-    auto *sizeGroup = new QGroupBox(TR("Taille de l'image"));
+    auto *sizeGroup = new QGroupBox(QStringLiteral("Image size"));
     auto *sizeGrid = new QGridLayout(sizeGroup);
     sizeGrid->setSpacing(4);
 
-    sizeGrid->addWidget(new QLabel(TR("Largeur :")), 0, 0);
+    sizeGrid->addWidget(new QLabel(QStringLiteral("Width:")), 0, 0);
     m_widthSpin = new QSpinBox;
     m_widthSpin->setRange(1, 65535);
     m_widthSpin->setValue(800);
     sizeGrid->addWidget(m_widthSpin, 0, 1);
     sizeGrid->addWidget(new QLabel("pixels"), 0, 2);
 
-    sizeGrid->addWidget(new QLabel(TR("Hauteur :")), 1, 0);
+    sizeGrid->addWidget(new QLabel(QStringLiteral("Height:")), 1, 0);
     m_heightSpin = new QSpinBox;
     m_heightSpin->setRange(1, 65535);
     m_heightSpin->setValue(600);
     sizeGrid->addWidget(m_heightSpin, 1, 1);
     sizeGrid->addWidget(new QLabel("pixels"), 1, 2);
 
-    sizeGrid->addWidget(new QLabel(TR("Résolution :")), 2, 0);
+    sizeGrid->addWidget(new QLabel(QStringLiteral("Resolution:")), 2, 0);
     m_resolutionSpin = new QSpinBox;
     m_resolutionSpin->setRange(1, 9999);
     m_resolutionSpin->setValue(96);
     m_resolutionSpin->setSuffix(" dpi");
     sizeGrid->addWidget(m_resolutionSpin, 2, 1);
 
-    m_aspectRatio = new QCheckBox(TR("Conserver le ratio"));
+    m_aspectRatio = new QCheckBox(QStringLiteral("Maintain aspect ratio"));
     sizeGrid->addWidget(m_aspectRatio, 3, 0, 1, 3);
 
     layout->addWidget(sizeGroup);
 
     // Couleur de fond
     auto *bgLayout = new QHBoxLayout;
-    bgLayout->addWidget(new QLabel(TR("Arrière-plan :")));
+    bgLayout->addWidget(new QLabel(QStringLiteral("Background:")));
     m_colorBtn = new QPushButton;
     m_colorBtn->setFixedSize(80, 24);
     m_colorBtn->setStyleSheet("background-color: white; border: 1px solid #aaa;");
     bgLayout->addWidget(m_colorBtn);
-    auto *colorLabel = new QLabel("Blanc");
+    auto *colorLabel = new QLabel("White");
     bgLayout->addWidget(colorLabel);
     bgLayout->addStretch();
     layout->addLayout(bgLayout);
@@ -116,7 +115,7 @@ void NewDocumentDialog::onPresetChanged(int index) {
 }
 
 void NewDocumentDialog::onChooseColor() {
-    QColor c = QColorDialog::getColor(m_bgColor, this, TR("Couleur d'arrière-plan"));
+    QColor c = QColorDialog::getColor(m_bgColor, this, QStringLiteral("Background color"));
     if (c.isValid()) {
         m_bgColor = c;
         m_colorBtn->setStyleSheet(QString("background-color: %1; border: 1px solid #aaa;").arg(c.name()));

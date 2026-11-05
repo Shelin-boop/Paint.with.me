@@ -1,6 +1,6 @@
-// Comprehensive headless functional test for PaintDali.
+// Comprehensive headless functional test for Paint.with.me.
 // Exercises the real code paths: tools, effects, adjustments, layers,
-// selection, undo/redo, save/load, i18n and theming.
+// selection, undo/redo, save/load and theming.
 #include <QApplication>
 #include <QImage>
 #include <QColor>
@@ -23,7 +23,6 @@
 #include "core/adjustmentpreview.h"
 #include "core/pdnformat.h"
 #include "canvas/canvaswidget.h"
-#include "i18n.h"
 #include "theme.h"
 
 #include "tools/brushtool.h"
@@ -696,7 +695,7 @@ static int maxRgbDifference(const QImage &a, const QImage &b) {
 
 static void pdnImportRegression() {
     SECTION("Paint.NET .pdn import");
-    const QString dir = QStringLiteral(PAINTSW_TEST_DATA_DIR "/pdn/");
+    const QString dir = QStringLiteral(PWM_TEST_DATA_DIR "/pdn/");
 
     Pdn::ImageData pdn;
     QString error;
@@ -1741,19 +1740,6 @@ int main(int argc, char **argv) {
               "Temperature/Tint preserves partial alpha and transparent pixels");
     }
 
-    // ---------- I18N ----------
-    SECTION("Internationalisation");
-    {
-        I18n::setLanguage(I18n::Lang::French);
-        CHECK(I18n::t("&Fichier") == "&Fichier", "French returns source string");
-        I18n::setLanguage(I18n::Lang::English);
-        CHECK(I18n::t("&Fichier") == "&File", "English translates File menu");
-        CHECK(I18n::t("Pinceau") == "Paintbrush", "English translates Paintbrush");
-        CHECK(I18n::t("Sombre") == "Dark", "English translates Dark");
-        CHECK(I18n::t("ZZ-unknown-ZZ") == "ZZ-unknown-ZZ", "Unknown string passes through");
-        I18n::setLanguage(I18n::Lang::French);
-    }
-
     // ---------- THEME ----------
     SECTION("Theming");
     {
@@ -2228,7 +2214,7 @@ int main(int argc, char **argv) {
 
     SECTION("Native .psw format preserves layers, opacity and blend mode");
     {
-        const QString path = QDir::tempPath() + "/paintsw_roundtrip.psw";
+        const QString path = QDir::tempPath() + "/pwm_roundtrip.psw";
         {
             Document doc(48, 32);
             doc.activeLayer()->clear(QColor(10, 20, 30));
@@ -2441,7 +2427,7 @@ int main(int argc, char **argv) {
     {
         // QMainWindow::GroupedDragging makes Qt wrap dragged panels in a private
         // QDockWidgetGroupWindow. That wrapper inherits the main window's title,
-        // so it shows up as a blank "Untitled - paint.software x.y.z" box, and
+        // so it shows up as a blank "Untitled - Paint.with.me x.y.z" box, and
         // destroying one while the layout still points at it crashes the app
         // (issue #10). It also lies to isFloating(), which is what broke the
         // Colors panel's collapse when undocked (issue #9). It must stay off.
@@ -2461,75 +2447,49 @@ int main(int argc, char **argv) {
               "an undocked panel is its own window, not a group wrapper");
     }
 
-    // ---------- COLOUR SLIDER LABELS ARE TRANSLATED ----------
-    SECTION("Colour slider labels");
+    // ---------- COLOR SLIDER LABELS ----------
+    SECTION("Color slider labels");
     {
-        // The letters are French initials in the source: V = Vert (green) and
-        // T = Teinte (hue). Left untranslated they read as wrong channels in
-        // English, which is what issue #8 was still reporting after the RGB/HSV
-        // headers themselves had been fixed.
-        auto labelsFor = [](I18n::Lang lang) {
-            I18n::setLanguage(lang);
-            Document doc(64, 64);
-            ColorsPanel panel;
-            panel.setDocument(&doc);
-            QStringList out;
-            for (auto *l : panel.findChildren<QLabel *>()) {
-                const QString t = l->text();
-                if (t.size() == 2 && t.endsWith(':')) out << t;
-            }
-            return out;
-        };
-
-        const QStringList en = labelsFor(I18n::Lang::English);
-        CHECK(en.contains("G:"), "English shows G: for green (not V: for Vert)");
-        CHECK(en.contains("H:"), "English shows H: for hue (not T: for Teinte)");
-        CHECK(!en.contains("T:"), "no French T: left in the English sliders");
-
-        const QStringList fr = labelsFor(I18n::Lang::French);
-        CHECK(fr.contains("V:") && fr.contains("T:"), "French keeps V: (Vert) and T: (Teinte)");
-        I18n::setLanguage(I18n::Lang::English);
-        printf("    (en: %s | fr: %s)\n", qPrintable(en.join(' ')), qPrintable(fr.join(' ')));
+        // Issue #8 upstream: the labels were French initials (V = Vert, T = Teinte)
+        // and read as wrong channels. They must be G: (green) and H: (hue).
+        Document doc(64, 64);
+        ColorsPanel panel;
+        panel.setDocument(&doc);
+        QStringList labels;
+        for (auto *l : panel.findChildren<QLabel *>()) {
+            const QString t = l->text();
+            if (t.size() == 2 && t.endsWith(':')) labels << t;
+        }
+        CHECK(labels.contains("G:"), "sliders show G: for green");
+        CHECK(labels.contains("H:"), "sliders show H: for hue");
+        // "V:" is legitimate: the HSV sliders label Value with it.
+        CHECK(!labels.contains("T:"), "no French T: (Teinte) left");
     }
 
-    // ---------- MENU BAR ACCELERATORS ARE UNIQUE IN BOTH LANGUAGES ----------
+    // ---------- MENU BAR ACCELERATORS ARE UNIQUE ----------
     SECTION("Menu accelerators");
     {
         // Alt+letter accelerators are case-insensitive, so two menus claiming the
-        // same letter do not open — Qt just cycles between them. French used to
-        // have "&Fichier" and "E&ffets" both on Alt+F. Translating a menu title
-        // moves its accelerator, so this has to hold in every language.
+        // same letter do not open; Qt just cycles between them.
         // Keep this list in step with createMenus().
-        const QStringList sourceTitles = {
-            "&Fichier", "É&dition", "&Affichage", "&Image",
-            "&Calques", "A&justements", "&Effets", "&Options",
+        const QStringList titles = {
+            "&File", "&Edit", "&View", "&Image",
+            "&Layers", "&Adjustments", "Effe&cts", "&Options",
         };
-
-        auto collisionFor = [&sourceTitles](I18n::Lang lang) {
-            I18n::setLanguage(lang);
-            QHash<QChar, QString> taken;
-            QString clash;
-            for (const QString &src : sourceTitles) {
-                const QString title = I18n::t(src);
-                const int amp = title.indexOf('&');
-                if (amp < 0 || amp + 1 >= title.size()) continue;
-                const QChar key = title.at(amp + 1).toLower();
-                if (taken.contains(key))
-                    clash += QStringLiteral("%1 vs %2 on Alt+%3; ")
-                                 .arg(taken.value(key), title, QString(key.toUpper()));
-                else
-                    taken.insert(key, title);
-            }
-            return clash;
-        };
-
-        const QString frClash = collisionFor(I18n::Lang::French);
-        const QString enClash = collisionFor(I18n::Lang::English);
-        CHECK(frClash.isEmpty(), "no duplicate menu accelerators in French");
-        CHECK(enClash.isEmpty(), "no duplicate menu accelerators in English");
-        if (!frClash.isEmpty()) printf("    (fr: %s)\n", qPrintable(frClash));
-        if (!enClash.isEmpty()) printf("    (en: %s)\n", qPrintable(enClash));
-        I18n::setLanguage(I18n::Lang::English);
+        QHash<QChar, QString> taken;
+        QString clash;
+        for (const QString &title : titles) {
+            const int amp = title.indexOf('&');
+            if (amp < 0 || amp + 1 >= title.size()) continue;
+            const QChar key = title.at(amp + 1).toLower();
+            if (taken.contains(key))
+                clash += QStringLiteral("%1 vs %2 on Alt+%3; ")
+                             .arg(taken.value(key), title, QString(key.toUpper()));
+            else
+                taken.insert(key, title);
+        }
+        CHECK(clash.isEmpty(), "no duplicate menu accelerators");
+        if (!clash.isEmpty()) printf("    (%s)\n", qPrintable(clash));
     }
 
     // ---------- PIXEL COORDINATE CONVERSION ----------
@@ -2594,7 +2554,7 @@ int main(int argc, char **argv) {
         Document doc(200, 100);
         QImage paste(40, 40, QImage::Format_ARGB32);
         paste.fill(Qt::red);
-        const int idx = doc.addLayer(paste, "Calque collé");
+        const int idx = doc.addLayer(paste, "Pasted Layer");
         CHECK(doc.layerAt(idx)->image().size() == QSize(200, 100),
               "pasted layer is canvas-sized, not paste-sized");
         CHECK(doc.layerAt(idx)->image().pixelColor(10, 10) == QColor(Qt::red),

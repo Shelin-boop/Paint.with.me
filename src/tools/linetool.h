@@ -10,7 +10,7 @@
 class LineTool : public Tool {
 public:
     ToolType type() const override { return ToolType::Line; }
-    QString name() const override { return "Ligne / Courbe"; }
+    QString name() const override { return "Line / Curve"; }
 
     void mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;
     void mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;

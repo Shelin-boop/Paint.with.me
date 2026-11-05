@@ -11,7 +11,6 @@
 #include "core/hatchpatterns.h"
 #include "core/layer.h"
 #include "toolicons.h"
-#include "i18n.h"
 #include <QLineEdit>
 #include <QDoubleValidator>
 
@@ -22,25 +21,25 @@ namespace {
 // The tool list shown in the dropdown, in paint.net's documented group order.
 struct ToolEntry { const char *name; ToolType type; };
 const ToolEntry kToolEntries[] = {
-    {"Sélection rectangle",              ToolType::RectSelection},
-    {"Lasso de sélection",               ToolType::LassoSelection},
-    {"Sélection ellipse",                ToolType::EllipseSelection},
-    {"Baguette magique",                 ToolType::MagicWand},
-    {"Déplacer les pixels sélectionnés", ToolType::Move},
-    {"Déplacer la sélection",            ToolType::MoveSelection},
+    {"Rectangle Select",              ToolType::RectSelection},
+    {"Lasso Select",               ToolType::LassoSelection},
+    {"Ellipse Select",                ToolType::EllipseSelection},
+    {"Magic Wand",                 ToolType::MagicWand},
+    {"Move Selected Pixels", ToolType::Move},
+    {"Move Selection",            ToolType::MoveSelection},
     {"Zoom",                             ToolType::Zoom},
-    {"Panoramique",                      ToolType::Pan},
-    {"Pot de peinture",                  ToolType::Fill},
-    {"Dégradé",                          ToolType::Gradient},
-    {"Pinceau",                          ToolType::Brush},
-    {"Gomme",                            ToolType::Eraser},
-    {"Crayon",                           ToolType::Pencil},
-    {"Sélecteur de couleur",             ToolType::ColorPicker},
-    {"Tampon de clonage",                ToolType::CloneStamp},
-    {"Recoloriage",                      ToolType::Recolor},
-    {"Texte",                            ToolType::Text},
-    {"Ligne / Courbe",                   ToolType::Line},
-    {"Formes",                           ToolType::Shape},
+    {"Pan",                      ToolType::Pan},
+    {"Paint Bucket",                  ToolType::Fill},
+    {"Gradient",                          ToolType::Gradient},
+    {"Paintbrush",                          ToolType::Brush},
+    {"Eraser",                            ToolType::Eraser},
+    {"Pencil",                           ToolType::Pencil},
+    {"Color Picker",             ToolType::ColorPicker},
+    {"Clone Stamp",                ToolType::CloneStamp},
+    {"Recolor",                      ToolType::Recolor},
+    {"Text",                            ToolType::Text},
+    {"Line / Curve",                   ToolType::Line},
+    {"Shapes",                           ToolType::Shape},
 };
 }
 
@@ -56,7 +55,7 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
     m_toolCombo->setMinimumWidth(170);
     m_toolCombo->setIconSize(QSize(16, 16));
     for (const auto &e : kToolEntries)
-        m_toolCombo->addItem(ToolIcons::forTool(e.type), TR(QString::fromUtf8(e.name)));
+        m_toolCombo->addItem(ToolIcons::forTool(e.type), (QString::fromUtf8(e.name)));
     layout->addWidget(m_toolCombo);
     connect(m_toolCombo, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
         if (i >= 0 && i < int(sizeof(kToolEntries) / sizeof(kToolEntries[0])))
@@ -66,7 +65,7 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
     layout->addWidget(createSep());
 
     // --- Brush width ---
-    m_brushSizeLabel = new QLabel(TR("Largeur :"));
+    m_brushSizeLabel = new QLabel(QStringLiteral("Width:"));
     m_brushSizeLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_brushSizeLabel);
     // Editable combo: type any size (decimals allowed) or pick a preset, like
@@ -85,7 +84,7 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
     m_brushSizeCombo->setCurrentText("10");
     m_brushSizeCombo->setFixedWidth(62);
     m_brushSizeCombo->setFixedHeight(20);
-    m_brushSizeCombo->setToolTip(TR("Largeur du pinceau ( [ et ] pour ajuster )"));
+    m_brushSizeCombo->setToolTip(QStringLiteral("Brush width ( [ and ] to adjust )"));
     layout->addWidget(m_brushSizeCombo);
     // Commit on Enter / focus-out and on picking a preset — not per keystroke,
     // so typing "6.5" isn't cut short (same reasoning as the resize dialog).
@@ -95,25 +94,25 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
             this, &ToolOptionsPanel::onBrushSizeChanged);
 
     // --- Hardness ---
-    m_hardnessGroup = makeSliderGroup(TR("Dureté :"), m_hardnessLabel, m_hardnessSlider,
+    m_hardnessGroup = makeSliderGroup(QStringLiteral("Hardness:"), m_hardnessLabel, m_hardnessSlider,
                                       m_hardnessValue, 0, 100, 100);
     layout->addWidget(m_hardnessGroup);
     connect(m_hardnessSlider, &QSlider::valueChanged, this, &ToolOptionsPanel::onHardnessChanged);
 
     // --- Spacing ---
-    m_spacingGroup = makeSliderGroup(TR("Espacement :"), m_spacingLabel, m_spacingSlider,
+    m_spacingGroup = makeSliderGroup(QStringLiteral("Spacing:"), m_spacingLabel, m_spacingSlider,
                                      m_spacingValue, 1, 100, 15);
     layout->addWidget(m_spacingGroup);
     connect(m_spacingSlider, &QSlider::valueChanged, this, &ToolOptionsPanel::onSpacingChanged);
 
     // --- Tolerance ---
-    m_toleranceGroup = makeSliderGroup(TR("Tolérance :"), m_toleranceLabel, m_toleranceSlider,
+    m_toleranceGroup = makeSliderGroup(QStringLiteral("Tolerance:"), m_toleranceLabel, m_toleranceSlider,
                                        m_toleranceValue, 0, 100, 50);
     layout->addWidget(m_toleranceGroup);
     connect(m_toleranceSlider, &QSlider::valueChanged, this, &ToolOptionsPanel::onToleranceChanged);
 
     // --- Opacity ---
-    m_opacityLabel = new QLabel(TR("Opacité :"));
+    m_opacityLabel = new QLabel(QStringLiteral("Opacity:"));
     m_opacityLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_opacityLabel);
     m_opacitySpin = new QSpinBox;
@@ -128,11 +127,11 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
             this, &ToolOptionsPanel::onOpacityChanged);
 
     // --- Fill mode (shapes) ---
-    m_fillLabel = new QLabel(TR("Remplissage :"));
+    m_fillLabel = new QLabel(QStringLiteral("Fill:"));
     m_fillLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_fillLabel);
     m_fillCombo = new QComboBox;
-    m_fillCombo->addItems({TR("Contour"), TR("Rempli"), TR("Contour + rempli")});
+    m_fillCombo->addItems({QStringLiteral("Outline"), QStringLiteral("Filled"), QStringLiteral("Outline + Filled")});
     m_fillCombo->setFixedHeight(20);
     m_fillCombo->setFixedWidth(120);
     layout->addWidget(m_fillCombo);
@@ -140,21 +139,21 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
             this, &ToolOptionsPanel::onFillModeChanged);
 
     // --- Fill Style: solid colour + GDI+ hatch patterns (Paint.NET) ---
-    m_fillStyleLabel = new QLabel(TR("Style de remplissage :"));
+    m_fillStyleLabel = new QLabel(QStringLiteral("Fill Style:"));
     m_fillStyleLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_fillStyleLabel);
     m_fillStyleCombo = new QComboBox;
     for (int i = 0; i < Hatch::count(); ++i)
-        m_fillStyleCombo->addItem(TR(Hatch::name(i)));
+        m_fillStyleCombo->addItem((Hatch::name(i)));
     m_fillStyleCombo->setFixedHeight(20);
     m_fillStyleCombo->setFixedWidth(150);
-    m_fillStyleCombo->setToolTip(TR("Motif de remplissage"));
+    m_fillStyleCombo->setToolTip(QStringLiteral("Fill pattern"));
     layout->addWidget(m_fillStyleCombo);
     connect(m_fillStyleCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &ToolOptionsPanel::onFillStyleChanged);
 
     // --- Corner radius (rounded rectangle shape only) ---
-    m_cornerLabel = new QLabel(TR("Coin :"));
+    m_cornerLabel = new QLabel(QStringLiteral("Corner:"));
     m_cornerLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_cornerLabel);
     m_cornerSpin = new QSpinBox;
@@ -168,7 +167,7 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
             this, &ToolOptionsPanel::onCornerSizeChanged);
 
     // --- Tool-specific variant (shape / gradient type / line style / flood mode) ---
-    m_variantLabel = new QLabel(TR("Type :"));
+    m_variantLabel = new QLabel(QStringLiteral("Type:"));
     m_variantLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_variantLabel);
     m_variantCombo = new QComboBox;
@@ -179,12 +178,12 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
             this, &ToolOptionsPanel::onVariantChanged);
 
     // --- Curve type (Line/Curve tool: Straight / Cubic Spline / Bézier) ---
-    m_curveTypeLabel = new QLabel(TR("Courbe :"));
+    m_curveTypeLabel = new QLabel(QStringLiteral("Curve:"));
     m_curveTypeLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_curveTypeLabel);
     m_curveTypeCombo = new QComboBox;
     // Order must match the LineTool::CurveType enum.
-    m_curveTypeCombo->addItems({TR("Ligne droite"), TR("Spline"), TR("Bézier")});
+    m_curveTypeCombo->addItems({QStringLiteral("Straight"), QStringLiteral("Spline"), QStringLiteral("Bezier")});
     m_curveTypeCombo->setFixedHeight(20);
     m_curveTypeCombo->setFixedWidth(90);
     layout->addWidget(m_curveTypeCombo);
@@ -192,11 +191,11 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
             this, &ToolOptionsPanel::onCurveTypeChanged);
 
     // --- Gradient repeat mode (Paint.NET: None / Repeat / Reflect) ---
-    m_gradientRepeatLabel = new QLabel(TR("Répétition :"));
+    m_gradientRepeatLabel = new QLabel(QStringLiteral("Repeat:"));
     m_gradientRepeatLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_gradientRepeatLabel);
     m_gradientRepeatCombo = new QComboBox;
-    m_gradientRepeatCombo->addItems({TR("Aucune"), TR("Répéter"), TR("Réfléchir")});
+    m_gradientRepeatCombo->addItems({QStringLiteral("None"), QStringLiteral("Repeat"), QStringLiteral("Reflect")});
     m_gradientRepeatCombo->setFixedHeight(20);
     m_gradientRepeatCombo->setFixedWidth(100);
     layout->addWidget(m_gradientRepeatCombo);
@@ -204,14 +203,14 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
             this, &ToolOptionsPanel::onGradientRepeatChanged);
 
     // --- Gradient transparency (alpha-only) mode ---
-    m_gradientTransparencyCheck = new QCheckBox(TR("Transparence"));
+    m_gradientTransparencyCheck = new QCheckBox(QStringLiteral("Transparency"));
     m_gradientTransparencyCheck->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_gradientTransparencyCheck);
     connect(m_gradientTransparencyCheck, &QCheckBox::toggled,
             this, &ToolOptionsPanel::onGradientTransparencyToggled);
 
     // --- Blend mode (brush-like tools) ---
-    m_blendModeLabel = new QLabel(TR("Mode :"));
+    m_blendModeLabel = new QLabel(QStringLiteral("Mode:"));
     m_blendModeLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_blendModeLabel);
     m_blendModeCombo = new QComboBox;
@@ -224,12 +223,12 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
             this, &ToolOptionsPanel::onBlendModeChanged);
 
     // --- Sampling source (Fill / Magic Wand): Image vs Layer (Paint.NET) ---
-    m_samplingLabel = new QLabel(TR("Échantillonnage :"));
+    m_samplingLabel = new QLabel(QStringLiteral("Sampling:"));
     m_samplingLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_samplingLabel);
     m_samplingCombo = new QComboBox;
     // Index 0 = Image (composite), 1 = Calque/Layer (active layer only).
-    m_samplingCombo->addItems({TR("Image"), TR("Calque")});
+    m_samplingCombo->addItems({QStringLiteral("Image"), QStringLiteral("Layer")});
     m_samplingCombo->setFixedHeight(20);
     m_samplingCombo->setFixedWidth(90);
     layout->addWidget(m_samplingCombo);
@@ -237,12 +236,12 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
             this, &ToolOptionsPanel::onSamplingChanged);
 
     // --- Recolor target (Paint.NET "Sampling"): clicked pixel vs secondary colour ---
-    m_recolorTargetLabel = new QLabel(TR("Cible :"));
+    m_recolorTargetLabel = new QLabel(QStringLiteral("Target:"));
     m_recolorTargetLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_recolorTargetLabel);
     m_recolorTargetCombo = new QComboBox;
     // Index 0 = clicked pixel (sampled), 1 = secondary colour (fixed).
-    m_recolorTargetCombo->addItems({TR("Pixel cliqué"), TR("Couleur secondaire")});
+    m_recolorTargetCombo->addItems({QStringLiteral("Clicked pixel"), QStringLiteral("Secondary colour")});
     m_recolorTargetCombo->setFixedHeight(20);
     m_recolorTargetCombo->setFixedWidth(140);
     layout->addWidget(m_recolorTargetCombo);
@@ -253,11 +252,11 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
     m_fontCombo = new QFontComboBox;
     m_fontCombo->setFixedHeight(20);
     m_fontCombo->setFixedWidth(150);
-    m_fontCombo->setToolTip(TR("Police"));
+    m_fontCombo->setToolTip(QStringLiteral("Font"));
     layout->addWidget(m_fontCombo);
     connect(m_fontCombo, &QFontComboBox::currentFontChanged, this, &ToolOptionsPanel::onFontChanged);
 
-    m_fontSizeLabel = new QLabel(TR("Taille :"));
+    m_fontSizeLabel = new QLabel(QStringLiteral("Size:"));
     m_fontSizeLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_fontSizeLabel);
     m_fontSizeSpin = new QSpinBox;
@@ -284,10 +283,10 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
         connect(b, &QToolButton::toggled, this, &ToolOptionsPanel::onTextStyleChanged);
         return b;
     };
-    m_boldBtn = makeStyleButton("B", TR("Gras"), false, false);
-    m_italicBtn = makeStyleButton("I", TR("Italique"), true, false);
-    m_underlineBtn = makeStyleButton("U", TR("Souligné"), false, true);
-    m_strikeBtn = makeStyleButton("S", TR("Barré"), false, false);
+    m_boldBtn = makeStyleButton("B", QStringLiteral("Bold"), false, false);
+    m_italicBtn = makeStyleButton("I", QStringLiteral("Italic"), true, false);
+    m_underlineBtn = makeStyleButton("U", QStringLiteral("Underline"), false, true);
+    m_strikeBtn = makeStyleButton("S", QStringLiteral("Strikethrough"), false, false);
     { QFont f = m_strikeBtn->font(); f.setStrikeOut(true); m_strikeBtn->setFont(f); }
     layout->addWidget(m_boldBtn);
     layout->addWidget(m_italicBtn);
@@ -295,34 +294,34 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
     layout->addWidget(m_strikeBtn);
 
     m_alignCombo = new QComboBox;
-    m_alignCombo->addItems({TR("Gauche"), TR("Centré"), TR("Droite")});
+    m_alignCombo->addItems({QStringLiteral("Left"), QStringLiteral("Center"), QStringLiteral("Right")});
     m_alignCombo->setFixedHeight(20);
-    m_alignCombo->setToolTip(TR("Alignement du texte"));
+    m_alignCombo->setToolTip(QStringLiteral("Text alignment"));
     layout->addWidget(m_alignCombo);
     connect(m_alignCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &ToolOptionsPanel::onTextStyleChanged);
 
     // --- Antialiasing ---
-    m_antialiasCheck = new QCheckBox(TR("Anticrénelage"));
+    m_antialiasCheck = new QCheckBox(QStringLiteral("Antialiasing"));
     m_antialiasCheck->setStyleSheet("font-size: 11px;");
     m_antialiasCheck->setChecked(true);
     layout->addWidget(m_antialiasCheck);
     connect(m_antialiasCheck, &QCheckBox::toggled, this, &ToolOptionsPanel::onAntialiasToggled);
 
-    m_pressureCheck = new QCheckBox(TR("Pression"));
+    m_pressureCheck = new QCheckBox(QStringLiteral("Pressure"));
     m_pressureCheck->setStyleSheet("font-size: 11px;");
     m_pressureCheck->setChecked(true);
-    m_pressureCheck->setToolTip(TR("Sensibilité à la pression du stylet (varie la taille du point)"));
+    m_pressureCheck->setToolTip(QStringLiteral("Stylus pressure sensitivity (varies dab size)"));
     // Paint.NET puts the Pressure toggle right after Brush size (before Hardness).
     layout->insertWidget(layout->indexOf(m_brushSizeCombo) + 1, m_pressureCheck);
     connect(m_pressureCheck, &QCheckBox::toggled, this, &ToolOptionsPanel::onPressureToggled);
 
     // --- Selection constraint (Normal / Fixed Ratio / Fixed Size) ---
-    m_selectionModeLabel = new QLabel(TR("Mode :"));
+    m_selectionModeLabel = new QLabel(QStringLiteral("Mode:"));
     m_selectionModeLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_selectionModeLabel);
     m_selectionModeCombo = new QComboBox;
-    m_selectionModeCombo->addItems({TR("Normal"), TR("Ratio fixe"), TR("Taille fixe")});
+    m_selectionModeCombo->addItems({QStringLiteral("Normal"), QStringLiteral("Fixed Ratio"), QStringLiteral("Fixed Size")});
     m_selectionModeCombo->setFixedHeight(20);
     m_selectionModeCombo->setFixedWidth(100);
     layout->addWidget(m_selectionModeCombo);
@@ -721,35 +720,35 @@ void ToolOptionsPanel::populateVariantCombo() {
     m_variantCombo->clear();
 
     if (auto *shape = dynamic_cast<ShapeTool*>(m_tool)) {
-        m_variantLabel->setText(TR("Forme :"));
+        m_variantLabel->setText(QStringLiteral("Shape:"));
         // Order must match the ShapeType enum.
-        m_variantCombo->addItems({TR("Rectangle"), TR("Rectangle arrondi"), TR("Ellipse"),
-                                  TR("Losange"), TR("Triangle"), TR("Trapèze"),
-                                  TR("Parallélogramme"), TR("Triangle rectangle"),
-                                  TR("Pentagone"), TR("Hexagone"), TR("Heptagone"),
-                                  TR("Octogone"), TR("Étoile à 3 branches"),
-                                  TR("Étoile à 4 branches"), TR("Étoile à 5 branches"),
-                                  TR("Étoile à 6 branches"), TR("Flèche"), TR("Chevron"),
-                                  TR("Bulle de dialogue"), TR("Nuage"), TR("Cœur"),
-                                  TR("Éclair"), TR("Croix"), TR("Coche")});
+        m_variantCombo->addItems({QStringLiteral("Rectangle"), QStringLiteral("Rounded Rectangle"), QStringLiteral("Ellipse"),
+                                  QStringLiteral("Diamond"), QStringLiteral("Triangle"), QStringLiteral("Trapezoid"),
+                                  QStringLiteral("Parallelogram"), QStringLiteral("Right Triangle"),
+                                  QStringLiteral("Pentagon"), QStringLiteral("Hexagon"), QStringLiteral("Heptagon"),
+                                  QStringLiteral("Octagon"), QStringLiteral("3-Point Star"),
+                                  QStringLiteral("4-Point Star"), QStringLiteral("5-Point Star"),
+                                  QStringLiteral("6-Point Star"), QStringLiteral("Arrow"), QStringLiteral("Chevron"),
+                                  QStringLiteral("Speech Balloon"), QStringLiteral("Cloud"), QStringLiteral("Heart"),
+                                  QStringLiteral("Lightning"), QStringLiteral("Cross"), QStringLiteral("Check Mark")});
         m_variantCombo->setCurrentIndex(static_cast<int>(shape->shapeType()));
     } else if (auto *grad = dynamic_cast<GradientTool*>(m_tool)) {
-        m_variantLabel->setText(TR("Type :"));
+        m_variantLabel->setText(QStringLiteral("Type:"));
         // Order must match the GradientType enum.
-        m_variantCombo->addItems({TR("Linéaire"), TR("Linéaire réfléchi"), TR("Radial"),
-                                  TR("Conique"), TR("Losange"), TR("Spirale")});
+        m_variantCombo->addItems({QStringLiteral("Linear"), QStringLiteral("Linear (Reflected)"), QStringLiteral("Radial"),
+                                  QStringLiteral("Conical"), QStringLiteral("Diamond"), QStringLiteral("Spiral")});
         m_variantCombo->setCurrentIndex(static_cast<int>(grad->gradientType()));
     } else if (auto *line = dynamic_cast<LineTool*>(m_tool)) {
-        m_variantLabel->setText(TR("Style :"));
-        m_variantCombo->addItems({TR("Trait plein"), TR("Flèche"), TR("Pointillés")});
+        m_variantLabel->setText(QStringLiteral("Style:"));
+        m_variantCombo->addItems({QStringLiteral("Solid"), QStringLiteral("Arrow"), QStringLiteral("Dashed")});
         m_variantCombo->setCurrentIndex(static_cast<int>(line->lineStyle()));
     } else if (auto *wand = dynamic_cast<MagicWandTool*>(m_tool)) {
-        m_variantLabel->setText(TR("Remplissage :"));
-        m_variantCombo->addItems({TR("Contigu"), TR("Global")});
+        m_variantLabel->setText(QStringLiteral("Fill:"));
+        m_variantCombo->addItems({QStringLiteral("Contiguous"), QStringLiteral("Global")});
         m_variantCombo->setCurrentIndex(wand->isGlobal() ? 1 : 0);
     } else if (auto *fill = dynamic_cast<FillTool*>(m_tool)) {
-        m_variantLabel->setText(TR("Remplissage :"));
-        m_variantCombo->addItems({TR("Contigu"), TR("Global")});
+        m_variantLabel->setText(QStringLiteral("Fill:"));
+        m_variantCombo->addItems({QStringLiteral("Contiguous"), QStringLiteral("Global")});
         m_variantCombo->setCurrentIndex(fill->isGlobal() ? 1 : 0);
     }
 
@@ -842,99 +841,3 @@ void ToolOptionsPanel::onTextStyleChanged() {
     }
 }
 
-void ToolOptionsPanel::retranslate() {
-    m_brushSizeLabel->setText(TR("Largeur :"));
-    m_hardnessLabel->setText(TR("Dureté :"));
-    m_spacingLabel->setText(TR("Espacement :"));
-    m_toleranceLabel->setText(TR("Tolérance :"));
-    m_opacityLabel->setText(TR("Opacité :"));
-    m_fillLabel->setText(TR("Remplissage :"));
-    m_fillStyleLabel->setText(TR("Style de remplissage :"));
-    m_fillStyleCombo->setToolTip(TR("Motif de remplissage"));
-    m_cornerLabel->setText(TR("Coin :"));
-    m_blendModeLabel->setText(TR("Mode :"));
-    m_samplingLabel->setText(TR("Échantillonnage :"));
-    {
-        const int s = m_samplingCombo->currentIndex();
-        m_samplingCombo->blockSignals(true);
-        m_samplingCombo->clear();
-        m_samplingCombo->addItems({TR("Image"), TR("Calque")});
-        m_samplingCombo->setCurrentIndex(s < 0 ? 0 : s);
-        m_samplingCombo->blockSignals(false);
-    }
-    m_recolorTargetLabel->setText(TR("Cible :"));
-    {
-        const int rt = m_recolorTargetCombo->currentIndex();
-        m_recolorTargetCombo->blockSignals(true);
-        m_recolorTargetCombo->clear();
-        m_recolorTargetCombo->addItems({TR("Pixel cliqué"), TR("Couleur secondaire")});
-        m_recolorTargetCombo->setCurrentIndex(rt < 0 ? 0 : rt);
-        m_recolorTargetCombo->blockSignals(false);
-    }
-    m_fontSizeLabel->setText(TR("Taille :"));
-    m_fontCombo->setToolTip(TR("Police"));
-    m_boldBtn->setToolTip(TR("Gras"));
-    m_italicBtn->setToolTip(TR("Italique"));
-    m_underlineBtn->setToolTip(TR("Souligné"));
-    m_strikeBtn->setToolTip(TR("Barré"));
-    m_alignCombo->setToolTip(TR("Alignement du texte"));
-    {
-        const int a = m_alignCombo->currentIndex();
-        m_alignCombo->blockSignals(true);
-        m_alignCombo->clear();
-        m_alignCombo->addItems({TR("Gauche"), TR("Centré"), TR("Droite")});
-        m_alignCombo->setCurrentIndex(a < 0 ? 0 : a);
-        m_alignCombo->blockSignals(false);
-    }
-    m_gradientRepeatLabel->setText(TR("Répétition :"));
-    {
-        const int r = m_gradientRepeatCombo->currentIndex();
-        m_gradientRepeatCombo->blockSignals(true);
-        m_gradientRepeatCombo->clear();
-        m_gradientRepeatCombo->addItems({TR("Aucune"), TR("Répéter"), TR("Réfléchir")});
-        m_gradientRepeatCombo->setCurrentIndex(r < 0 ? 0 : r);
-        m_gradientRepeatCombo->blockSignals(false);
-    }
-    m_gradientTransparencyCheck->setText(TR("Transparence"));
-    m_selectionModeLabel->setText(TR("Mode :"));
-    {
-        const int sm = m_selectionModeCombo->currentIndex();
-        m_selectionModeCombo->blockSignals(true);
-        m_selectionModeCombo->clear();
-        m_selectionModeCombo->addItems({TR("Normal"), TR("Ratio fixe"), TR("Taille fixe")});
-        m_selectionModeCombo->setCurrentIndex(sm < 0 ? 0 : sm);
-        m_selectionModeCombo->blockSignals(false);
-    }
-
-    m_antialiasCheck->setText(TR("Anticrénelage"));
-    m_pressureCheck->setText(TR("Pression"));
-    m_pressureCheck->setToolTip(TR("Sensibilité à la pression du stylet (varie la taille du point)"));
-
-    const int fill = m_fillCombo->currentIndex();
-    m_fillCombo->blockSignals(true);
-    m_fillCombo->clear();
-    m_fillCombo->addItems({TR("Contour"), TR("Rempli"), TR("Contour + rempli")});
-    m_fillCombo->setCurrentIndex(fill);
-    m_fillCombo->blockSignals(false);
-
-    populateVariantCombo();
-
-    m_curveTypeLabel->setText(TR("Courbe :"));
-    {
-        const int c = m_curveTypeCombo->currentIndex();
-        m_curveTypeCombo->blockSignals(true);
-        m_curveTypeCombo->clear();
-        m_curveTypeCombo->addItems({TR("Ligne droite"), TR("Spline"), TR("Bézier")});
-        m_curveTypeCombo->setCurrentIndex(c < 0 ? 0 : c);
-        m_curveTypeCombo->blockSignals(false);
-    }
-
-    // Rebuild the tool dropdown labels, keeping the current selection.
-    const int cur = m_toolCombo->currentIndex();
-    m_toolCombo->blockSignals(true);
-    m_toolCombo->clear();
-    for (const auto &e : kToolEntries)
-        m_toolCombo->addItem(ToolIcons::forTool(e.type), TR(QString::fromUtf8(e.name)));
-    m_toolCombo->setCurrentIndex(cur);
-    m_toolCombo->blockSignals(false);
-}
