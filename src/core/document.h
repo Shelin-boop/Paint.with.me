@@ -159,6 +159,8 @@ signals:
     void sizeChanged(int width, int height);
 
 private:
+    void setUpHistory();
+
     int m_width;
     int m_height;
     std::vector<std::shared_ptr<Layer>> m_layers;

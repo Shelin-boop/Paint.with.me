@@ -13,6 +13,7 @@
 #include "panels/imagelistbar.h"
 #include "panels/toolspanel.h"
 #include "core/psdformat.h"
+#include "core/history.h"
 #include "tools/brushpreset.h"
 #include "dialogs/newdocumentdialog.h"
 #include "dialogs/resizedialog.h"
@@ -771,6 +772,16 @@ void MainWindow::showSettingsDialog() {
         scheduleUtilityWindowFollow();
         syncUtilityWindowsToMainState();
     });
+    auto showUsage = [this, &dlg]() {
+        if (m_document)
+            dlg.setHistoryUsage(m_document->history().memoryUsed(), m_document->history().stepCount());
+    };
+    connect(&dlg, &SettingsDialog::historySettingsChanged, this, [this, showUsage]() {
+        const qint64 budget = HistoryManager::configuredMemoryBudget();
+        for (Document *doc : m_documents) doc->history().setMemoryBudget(budget);
+        showUsage();
+    });
+    showUsage();
     dlg.exec();
 }
 

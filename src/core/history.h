@@ -5,6 +5,7 @@
 #include <QString>
 #include <QStringList>
 #include "selection.h"
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -16,6 +17,9 @@ public:
     virtual void undo() = 0;
     virtual void redo() = 0;
     virtual QString description() const = 0;
+    // Calls `visit` for every image this step keeps, so the history can add up
+    // its memory. Images shared with other steps or the document count once.
+    virtual void forEachImage(const std::function<void(const QImage &)> &visit) const { Q_UNUSED(visit); }
 };
 
 struct ImageEditState { int index; QImage before, after; };
@@ -25,6 +29,9 @@ public:
     void undo() override;
     void redo() override;
     QString description() const override { return m_description; }
+    void forEachImage(const std::function<void(const QImage &)> &visit) const override {
+        for (const ImageEditState &e : m_edits) { visit(e.before); visit(e.after); }
+    }
 private:
     void apply(bool after);
     Document *m_doc;
@@ -44,6 +51,10 @@ public:
     // The changed rectangle in layer pixels; empty if nothing changed. Whole
     // images are kept (and this is the full rectangle) when the size changed.
     QRect changedRect() const { return m_rect; }
+    void forEachImage(const std::function<void(const QImage &)> &visit) const override {
+        visit(m_before);
+        visit(m_after);
+    }
     qint64 memoryBytes() const { return m_before.sizeInBytes() + m_after.sizeInBytes(); }
     // Smallest rectangle in which a and b differ (same size and format).
     static QRect differingRect(const QImage &a, const QImage &b);
@@ -79,6 +90,7 @@ public:
     void undo() override;
     void redo() override;
     QString description() const override { return m_description; }
+    void forEachImage(const std::function<void(const QImage &)> &visit) const override;
 private:
     Document *m_doc;
     int m_index;
@@ -92,6 +104,7 @@ public:
     void undo() override;
     void redo() override;
     QString description() const override { return m_description; }
+    void forEachImage(const std::function<void(const QImage &)> &visit) const override;
 private:
     Document *m_doc;
     int m_index;
@@ -123,6 +136,7 @@ public:
     void undo() override;
     void redo() override;
     QString description() const override { return m_description; }
+    void forEachImage(const std::function<void(const QImage &)> &visit) const override;
 private:
     struct State {
         int width = 0;
@@ -185,13 +199,40 @@ public:
     // Full timeline: done actions followed by the still-available redo actions.
     QStringList fullHistoryList() const;
     int currentIndex() const { return static_cast<int>(m_undoStack.size()); }
+    // Undo and redo steps together.
+    int stepCount() const { return static_cast<int>(m_undoStack.size() + m_redoStack.size()); }
 
     void clear();
+
+    // Memory budget: undo and redo steps together may hold this many bytes
+    // (0 = no limit). Beyond it the oldest steps are dropped; the latest step
+    // is always kept, however large. At most kMaxSteps steps in any case.
+    void setMemoryBudget(qint64 bytes);
+    qint64 memoryBudget() const { return m_budget; }
+    // Bytes the steps hold beyond what the document itself uses (pixels a
+    // step shares with the open image or another step count once, or not).
+    qint64 memoryUsed() const;
+    // How the history sees the document's own images, which cost it nothing.
+    using ImageVisitor = std::function<void(const QImage &)>;
+    void setLiveImages(std::function<void(const ImageVisitor &)> liveImages);
+    // Steps dropped to stay within the budget since the last clear().
+    int droppedSteps() const { return m_dropped; }
+
+    static constexpr int kMaxSteps = 1000;
+    // 1/8 of the computer's memory, between 512 MB and 2 GB.
+    static qint64 defaultMemoryBudget();
+    // Settings "history/memoryLimitMB", or the default when not set.
+    static qint64 configuredMemoryBudget();
 
 signals:
     void historyChanged();
 
 private:
+    void trim();
+
     std::vector<std::unique_ptr<HistoryCommand>> m_undoStack;
     std::vector<std::unique_ptr<HistoryCommand>> m_redoStack;
+    std::function<void(const ImageVisitor &)> m_liveImages;
+    qint64 m_budget = 0;
+    int m_dropped = 0;
 };

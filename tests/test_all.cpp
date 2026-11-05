@@ -10,6 +10,7 @@
 #include <QThread>
 #include <QDir>
 #include <QFile>
+#include <QSettings>
 #include <cstdio>
 #include <cstring>
 #include <functional>
@@ -25,6 +26,7 @@
 #include "core/thumbnails.h"
 #include "canvas/canvaswidget.h"
 #include "theme.h"
+#include "appinfo.h"
 
 #include "tools/brushtool.h"
 #include "tools/penciltool.h"
@@ -778,6 +780,66 @@ static void historyRegionRegression() {
     CHECK(resized.changedRect() == after.rect(), "a size change keeps whole images");
 }
 
+static void historyBudgetRegression() {
+    SECTION("Undo history stays within its memory budget");
+    constexpr qint64 MB = 1024 * 1024;
+    const qint64 def = HistoryManager::defaultMemoryBudget();
+    CHECK(def >= 512 * MB && def <= 2048 * MB, "default budget between 512 MB and 2 GB");
+
+    // 1000 x 1000 px: each full-layer edit keeps two 4 MB rectangles.
+    Document doc(1000, 1000);
+    doc.history().setMemoryBudget(20 * MB);
+    auto paintAll = [&](int i) {
+        const QImage before = doc.activeLayer()->image().copy();
+        doc.activeLayer()->image().fill(QColor(i * 10 % 256, 0, 0));
+        doc.pushImageEdit(0, before, QString("Fill %1").arg(i));
+    };
+    for (int i = 1; i <= 10; ++i) paintAll(i);
+    CHECK(doc.history().memoryUsed() <= 20 * MB, "memory stays within the budget");
+    CHECK(doc.history().currentIndex() == 2, "two 8 MB steps fit into 20 MB");
+    CHECK(doc.history().droppedSteps() == 8, "the oldest steps were dropped");
+    doc.history().undo();
+    doc.history().undo();
+    CHECK(doc.activeLayer()->image().pixelColor(5, 5) == QColor(80, 0, 0), "remaining steps undo correctly");
+    CHECK(!doc.history().canUndo(), "nothing older is left");
+    doc.history().redo();
+    doc.history().redo();
+    CHECK(doc.activeLayer()->image().pixelColor(5, 5) == QColor(100, 0, 0), "and redo");
+
+    // A step larger than the whole budget is still kept (the latest one).
+    doc.history().setMemoryBudget(4 * MB);
+    CHECK(doc.history().currentIndex() == 1, "lowering the budget trims at once, keeping the latest step");
+    paintAll(11);
+    CHECK(doc.history().currentIndex() == 1 && doc.history().canUndo(), "an oversized latest step stays undoable");
+    doc.history().undo();
+    CHECK(doc.activeLayer()->image().pixelColor(5, 5) == QColor(100, 0, 0), "and undoes correctly");
+    doc.history().setMemoryBudget(2 * MB);
+    CHECK(doc.history().stepCount() == 0 || doc.history().memoryUsed() <= 2 * MB,
+          "redo steps go too when the budget is lowered below them");
+
+    // Pixels shared with the open image cost nothing.
+    Document shared(1000, 1000);
+    shared.history().setMemoryBudget(0);
+    shared.addLayer(QString("Second"));
+    CHECK(shared.history().memoryUsed() < 1 * MB, "adding a layer shares its pixels with the image");
+    shared.removeLayer(1);
+    const qint64 removed = shared.history().memoryUsed();
+    CHECK(removed == 1000 * 1000 * 4, "a removed layer's pixels are counted once");
+    shared.history().undo();
+    CHECK(shared.history().memoryUsed() < 1 * MB, "back in the image, they cost the history nothing");
+    shared.setLayerOpacity(0, 0.5f);
+    CHECK(shared.history().memoryUsed() < 1 * MB, "property changes keep no pixels");
+
+    // The configured budget comes from the settings.
+    QSettings settings(AppInfo::kId, AppInfo::kId);
+    settings.setValue("history/memoryLimitMB", 300);
+    CHECK(HistoryManager::configuredMemoryBudget() == 300 * MB, "budget from the settings");
+    Document configured(10, 10);
+    CHECK(configured.history().memoryBudget() == 300 * MB, "new documents use it");
+    settings.remove("history/memoryLimitMB");
+    CHECK(HistoryManager::configuredMemoryBudget() == def, "default when not set");
+}
+
 static void thumbnailRegression() {
     SECTION("Thumbnails are remembered per content version");
     Thumbnails::clearCache();
@@ -801,6 +863,14 @@ static void thumbnailRegression() {
 }
 
 int main(int argc, char **argv) {
+    // Settings and data go to a temporary folder, never the real home folder.
+    QTemporaryDir home;
+    for (const char *name : {"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"}) {
+        const QString path = home.path() + '/' + QString::fromLatin1(name);
+        QDir().mkpath(path);
+        QFile::setPermissions(path, QFile::ReadOwner | QFile::WriteOwner | QFile::ExeOwner);
+        qputenv(name, path.toUtf8());
+    }
     QApplication app(argc, argv);
     resizeStraightAlphaCharacterization();
     retainedCropRegression();
@@ -815,6 +885,7 @@ int main(int argc, char **argv) {
     pdnImportRegression();
     compositorRegression();
     historyRegionRegression();
+    historyBudgetRegression();
     thumbnailRegression();
 
     // ---------- TOOLS ----------
