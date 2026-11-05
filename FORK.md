@@ -24,6 +24,19 @@ upstream repository. It only reads from it.
 
 ## What differs from upstream
 
+### 2026-11-05: code cleanup, native Wayland as an option
+
+- Tool registry (`src/tools/toolregistry.cpp`): one table with every tool's
+  stable key, name, shortcut, Tools panel slot, tooltip and status-bar hint.
+  The main window, the Tools panel, shortcuts and brush presets read from it.
+- `src/mainwindow.cpp` (about 3,800 lines) split by job into
+  `mainwindow_panels`, `_menus`, `_files`, `_edit` and `_effects`; upstream's
+  French comments translated, an empty event filter removed.
+- The AppImage ships Qt's Wayland plugins. XWayland stays the default;
+  Settings > User Interface > Window System > "Run natively on Wayland
+  (experimental)" switches at the next start (`src/displayserver.cpp`). The
+  About dialog names the window system in use.
+
 ### 2026-11-05: undo memory budget, PDF export, perspective tool
 
 - Undo keeps steps within a memory budget instead of 100 steps: every step
@@ -102,7 +115,8 @@ cores): switching a layer on or off went from 4.4 s to 0.09 s, painting with a
   AppImage's current location, and offers Help > Add to / Remove from
   application menu.
 - On Wayland it prefers XWayland (src/main.cpp), because floating panels
-  need to position themselves. `QT_QPA_PLATFORM` overrides this.
+  need to position themselves. `QT_QPA_PLATFORM` overrides this. (Native
+  Wayland became an option later the same day, see above.)
 - `--version` prints the version and exits.
 - The AppImage workflow builds with the newest Qt 6 from aqtinstall, runs the
   tests against it, packs with appimagetool's static runtime (no libfuse2),

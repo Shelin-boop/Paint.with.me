@@ -36,8 +36,10 @@ It needs a 64-bit Linux, such as Ubuntu or Kubuntu 22.04 or newer; the release
 notes name the exact glibc version. No other installation is needed, not even
 libfuse2.
 
-On a Wayland desktop (KDE Plasma, GNOME) it currently runs through XWayland.
-To try native Wayland anyway, start it with `QT_QPA_PLATFORM=wayland`.
+On a Wayland desktop (KDE Plasma, GNOME) it runs through XWayland by default.
+To run it natively on Wayland, turn on **Settings > User Interface > Run
+natively on Wayland (experimental)** and start it again. Help > About shows
+which one is in use. Natively, the desktop decides where floating panels go.
 
 The panels sit at the sides of the main window: Tools above Colors on the left,
 History above Layers on the right. Drag a panel by its title to another side or
@@ -112,7 +114,7 @@ or a white background.
 3. Speed with large images, panels docked in the main window (done)
 4. File formats: layered PSD instead of the inherited `.psw` format (done)
 5. A memory-efficient undo history (done)
-6. Code cleanup, native Wayland
+6. Code cleanup, native Wayland (done; native Wayland is an option for now)
 7. Smudge tool and blur brush
 
 ## Build from source
