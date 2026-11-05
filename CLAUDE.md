@@ -27,6 +27,9 @@ Claude sessions and milestones, not in hours of human work.
 - New tools: a smudge tool (German "verwischen", drags color like a finger
   through wet paint) and a blur brush. Paint.NET has neither.
 - Clean up code that is badly structured, as part of the work.
+- Default panel layout (owner's choice, 2026-11-05): Tools above Colors on the
+  left, History above Layers on the right. The Tools panel widens to 3 or 4
+  columns for pinned menu commands and brush presets.
 
 ## Roadmap (owner may reorder)
 
@@ -59,14 +62,14 @@ Claude sessions and milestones, not in hours of human work.
 - Keep `tests/data/pdn/LICENSE-pypdn` with the pypdn test files.
 - Write documentation and UI text in American English. Dates as yyyy-mm-dd,
   times in 24-hour format, SI units. Menus use "..." (three dots), not "…".
-- Every change keeps all five test suites passing; new behavior gets a test.
+- Every change keeps all six test suites passing; new behavior gets a test.
 
 ## Build and test
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_integration_tests
+cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_integration_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
@@ -86,6 +89,13 @@ QT_QPA_PLATFORM=offscreen build/pwm_bench --quick  # 2000 x 2000 px, 8 layers
 
 Run it before and after any change to compositing, the canvas, painting tools,
 panels that react to document changes, undo or autosave.
+
+Pictures of the main window for a visual check (default layout, four columns
+with shortcuts, narrow panel):
+
+```bash
+PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_panel_tests
+```
 
 ## Releases
 
@@ -116,6 +126,9 @@ panels that react to document changes, undo or autosave.
 | Adjustments (base `Adjustment::apply(QImage)`) | `src/adjustments/` |
 | Effects (base `Effect::apply(QImage)`) | `src/effects/` |
 | Panels: layers, colors, history, tool options | `src/panels/` |
+| Tools panel: tool grid, extra columns, pinned commands and presets | `src/panels/toolspanel.cpp` |
+| Brush presets (saved tool settings, JSON in the settings) | `src/tools/brushpreset.cpp` |
+| Default panel layout and reset | `MainWindow::applyDefaultPanelLayout`, `resetUtilityWindow` |
 | Tool icons, drawn in code (no image files) | `src/toolicons.cpp` |
 | App icon (SVG source and PNG sizes) | `packaging/icons/` |
 | Plugin C ABI (kept compatible with paint.software) | `src/plugins/plugin_api.h` |
@@ -126,10 +139,12 @@ panels that react to document changes, undo or autosave.
 1. `ToolType` enum in `src/tools/tool.h`.
 2. New `src/tools/<name>tool.{h,cpp}`, listed in `TOOLS_SOURCES` in CMakeLists.txt.
 3. `src/mainwindow.cpp`: `m_tools.push_back(...)`, `addToolShortcut(...)`, the
-   status-bar hint, the tool-grid entry and the per-tool `switch` statements.
-4. `src/toolicons.cpp`: draw the icon.
-5. `src/panels/tooloptionspanel.cpp`: name list and which options are shown.
-6. A test in `tests/`.
+   status-bar hint, the tool-grid entry (list in `createToolsPanel`) and the
+   per-tool `switch` statements.
+4. `src/tools/tool.cpp`: a stable name in `kToolKeys` (used by brush presets).
+5. `src/toolicons.cpp`: draw the icon.
+6. `src/panels/tooloptionspanel.cpp`: name list and which options are shown.
+7. A test in `tests/`.
 
 A tool that changes pixels while the mouse moves reports the changed document
 area with `canvas.updateCanvasRegion(rect)` and returns `true` from
