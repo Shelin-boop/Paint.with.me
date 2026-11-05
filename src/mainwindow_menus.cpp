@@ -40,6 +40,7 @@
 #include <QDir>
 #include "appinfo.h"
 #include "desktopintegration.h"
+#include "displayserver.h"
 #include <QMenuBar>
 
 void MainWindow::createMenus() {
@@ -433,13 +434,15 @@ void MainWindow::createMenuBarCornerIcons() {
     helpMenu->addAction(QStringLiteral("&About Paint.with.me"), this, [this]() {
         QMessageBox::about(this, QStringLiteral("About Paint.with.me"),
             QStringLiteral("<h2>%1</h2>"
-                           "<p>Version %2</p>"
+                           "<p>Version %2, running on %4</p>"
                            "<p>A free image editor for Linux in the style of Paint.NET, built with Qt and C++.</p>"
                            "<p>Based on <a href=\"https://github.com/Univers4craft/paint.software\">paint.software</a> "
                            "by Univers4craft and contributors. MIT license.</p>"
                            "<p><a href=\"%3\">%3</a></p>"
                            "<p>Not affiliated with Paint.NET or dotPDN LLC.</p>")
-                .arg(AppInfo::kDisplayName, QStringLiteral(PWM_VERSION_STR), AppInfo::kHomepage));
+                .arg(AppInfo::kDisplayName, QStringLiteral(PWM_VERSION_STR), AppInfo::kHomepage,
+                     DisplayServer::describe(QGuiApplication::platformName(),
+                                             !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY"))));
     });
     helpBtn->setMenu(helpMenu);
     cornerLayout->addWidget(helpBtn);

@@ -8,24 +8,7 @@
 #include "theme.h"
 #include "appinfo.h"
 #include "desktopintegration.h"
-
-// On a Wayland desktop, run through XWayland unless told otherwise.
-//
-// The panels are docked inside the main window by default, but they can be
-// torn off as floating windows, which the app places next to the main window.
-// Wayland does not let an application position its own windows, so natively
-// the compositor would place them and "keep panels attached" would not work.
-// XWayland keeps the intended behavior. Native Wayland follows once the
-// AppImage ships Qt's Wayland plugin and it has been tested on KDE Plasma.
-//
-// QT_QPA_PLATFORM, when set, always wins (QT_QPA_PLATFORM=wayland forces
-// native Wayland). Without XWayland (no DISPLAY) Qt's default is kept.
-static void preferXWaylandOnWayland() {
-    if (qEnvironmentVariableIsSet("QT_QPA_PLATFORM")) return;
-    if (qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")) return;
-    if (qEnvironmentVariableIsEmpty("DISPLAY")) return;
-    qputenv("QT_QPA_PLATFORM", "xcb");
-}
+#include "displayserver.h"
 
 int main(int argc, char *argv[]) {
     // "--version": print the version and quit, without opening a window.
@@ -36,7 +19,9 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    preferXWaylandOnWayland();
+    // On a Wayland desktop: XWayland, or natively when chosen in Settings.
+    // QT_QPA_PLATFORM or -platform, when given, always wins.
+    DisplayServer::applyAtStartup(argc, argv);
 
     QApplication app(argc, argv);
     // No organization name, so the data folder is ~/.local/share/paint-with-me.

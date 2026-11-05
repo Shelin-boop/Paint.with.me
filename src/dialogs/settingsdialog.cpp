@@ -13,7 +13,10 @@
 #include <QPushButton>
 #include <QSettings>
 #include "appinfo.h"
+#include "displayserver.h"
 #include "core/history.h"
+#include <QGroupBox>
+#include <QGuiApplication>
 #include <QSignalBlocker>
 #include <QSpinBox>
 
@@ -106,6 +109,45 @@ QWidget *SettingsDialog::buildUserInterfacePage() {
     });
     layout->addWidget(hidePanels);
 
+    // Wayland leaves window placement to the desktop.
+    const QString platform = QGuiApplication::platformName();
+    if (!DisplayServer::canPlaceWindows(platform)) {
+        followPanels->setEnabled(false);
+        followPanels->setToolTip(QStringLiteral("On Wayland the desktop places windows, not the app."));
+    }
+
+    // ---- Window system: XWayland or native Wayland ----
+    const bool waylandSession = !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY");
+    auto *windowGroup = new QGroupBox(QStringLiteral("Window System"));
+    auto *windowLayout = new QVBoxLayout(windowGroup);
+    auto *current = new QLabel(QStringLiteral("Running on: %1")
+                                   .arg(DisplayServer::describe(platform, waylandSession)));
+    current->setObjectName("windowSystem");
+    windowLayout->addWidget(current);
+
+    auto *native = new QCheckBox(QStringLiteral("Run natively on Wayland (experimental)"));
+    native->setObjectName("nativeWayland");
+    native->setToolTip(QStringLiteral(
+        "Sharper with fractional display scaling, and pen input goes to Wayland directly. "
+        "Floating panels are then placed by the desktop, not by the app."));
+    native->setChecked(DisplayServer::nativeWaylandEnabled());
+    native->setEnabled(waylandSession);
+    windowLayout->addWidget(native);
+
+    auto *note = new QLabel;
+    note->setObjectName("nativeWaylandNote");
+    note->setWordWrap(true);
+    if (!waylandSession)
+        note->setText(QStringLiteral("Only applies in a Wayland session."));
+    else if (DisplayServer::platformForcedAtStartup())
+        note->setText(QStringLiteral("This time QT_QPA_PLATFORM or -platform decided."));
+    else
+        note->setText(QStringLiteral("Applies the next time Paint.with.me starts."));
+    windowLayout->addWidget(note);
+    connect(native, &QCheckBox::toggled, this, [](bool checked) {
+        DisplayServer::setNativeWaylandEnabled(checked);
+    });
+    layout->addWidget(windowGroup);
 
     layout->addStretch();
     return page;
