@@ -20,7 +20,8 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build \
-            qt6-base-dev qt6-image-formats-plugins libgl1-mesa-dev zlib1g-dev
+            qt6-base-dev qt6-image-formats-plugins libgl1-mesa-dev zlib1g-dev \
+            qt6-wayland weston
 
       - name: Configure
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -35,3 +36,22 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build --output-on-failure
+
+      - name: Run tests natively on Wayland (headless Weston)
+        run: |
+          # The suites that do not depend on keyboard focus or on placing
+          # windows (a headless Weston has no keyboard, and Wayland leaves
+          # window placement to the desktop).
+          export XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg"
+          mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+          weston --backend=headless-backend.so --socket=wl-test --idle-time=0 > weston.log 2>&1 &
+          WESTON=$!
+          for i in $(seq 50); do [ -S "$XDG_RUNTIME_DIR/wl-test" ] && break; sleep 0.2; done
+          # The tests use their own XDG_RUNTIME_DIR, so give the socket's full path.
+          export WAYLAND_DISPLAY="$XDG_RUNTIME_DIR/wl-test" QT_QPA_PLATFORM=wayland
+          for t in pwm_tests pwm_brush_tests pwm_preview_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests; do
+            echo "== $t"
+            ./build/$t > "$t.log" 2>&1 || { cat "$t.log"; exit 1; }
+            tail -1 "$t.log"
+          done
+          kill "$WESTON" || true
