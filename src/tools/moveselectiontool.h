@@ -10,7 +10,7 @@
 class MoveSelectionTool : public Tool {
 public:
     ToolType type() const override { return ToolType::MoveSelection; }
-    QString name() const override { return "Déplacer la sélection"; }
+    QString name() const override { return "Move Selection"; }
     QCursor cursor() const override { return Qt::SizeAllCursor; }
 
     void mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;

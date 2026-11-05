@@ -176,8 +176,6 @@ private:
     void layoutToolsPalette(bool horizontal);
     // Applies the current colour scheme (light / dark / follow-OS) everywhere.
     void applyTheme();
-    // Rebuilds all text-carrying chrome after a language change.
-    void retranslateUi();
 
     // Multi-document support (paint.net keeps several images open at once and
     // shows them as thumbnails in the image list).

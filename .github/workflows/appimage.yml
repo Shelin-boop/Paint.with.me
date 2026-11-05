@@ -1,14 +1,13 @@
 name: AppImage
 
 # Builds a portable AppImage that runs on any Linux distribution — download,
-# chmod +x, run. Attached to the same per-version release as the .deb.
+# chmod +x, run. Uploaded as a workflow artifact (releases come in a later step).
 on:
-  # Paint.with.me: publishing is manual-only until the fork is rebranded
-  # (see FORK.md). Re-enable the push trigger after the rebrand.
+  # Manual for now; automatic builds on every push come with the AppImage rework.
   workflow_dispatch:
 
 permissions:
-  contents: write   # attach the AppImage to the Release
+  contents: read
 
 jobs:
   appimage:
@@ -45,11 +44,11 @@ jobs:
 
       - name: Build and install into an AppDir
         run: |
-          MM=$(grep -oP 'project\(PaintDali VERSION \K[0-9]+\.[0-9]+' CMakeLists.txt)
+          MM=$(grep -oP 'project\(PaintWithMe VERSION \K[0-9]+\.[0-9]+' CMakeLists.txt)
           VER="${MM}.$(git rev-list --count HEAD)"
           echo "VER=$VER" >> "$GITHUB_ENV"
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
-            -DPAINTSW_VERSION="$VER" -DCMAKE_INSTALL_PREFIX=/usr \
+            -DPWM_VERSION="$VER" -DCMAKE_INSTALL_PREFIX=/usr \
             -DCMAKE_PREFIX_PATH="$QT_ROOT"
           cmake --build build -j
           DESTDIR="$PWD/AppDir" cmake --install build
@@ -64,36 +63,17 @@ jobs:
         env:
           QMAKE: ${{ env.QT_ROOT }}/bin/qmake6
           EXTRA_QT_MODULES: printsupport
-          OUTPUT: paint.software-${{ env.VER }}-x86_64.AppImage
+          OUTPUT: Paint.with.me-${{ env.VER }}-x86_64.AppImage
         run: |
           export LD_LIBRARY_PATH="$QT_ROOT/lib:$LD_LIBRARY_PATH"
           ./linuxdeploy-x86_64.AppImage --appdir AppDir \
-            --desktop-file AppDir/usr/share/applications/paint.software.desktop \
-            --icon-file AppDir/usr/share/pixmaps/paint.software.png \
+            --desktop-file AppDir/usr/share/applications/io.github.shelin_boop.PaintWithMe.desktop \
+            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/io.github.shelin_boop.PaintWithMe.png \
             --plugin qt --output appimage
           ls -1 *.AppImage
-
-      - name: Attach the AppImage to the release
-        if: github.ref == 'refs/heads/main'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          FILE=$(ls paint.software-*-x86_64.AppImage | head -1)
-          TAG="v${VER}"
-          # apt-repo.yml creates the release; give it a moment, then attach.
-          for i in $(seq 1 30); do
-            if gh release view "$TAG" >/dev/null 2>&1; then
-              gh release upload "$TAG" "$FILE" --clobber
-              echo "Uploaded $FILE to $TAG"
-              exit 0
-            fi
-            echo "Waiting for release $TAG… ($i)"
-            sleep 10
-          done
-          echo "Release $TAG never appeared; leaving the AppImage as a build artifact."
 
       - name: Upload as a workflow artifact too
         uses: actions/upload-artifact@v4
         with:
           name: appimage
-          path: paint.software-*-x86_64.AppImage
+          path: Paint.with.me-*-x86_64.AppImage

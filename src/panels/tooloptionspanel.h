@@ -27,8 +27,6 @@ public:
     // Reveals the Pressure toggle once a graphics tablet has been detected, as
     // Paint.NET does (the control is hidden until then).
     void setTabletPresent(bool present);
-    // Re-applies all visible labels in the current language.
-    void retranslate();
 
 signals:
     void toolOptionsChanged();

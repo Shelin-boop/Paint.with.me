@@ -32,26 +32,17 @@ fi
 
 cat >&2 <<EOF
 
-┌───────────────────────────────────────────────────────────────────────┐
-│  Sorry — paint.software is not compatible with this system.           │
-│  Désolé — paint.software n'est pas compatible avec ce système.        │
-└───────────────────────────────────────────────────────────────────────┘
+  Sorry, Paint.with.me is not compatible with this system.
 
   It needs Qt ${QT_MIN} or newer. This system has Qt ${qtver}.
-  Il faut Qt ${QT_MIN} ou plus récent. Ce système a Qt ${qtver}.
 
-  Supported / Pris en charge :
-    Ubuntu 24.04+   ·   Debian 12+   ·   Linux Mint 22+   ·   LMDE 6+
-
+  Supported: Ubuntu 24.04+, Kubuntu 24.04+, Debian 12+, Linux Mint 22+, LMDE 6+.
   Ubuntu 22.04 and Linux Mint 21 ship Qt 6.2 and cannot run this build.
-  Ubuntu 22.04 et Linux Mint 21 fournissent Qt 6.2 et ne peuvent pas
-  exécuter cette version.
 
-  Options / Que faire :
-    - Upgrade your distribution / Mettez à niveau votre distribution
-    - Or build from source against your Qt:
-      Ou compilez depuis les sources avec votre Qt :
-      https://github.com/Univers4craft/paint.software#-build-from-source
+  What you can do:
+    - Upgrade your distribution, or
+    - use the AppImage, which brings its own Qt, or
+    - build from source: https://github.com/Shelin-boop/Paint.with.me#build-from-source
 
 EOF
 exit 1

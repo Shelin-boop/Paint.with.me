@@ -2,24 +2,20 @@
 #include <QIcon>
 #include <QFileInfo>
 #include "mainwindow.h"
-#include "i18n.h"
 
-// Set by CMake; only a hand-rolled build without the definition lands here.
-#ifndef PAINTSW_VERSION_STR
-#define PAINTSW_VERSION_STR "dev"
-#endif
 #include "theme.h"
+#include "appinfo.h"
 
 int main(int argc, char *argv[]) {
     QApplication app(argc, argv);
-    app.setApplicationName("paint.software");
-    app.setApplicationVersion(QStringLiteral(PAINTSW_VERSION_STR));
-    app.setOrganizationName("PaintDali");
-    app.setWindowIcon(QIcon(":/paintdali-logo.png"));
+    // No organization name, so the data folder is ~/.local/share/paint-with-me.
+    app.setApplicationName(AppInfo::kId);
+    app.setApplicationVersion(QStringLiteral(PWM_VERSION_STR));
+    app.setWindowIcon(QIcon(QStringLiteral(":/app-icon.png")));
+    // Lets the Wayland compositor match the window to its menu entry and icon.
+    QGuiApplication::setDesktopFileName(AppInfo::kDesktopId);
 
-    // Restore the saved language / colour scheme before any UI is built.
-    I18n::loadFromSettings();
-    I18n::applyQtTranslations();
+    // Restore the saved color scheme before any UI is built.
     Theme::loadFromSettings();
 
     MainWindow window;

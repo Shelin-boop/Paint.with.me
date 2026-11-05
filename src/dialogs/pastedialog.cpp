@@ -1,5 +1,4 @@
 #include "pastedialog.h"
-#include "i18n.h"
 #include <QPushButton>
 #include <QImage>
 #include <QLabel>
@@ -70,7 +69,7 @@ protected:
 }
 
 PasteDialog::PasteDialog(const QImage &image, QWidget *parent) : QDialog(parent) {
-    setWindowTitle(TR("Coller"));
+    setWindowTitle(QStringLiteral("Paste"));
     setWindowFlag(Qt::WindowContextHelpButtonHint, false);
     auto *layout = new QVBoxLayout(this);
     auto *header = new QHBoxLayout;
@@ -79,7 +78,7 @@ PasteDialog::PasteDialog(const QImage &image, QWidget *parent) : QDialog(parent)
     thumbnail->setAlignment(Qt::AlignCenter);
     thumbnail->setPixmap(QPixmap::fromImage(image.scaled(120, 80, Qt::KeepAspectRatio,
                                                        Qt::SmoothTransformation)));
-    auto *message = new QLabel(TR("L'image à coller est plus grande que le canevas. Que voulez-vous faire ?"), this);
+    auto *message = new QLabel(QStringLiteral("The image being pasted is larger than the canvas size. What do you want to do?"), this);
     message->setWordWrap(true);
     header->addWidget(thumbnail);
     header->addWidget(message, 1, Qt::AlignTop);
@@ -99,13 +98,13 @@ PasteDialog::PasteDialog(const QImage &image, QWidget *parent) : QDialog(parent)
         layout->addWidget(button);
         return button;
     };
-    auto *expand = row(TR("Agrandir le canevas"),
-        TR("Agrandit automatiquement le canevas pour contenir l'image à coller."),
+    auto *expand = row(QStringLiteral("Expand canvas"),
+        QStringLiteral("Automatically expands the canvas to fit the image being pasted."),
         QStyle::SP_FileDialogToParent, Expand);
-    row(TR("Conserver la taille du canevas"),
-        TR("N'agrandit pas le canevas. Vous devrez déplacer l'image collée pour que la partie souhaitée se trouve dans les limites du canevas."),
+    row(QStringLiteral("Keep canvas size"),
+        QStringLiteral("Does not expand the canvas. You will have to move the pasted image around to make sure that the part you want is within the canvas boundaries."),
         QStyle::SP_FileDialogContentsView, Keep);
-    row(TR("Annuler|bouton"), TR("Annule l'action de collage."), QStyle::SP_ArrowBack, Cancel);
+    row(QStringLiteral("Cancel"), QStringLiteral("Cancels the paste action."), QStyle::SP_ArrowBack, Cancel);
     expand->setDefault(true);
     expand->setFocus();
     resize(520, sizeHint().height());

@@ -1,0 +1,12 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=Paint.with.me
+GenericName=Image Editor
+Comment=Image editor in the style of Paint.NET
+Exec=paint-with-me %F
+Icon=io.github.shelin_boop.PaintWithMe
+Terminal=false
+Categories=Graphics;2DGraphics;RasterGraphics;
+MimeType=image/png;image/jpeg;image/bmp;image/gif;image/tiff;image/webp;
+Keywords=paint;image;editor;photo;draw;pdn;

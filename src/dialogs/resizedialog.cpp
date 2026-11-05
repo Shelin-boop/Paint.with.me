@@ -1,5 +1,4 @@
 #include "resizedialog.h"
-#include "../i18n.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QLabel>
@@ -12,7 +11,7 @@
 ResizeDialog::ResizeDialog(int currentWidth, int currentHeight, int dpi, QWidget *parent)
     : QDialog(parent), m_origWidth(currentWidth), m_origHeight(currentHeight)
 {
-    setWindowTitle(TR("Redimensionner"));
+    setWindowTitle(QStringLiteral("Resize"));
     setFixedWidth(380);
     m_ratio = (double)currentWidth / currentHeight;
 
@@ -20,29 +19,29 @@ ResizeDialog::ResizeDialog(int currentWidth, int currentHeight, int dpi, QWidget
     layout->setSpacing(8);
 
     // -- Pixel Size section --
-    auto *pixelGroup = new QGroupBox(TR("Taille en pixels"));
+    auto *pixelGroup = new QGroupBox(QStringLiteral("Pixel size"));
     auto *pixelGrid = new QGridLayout(pixelGroup);
     pixelGrid->setSpacing(4);
 
-    m_absoluteRB = new QRadioButton(TR("Par taille &absolue :"));
+    m_absoluteRB = new QRadioButton(QStringLiteral("By &absolute size:"));
     m_absoluteRB->setChecked(true);
     pixelGrid->addWidget(m_absoluteRB, 0, 0, 1, 3);
 
-    pixelGrid->addWidget(new QLabel(TR("Largeur :")), 1, 0);
+    pixelGrid->addWidget(new QLabel(QStringLiteral("Width:")), 1, 0);
     m_pixelWidthSpin = new QSpinBox;
     m_pixelWidthSpin->setRange(1, 65535);
     m_pixelWidthSpin->setValue(currentWidth);
     pixelGrid->addWidget(m_pixelWidthSpin, 1, 1);
-    pixelGrid->addWidget(new QLabel(TR("pixels")), 1, 2);
+    pixelGrid->addWidget(new QLabel(QStringLiteral("pixels")), 1, 2);
 
-    pixelGrid->addWidget(new QLabel(TR("Hauteur :")), 2, 0);
+    pixelGrid->addWidget(new QLabel(QStringLiteral("Height:")), 2, 0);
     m_pixelHeightSpin = new QSpinBox;
     m_pixelHeightSpin->setRange(1, 65535);
     m_pixelHeightSpin->setValue(currentHeight);
     pixelGrid->addWidget(m_pixelHeightSpin, 2, 1);
-    pixelGrid->addWidget(new QLabel(TR("pixels")), 2, 2);
+    pixelGrid->addWidget(new QLabel(QStringLiteral("pixels")), 2, 2);
 
-    m_percentRB = new QRadioButton(TR("Par &pourcentage :"));
+    m_percentRB = new QRadioButton(QStringLiteral("By &percentage:"));
     pixelGrid->addWidget(m_percentRB, 3, 0, 1, 2);
 
     m_percentSpin = new QDoubleSpinBox;
@@ -64,11 +63,11 @@ ResizeDialog::ResizeDialog(int currentWidth, int currentHeight, int dpi, QWidget
     layout->addWidget(pixelGroup);
 
     // -- Print Size section --
-    auto *printGroup = new QGroupBox(TR("Taille d'impression"));
+    auto *printGroup = new QGroupBox(QStringLiteral("Print size"));
     auto *printGrid = new QGridLayout(printGroup);
     printGrid->setSpacing(4);
 
-    printGrid->addWidget(new QLabel(TR("Largeur :")), 0, 0);
+    printGrid->addWidget(new QLabel(QStringLiteral("Width:")), 0, 0);
     m_printWidthSpin = new QDoubleSpinBox;
     m_printWidthSpin->setRange(0.001, 9999.0);
     m_printWidthSpin->setDecimals(3);
@@ -77,7 +76,7 @@ ResizeDialog::ResizeDialog(int currentWidth, int currentHeight, int dpi, QWidget
     m_printWidthSpin->setValue((double)currentWidth / dpi);
     printGrid->addWidget(m_printWidthSpin, 0, 1);
 
-    printGrid->addWidget(new QLabel(TR("Hauteur :")), 1, 0);
+    printGrid->addWidget(new QLabel(QStringLiteral("Height:")), 1, 0);
     m_printHeightSpin = new QDoubleSpinBox;
     m_printHeightSpin->setRange(0.001, 9999.0);
     m_printHeightSpin->setDecimals(3);
@@ -86,7 +85,7 @@ ResizeDialog::ResizeDialog(int currentWidth, int currentHeight, int dpi, QWidget
     m_printHeightSpin->setValue((double)currentHeight / dpi);
     printGrid->addWidget(m_printHeightSpin, 1, 1);
 
-    printGrid->addWidget(new QLabel(TR("Résolution :")), 2, 0);
+    printGrid->addWidget(new QLabel(QStringLiteral("Resolution:")), 2, 0);
     m_resolutionSpin = new QSpinBox;
     m_resolutionSpin->setRange(1, 9999);
     m_resolutionSpin->setValue(dpi);
@@ -96,20 +95,20 @@ ResizeDialog::ResizeDialog(int currentWidth, int currentHeight, int dpi, QWidget
     layout->addWidget(printGroup);
 
     // -- Maintain aspect ratio --
-    m_aspectRatio = new QCheckBox(TR("&Conserver les proportions"));
+    m_aspectRatio = new QCheckBox(QStringLiteral("&Maintain aspect ratio"));
     m_aspectRatio->setChecked(true);
     layout->addWidget(m_aspectRatio);
 
     // -- Resampling --
     auto *resampleLayout = new QHBoxLayout;
-    resampleLayout->addWidget(new QLabel(TR("Rééchantillonnage :")));
+    resampleLayout->addWidget(new QLabel(QStringLiteral("Resampling:")));
     m_resampleCombo = new QComboBox;
-    m_resampleCombo->addItem(TR("Meilleure qualité"));
-    m_resampleCombo->addItem(TR("Bicubique"));
-    m_resampleCombo->addItem(TR("Bilinéaire"));
+    m_resampleCombo->addItem(QStringLiteral("Best Quality"));
+    m_resampleCombo->addItem(QStringLiteral("Bicubic"));
+    m_resampleCombo->addItem(QStringLiteral("Bilinear"));
     m_resampleCombo->addItem("Fant");
-    m_resampleCombo->addItem(TR("Plus proche voisin"));
-    m_resampleCombo->addItem(TR("Suréchantillonnage"));
+    m_resampleCombo->addItem(QStringLiteral("Nearest Neighbor"));
+    m_resampleCombo->addItem(QStringLiteral("Super Sampling"));
     resampleLayout->addWidget(m_resampleCombo);
     layout->addLayout(resampleLayout);
 
@@ -221,6 +220,6 @@ void ResizeDialog::syncFromPixels() {
 }
 
 void ResizeDialog::updateNewSizeLabel() {
-    m_newSizeLabel->setText(QString(TR("Nouvelle taille : %1 x %2 pixels"))
+    m_newSizeLabel->setText(QString(QStringLiteral("New size: %1 x %2 pixels"))
         .arg(m_pixelWidthSpin->value()).arg(m_pixelHeightSpin->value()));
 }

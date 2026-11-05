@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Paint.with.me application icon. Original artwork, MIT license like the code. -->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="tile" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2b2d6e"/>
+      <stop offset="1" stop-color="#1f7a8c"/>
+    </linearGradient>
+    <linearGradient id="warm" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#ff9a3c"/>
+      <stop offset="1" stop-color="#e0457b"/>
+    </linearGradient>
+    <linearGradient id="cool" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#2ec4b6"/>
+      <stop offset="1" stop-color="#3a86ff"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="4" stdDeviation="5" flood-color="#000" flood-opacity="0.30"/>
+    </filter>
+  </defs>
+
+  <!-- Tile -->
+  <rect x="8" y="8" width="240" height="240" rx="48" fill="url(#tile)"/>
+
+  <!-- Paper sheet, slightly tilted -->
+  <g transform="rotate(-6 128 128)" filter="url(#shadow)">
+    <rect x="46" y="50" width="164" height="156" rx="14" fill="#fbfaf7"/>
+  </g>
+
+  <!-- Two brush strokes side by side: painting together -->
+  <path d="M66 150 C 96 96, 138 90, 192 112" fill="none" stroke="url(#warm)"
+        stroke-width="26" stroke-linecap="round"/>
+  <path d="M70 182 C 110 160, 150 170, 188 140" fill="none" stroke="url(#cool)"
+        stroke-width="20" stroke-linecap="round"/>
+
+  <!-- Paint dot -->
+  <circle cx="186" cy="74" r="12" fill="#ffd166"/>
+</svg>

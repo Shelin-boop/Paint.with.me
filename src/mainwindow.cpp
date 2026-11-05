@@ -1,7 +1,6 @@
 #include "mainwindow.h"
 #include "dialogs/pastedialog.h"
 #include "toolicons.h"
-#include "i18n.h"
 #include "theme.h"
 #include "core/document.h"
 #include "core/adjustmentpreview.h"
@@ -128,6 +127,7 @@
 #include <QDateTime>
 #include <QDir>
 #include <QStandardPaths>
+#include "appinfo.h"
 
 // One-line tool description used in tooltips (defined further down).
 QString toolDescription(ToolType t);
@@ -135,21 +135,18 @@ QString toolDescription(ToolType t);
 // The version comes from the build system, so the title bar always names the
 // build actually running — it used to be hard-coded and drifted to 1.1 while the
 // package was on 1.1.31. Handy when someone reports a bug.
-#ifndef PAINTSW_VERSION_STR
-#define PAINTSW_VERSION_STR "dev"
-#endif
 static QString appTitleSuffix() {
-    return QStringLiteral(" - paint.software " PAINTSW_VERSION_STR);
+    return QStringLiteral(" - ") + AppInfo::kDisplayName + QStringLiteral(" " PWM_VERSION_STR);
 }
 
 MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
-    setWindowTitle(TR("Sans titre") + appTitleSuffix());
+    setWindowTitle(QStringLiteral("Untitled") + appTitleSuffix());
     resize(1400, 900);
     setMinimumSize(800, 600);
     setDockNestingEnabled(true);
     // GroupedDragging is deliberately OFF. It makes Qt wrap dragged panels in an
     // internal QDockWidgetGroupWindow, which inherits this window's title — that
-    // is the blank "Untitled - paint.software x.y.z" box users hit when arranging
+    // is the blank "Untitled - Paint.with.me x.y.z" box users hit when arranging
     // Colors/History/Layers, and closing one could take the app down with it.
     // Without it each panel floats as its own utility window, which is also what
     // paint.net does, and isFloating() then reports the truth (see
@@ -266,7 +263,7 @@ MainWindow::~MainWindow() {
 }
 
 void MainWindow::loadUiState() {
-    QSettings settings("PaintDali", "PaintDali");
+    QSettings settings(AppInfo::kId, AppInfo::kId);
 
     // Geometry and state are stored as base64 strings to avoid Qt INI binary corruption.
     const QString geoB64 = settings.value("ui/mainWindowGeometry").toString();
@@ -313,7 +310,7 @@ void MainWindow::loadUiState() {
 }
 
 void MainWindow::saveUiState() {
-    QSettings settings("PaintDali", "PaintDali");
+    QSettings settings(AppInfo::kId, AppInfo::kId);
 
     // Store as base64 strings to avoid Qt INI format corrupting binary QByteArray data.
     settings.setValue("ui/mainWindowGeometry", QString(saveGeometry().toBase64()));
@@ -414,48 +411,48 @@ void MainWindow::createMenus() {
     };
 
     // Menu Fichier
-    auto *fileMenu = menuBar()->addMenu(TR("&Fichier"));
-    fileMenu->addAction(TR("&Nouveau..."), QKeySequence::New, this, &MainWindow::newDocument);
-    fileMenu->addAction(TR("&Ouvrir..."), QKeySequence::Open, this, &MainWindow::openDocument);
-    m_recentFilesMenu = fileMenu->addMenu(TR("Fichiers &récents"));
-    m_recentFiles = QSettings().value("recentFiles").toStringList();
+    auto *fileMenu = menuBar()->addMenu(QStringLiteral("&File"));
+    fileMenu->addAction(QStringLiteral("&New..."), QKeySequence::New, this, &MainWindow::newDocument);
+    fileMenu->addAction(QStringLiteral("&Open..."), QKeySequence::Open, this, &MainWindow::openDocument);
+    m_recentFilesMenu = fileMenu->addMenu(QStringLiteral("&Recent files"));
+    m_recentFiles = QSettings(AppInfo::kId, AppInfo::kId).value("recentFiles").toStringList();
     updateRecentFilesMenu();
     fileMenu->addSeparator();
-    fileMenu->addAction(TR("&Enregistrer"), QKeySequence::Save, this, &MainWindow::saveDocument);
-    fileMenu->addAction(TR("Enregistrer &sous..."), QKeySequence("Ctrl+Shift+S"), this, &MainWindow::saveDocumentAs);
+    fileMenu->addAction(QStringLiteral("&Save"), QKeySequence::Save, this, &MainWindow::saveDocument);
+    fileMenu->addAction(QStringLiteral("Save &As..."), QKeySequence("Ctrl+Shift+S"), this, &MainWindow::saveDocumentAs);
     fileMenu->addSeparator();
-    fileMenu->addAction(TR("Im&primer..."), QKeySequence::Print, this, &MainWindow::printDocument);
+    fileMenu->addAction(QStringLiteral("&Print..."), QKeySequence::Print, this, &MainWindow::printDocument);
     fileMenu->addSeparator();
-    fileMenu->addAction(TR("&Fermer l'image"), QKeySequence("Ctrl+W"), this, &MainWindow::closeCurrentDocument);
-    fileMenu->addAction(TR("&Quitter"), QKeySequence::Quit, this, &QMainWindow::close);
+    fileMenu->addAction(QStringLiteral("&Close image"), QKeySequence("Ctrl+W"), this, &MainWindow::closeCurrentDocument);
+    fileMenu->addAction(QStringLiteral("E&xit"), QKeySequence::Quit, this, &QMainWindow::close);
 
     // Menu Édition
-    auto *editMenu = menuBar()->addMenu(TR("É&dition"));
-    m_undoAction = editMenu->addAction(TR("&Annuler"), QKeySequence::Undo, this, &MainWindow::undo);
-    m_redoAction = editMenu->addAction(TR("&Rétablir"), this, &MainWindow::redo);
+    auto *editMenu = menuBar()->addMenu(QStringLiteral("&Edit"));
+    m_undoAction = editMenu->addAction(QStringLiteral("&Undo"), QKeySequence::Undo, this, &MainWindow::undo);
+    m_redoAction = editMenu->addAction(QStringLiteral("&Redo"), this, &MainWindow::redo);
     // paint.net redoes with Ctrl+Y; keep the platform default as an alias.
     setShortcuts(m_redoAction, {QKeySequence("Ctrl+Y"), QKeySequence::Redo});
     m_undoAction->setEnabled(false);
     m_redoAction->setEnabled(false);
     editMenu->addSeparator();
-    auto *cutAction = editMenu->addAction(TR("C&ouper"), QKeySequence::Cut, this, &MainWindow::cut);
-    auto *copyAction = editMenu->addAction(TR("&Copier"), QKeySequence::Copy, this, &MainWindow::copy);
-    editMenu->addAction(TR("Copier &fusionné"), QKeySequence("Ctrl+Shift+C"), this, &MainWindow::copyMerged);
-    auto *pasteAction = editMenu->addAction(TR("Co&ller"), QKeySequence::Paste, this, &MainWindow::paste);
-    editMenu->addAction(TR("Coller dans un &nouveau calque"), QKeySequence("Ctrl+Shift+V"), this, &MainWindow::pasteIntoNewLayer);
-    editMenu->addAction(TR("Coller dans une nouvelle &image"), QKeySequence("Ctrl+Alt+V"), this, &MainWindow::pasteIntoNewImage);
-    auto *deleteSelectionAction = editMenu->addAction(TR("&Supprimer"), QKeySequence(Qt::Key_Delete), this, &MainWindow::deleteSelectionContents);
+    auto *cutAction = editMenu->addAction(QStringLiteral("Cu&t"), QKeySequence::Cut, this, &MainWindow::cut);
+    auto *copyAction = editMenu->addAction(QStringLiteral("&Copy"), QKeySequence::Copy, this, &MainWindow::copy);
+    editMenu->addAction(QStringLiteral("Copy &Merged"), QKeySequence("Ctrl+Shift+C"), this, &MainWindow::copyMerged);
+    auto *pasteAction = editMenu->addAction(QStringLiteral("&Paste"), QKeySequence::Paste, this, &MainWindow::paste);
+    editMenu->addAction(QStringLiteral("Paste into &New Layer"), QKeySequence("Ctrl+Shift+V"), this, &MainWindow::pasteIntoNewLayer);
+    editMenu->addAction(QStringLiteral("Paste into New &Image"), QKeySequence("Ctrl+Alt+V"), this, &MainWindow::pasteIntoNewImage);
+    auto *deleteSelectionAction = editMenu->addAction(QStringLiteral("&Delete"), QKeySequence(Qt::Key_Delete), this, &MainWindow::deleteSelectionContents);
     deleteSelectionAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
-    auto *fillSelectionAction = editMenu->addAction(TR("&Remplir la sélection"), QKeySequence(Qt::Key_Backspace), this, &MainWindow::fillSelection);
+    auto *fillSelectionAction = editMenu->addAction(QStringLiteral("&Fill Selection"), QKeySequence(Qt::Key_Backspace), this, &MainWindow::fillSelection);
     fillSelectionAction->setShortcutContext(Qt::WidgetWithChildrenShortcut);
     editMenu->addSeparator();
-    auto *selectAllAction = editMenu->addAction(TR("&Tout sélectionner"), QKeySequence::SelectAll, this, &MainWindow::selectAll);
-    auto *deselectAction = editMenu->addAction(TR("&Désélectionner"), QKeySequence("Ctrl+D"), this, &MainWindow::deselectAll);
-    auto *invertSelectionAction = editMenu->addAction(TR("&Inverser la sélection"), QKeySequence("Ctrl+I"), this, &MainWindow::invertSelection);
-    auto *modifySelMenu = editMenu->addMenu(TR("&Modifier la sélection"));
-    modifySelMenu->addAction(TR("&Agrandir..."), this, &MainWindow::growSelection);
-    modifySelMenu->addAction(TR("&Rétrécir..."), this, &MainWindow::shrinkSelection);
-    modifySelMenu->addAction(TR("A&doucir les bords..."), this, &MainWindow::featherSelection);
+    auto *selectAllAction = editMenu->addAction(QStringLiteral("Select &All"), QKeySequence::SelectAll, this, &MainWindow::selectAll);
+    auto *deselectAction = editMenu->addAction(QStringLiteral("&Deselect All"), QKeySequence("Ctrl+D"), this, &MainWindow::deselectAll);
+    auto *invertSelectionAction = editMenu->addAction(QStringLiteral("&Invert Selection"), QKeySequence("Ctrl+I"), this, &MainWindow::invertSelection);
+    auto *modifySelMenu = editMenu->addMenu(QStringLiteral("Modif&y Selection"));
+    modifySelMenu->addAction(QStringLiteral("&Grow..."), this, &MainWindow::growSelection);
+    modifySelMenu->addAction(QStringLiteral("Shr&ink..."), this, &MainWindow::shrinkSelection);
+    modifySelMenu->addAction(QStringLiteral("&Feather..."), this, &MainWindow::featherSelection);
     setShortcuts(cutAction, {QKeySequence::Cut, QKeySequence("Shift+Delete")});
     setShortcuts(copyAction, {QKeySequence::Copy, QKeySequence("Ctrl+Insert")});
     setShortcuts(pasteAction, {QKeySequence::Paste, QKeySequence("Shift+Insert")});
@@ -464,22 +461,22 @@ void MainWindow::createMenus() {
     setShortcuts(invertSelectionAction, {QKeySequence("Ctrl+I")});
 
     // Menu Affichage (3rd, as in paint.net: File, Edit, View, Image, Layers, Adjustments, Effects)
-    auto *viewMenu = menuBar()->addMenu(TR("&Affichage"));
-    viewMenu->addAction(TR("Zoom a&vant"), QKeySequence::ZoomIn, this, &MainWindow::zoomIn);
-    viewMenu->addAction(TR("Zoom a&rrière"), QKeySequence::ZoomOut, this, &MainWindow::zoomOut);
-    auto *zoomFitAction = viewMenu->addAction(TR("Zoom &adapté"), QKeySequence("Ctrl+B"), this, &MainWindow::zoomToFit);
-    viewMenu->addAction(TR("Zoom sur la &sélection"), QKeySequence("Ctrl+Shift+B"), this, &MainWindow::zoomToSelection);
-    auto *actualSizeAction = viewMenu->addAction(TR("Taille &réelle"), QKeySequence("Ctrl+0"), this, &MainWindow::zoomToActual);
+    auto *viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
+    viewMenu->addAction(QStringLiteral("Zoom &In"), QKeySequence::ZoomIn, this, &MainWindow::zoomIn);
+    viewMenu->addAction(QStringLiteral("Zoom &Out"), QKeySequence::ZoomOut, this, &MainWindow::zoomOut);
+    auto *zoomFitAction = viewMenu->addAction(QStringLiteral("&Best Fit"), QKeySequence("Ctrl+B"), this, &MainWindow::zoomToFit);
+    viewMenu->addAction(QStringLiteral("Zoom to &Selection"), QKeySequence("Ctrl+Shift+B"), this, &MainWindow::zoomToSelection);
+    auto *actualSizeAction = viewMenu->addAction(QStringLiteral("&Actual Size"), QKeySequence("Ctrl+0"), this, &MainWindow::zoomToActual);
     viewMenu->addSeparator();
-    m_gridAction = viewMenu->addAction(TR("Afficher la &grille de pixels"), this, &MainWindow::toggleGrid);
+    m_gridAction = viewMenu->addAction(QStringLiteral("&Pixel Grid"), this, &MainWindow::toggleGrid);
     m_gridAction->setCheckable(true);
-    m_rulersAction = viewMenu->addAction(TR("&Règles"), this, [this]() {
+    m_rulersAction = viewMenu->addAction(QStringLiteral("&Rulers"), this, [this]() {
         bool show = !m_canvas->showRulers();
         m_canvas->setShowRulers(show);
         m_rulersAction->setChecked(show);
     });
     // Units submenu (Pixels / Inches / Centimeters).
-    auto *unitsMenu = viewMenu->addMenu(TR("&Unités"));
+    auto *unitsMenu = viewMenu->addMenu(QStringLiteral("&Units"));
     auto *unitGroup = new QActionGroup(this);
     auto addUnit = [&](const QString &label, CanvasWidget::Unit u, bool checked) {
         auto *a = unitsMenu->addAction(label, this, [this, u]() { m_canvas->setUnit(u); });
@@ -487,74 +484,74 @@ void MainWindow::createMenus() {
         a->setChecked(checked);
         unitGroup->addAction(a);
     };
-    addUnit(TR("Pixels"), CanvasWidget::Unit::Pixels, true);
-    addUnit(TR("Pouces"), CanvasWidget::Unit::Inches, false);
-    addUnit(TR("Centimètres"), CanvasWidget::Unit::Centimeters, false);
+    addUnit(QStringLiteral("Pixels"), CanvasWidget::Unit::Pixels, true);
+    addUnit(QStringLiteral("Inches"), CanvasWidget::Unit::Inches, false);
+    addUnit(QStringLiteral("Centimeters"), CanvasWidget::Unit::Centimeters, false);
     m_rulersAction->setCheckable(true);
     m_rulersAction->setChecked(true);
     setShortcuts(zoomFitAction, {QKeySequence("Ctrl+B")});
     setShortcuts(actualSizeAction, {QKeySequence("Ctrl+0"), QKeySequence("Ctrl+1")});
 
     // Menu Image
-    auto *imageMenu = menuBar()->addMenu(TR("&Image"));
-    imageMenu->addAction(TR("&Redimensionner..."), QKeySequence("Ctrl+R"), this, &MainWindow::resizeImage);
-    imageMenu->addAction(TR("Taille du &canevas..."), QKeySequence("Ctrl+Shift+R"), this, &MainWindow::canvasSize);
+    auto *imageMenu = menuBar()->addMenu(QStringLiteral("&Image"));
+    imageMenu->addAction(QStringLiteral("&Resize..."), QKeySequence("Ctrl+R"), this, &MainWindow::resizeImage);
+    imageMenu->addAction(QStringLiteral("&Canvas Size..."), QKeySequence("Ctrl+Shift+R"), this, &MainWindow::canvasSize);
     imageMenu->addSeparator();
-    auto *rotateCwAction = imageMenu->addAction(TR("Rotation 90° horaire"), this, &MainWindow::rotateClockwise);
-    auto *rotateCcwAction = imageMenu->addAction(TR("Rotation 90° anti-horaire"), this, &MainWindow::rotateCounterClockwise);
-    imageMenu->addAction(TR("Rotation 180°"), this, &MainWindow::rotate180);
+    auto *rotateCwAction = imageMenu->addAction(QStringLiteral("Rotate 90° Clockwise"), this, &MainWindow::rotateClockwise);
+    auto *rotateCcwAction = imageMenu->addAction(QStringLiteral("Rotate 90° Counter-Clockwise"), this, &MainWindow::rotateCounterClockwise);
+    imageMenu->addAction(QStringLiteral("Rotate 180°"), this, &MainWindow::rotate180);
     imageMenu->addSeparator();
-    imageMenu->addAction(TR("Retourner &horizontalement"), this, &MainWindow::flipHorizontal);
-    imageMenu->addAction(TR("Retourner &verticalement"), this, &MainWindow::flipVertical);
+    imageMenu->addAction(QStringLiteral("Flip &Horizontal"), this, &MainWindow::flipHorizontal);
+    imageMenu->addAction(QStringLiteral("Flip &Vertical"), this, &MainWindow::flipVertical);
     imageMenu->addSeparator();
-    auto *cropAction = imageMenu->addAction(TR("Rogner selon la sélection"), this, &MainWindow::cropToSelection);
-    auto *flattenAction = imageMenu->addAction(TR("&Aplatir"), this, &MainWindow::flattenImage);
+    auto *cropAction = imageMenu->addAction(QStringLiteral("Crop to Selection"), this, &MainWindow::cropToSelection);
+    auto *flattenAction = imageMenu->addAction(QStringLiteral("&Flatten"), this, &MainWindow::flattenImage);
     setShortcuts(rotateCwAction, {QKeySequence("Ctrl+H")});
     setShortcuts(rotateCcwAction, {QKeySequence("Ctrl+G")});
     setShortcuts(cropAction, {QKeySequence("Ctrl+Shift+X")});
     setShortcuts(flattenAction, {QKeySequence("Ctrl+Shift+F")});
 
     // Menu Calques
-    auto *layersMenu = menuBar()->addMenu(TR("&Calques"));
-    layersMenu->addAction(TR("Ajouter un calque"), QKeySequence("Ctrl+Shift+N"), this, [this]() { m_document->addLayer(); });
-    auto *deleteLayerAction = layersMenu->addAction(TR("Supprimer le calque"), this, [this]() { m_document->removeLayer(m_document->activeLayerIndex()); });
-    layersMenu->addAction(TR("Dupliquer le calque"), QKeySequence("Ctrl+Shift+D"), this, [this]() { m_document->duplicateLayer(m_document->activeLayerIndex()); });
-    layersMenu->addAction(TR("Fusionner vers le bas"), QKeySequence("Ctrl+M"), this, [this]() { m_document->mergeLayerDown(m_document->activeLayerIndex()); });
-    layersMenu->addAction(TR("Importer depuis un fichier..."), this, &MainWindow::importLayerFromFile);
+    auto *layersMenu = menuBar()->addMenu(QStringLiteral("&Layers"));
+    layersMenu->addAction(QStringLiteral("Add New Layer"), QKeySequence("Ctrl+Shift+N"), this, [this]() { m_document->addLayer(); });
+    auto *deleteLayerAction = layersMenu->addAction(QStringLiteral("Delete Layer"), this, [this]() { m_document->removeLayer(m_document->activeLayerIndex()); });
+    layersMenu->addAction(QStringLiteral("Duplicate Layer"), QKeySequence("Ctrl+Shift+D"), this, [this]() { m_document->duplicateLayer(m_document->activeLayerIndex()); });
+    layersMenu->addAction(QStringLiteral("Merge Layer Down"), QKeySequence("Ctrl+M"), this, [this]() { m_document->mergeLayerDown(m_document->activeLayerIndex()); });
+    layersMenu->addAction(QStringLiteral("Import from File..."), this, &MainWindow::importLayerFromFile);
     layersMenu->addSeparator();
-    layersMenu->addAction(TR("Monter le calque"), QKeySequence("Ctrl+Shift+Up"), this, &MainWindow::moveActiveLayerUp);
-    layersMenu->addAction(TR("Descendre le calque"), QKeySequence("Ctrl+Shift+Down"), this, &MainWindow::moveActiveLayerDown);
-    auto *flipLayerMenu = layersMenu->addMenu(TR("Retourner le calque"));
-    flipLayerMenu->addAction(TR("&Horizontalement"), this, &MainWindow::flipActiveLayerHorizontal);
-    flipLayerMenu->addAction(TR("&Verticalement"), this, &MainWindow::flipActiveLayerVertical);
-    layersMenu->addAction(TR("Rotation / Zoom du calque..."), this, &MainWindow::showRotateZoomLayerDialog);
+    layersMenu->addAction(QStringLiteral("Move Layer Up"), QKeySequence("Ctrl+Shift+Up"), this, &MainWindow::moveActiveLayerUp);
+    layersMenu->addAction(QStringLiteral("Move Layer Down"), QKeySequence("Ctrl+Shift+Down"), this, &MainWindow::moveActiveLayerDown);
+    auto *flipLayerMenu = layersMenu->addMenu(QStringLiteral("Flip Layer"));
+    flipLayerMenu->addAction(QStringLiteral("&Horizontal"), this, &MainWindow::flipActiveLayerHorizontal);
+    flipLayerMenu->addAction(QStringLiteral("&Vertical"), this, &MainWindow::flipActiveLayerVertical);
+    layersMenu->addAction(QStringLiteral("Rotate / Zoom Layer..."), this, &MainWindow::showRotateZoomLayerDialog);
     layersMenu->addSeparator();
-    auto *layerPropertiesAction = layersMenu->addAction(TR("&Propriétés du calque..."), this, &MainWindow::showLayerPropertiesDialog);
-    auto *toggleLayerVisibilityAction = layersMenu->addAction(TR("Basculer la visibilité"), this, &MainWindow::toggleActiveLayerVisibility);
+    auto *layerPropertiesAction = layersMenu->addAction(QStringLiteral("Layer &Properties..."), this, &MainWindow::showLayerPropertiesDialog);
+    auto *toggleLayerVisibilityAction = layersMenu->addAction(QStringLiteral("Toggle Visibility"), this, &MainWindow::toggleActiveLayerVisibility);
     setShortcuts(deleteLayerAction, {QKeySequence("Ctrl+Shift+Delete")});
     setShortcuts(layerPropertiesAction, {QKeySequence("F4")});
     setShortcuts(toggleLayerVisibilityAction, {QKeySequence("Ctrl+,")});
 
     // Menu Ajustements
-    auto *adjMenu = menuBar()->addMenu(TR("A&justements"));
-    auto *autoLevelAction = adjMenu->addAction(TR("Niveau automatique"), this, [this]() { applyAdjustment(9); });
+    auto *adjMenu = menuBar()->addMenu(QStringLiteral("&Adjustments"));
+    auto *autoLevelAction = adjMenu->addAction(QStringLiteral("Auto-Level"), this, [this]() { applyAdjustment(9); });
     adjMenu->addSeparator();
-    auto *brightnessAction = adjMenu->addAction(TR("Luminosité / Contraste..."), this, [this]() { applyAdjustment(0); });
-    auto *hueSatAction = adjMenu->addAction(TR("Teinte / Saturation..."), this, [this]() { applyAdjustment(1); });
-    auto *levelsAction = adjMenu->addAction(TR("Niveaux..."), this, [this]() { applyAdjustment(2); });
-    auto *curvesAction = adjMenu->addAction(TR("Courbes..."), this, [this]() { applyAdjustment(3); });
+    auto *brightnessAction = adjMenu->addAction(QStringLiteral("Brightness / Contrast..."), this, [this]() { applyAdjustment(0); });
+    auto *hueSatAction = adjMenu->addAction(QStringLiteral("Hue / Saturation..."), this, [this]() { applyAdjustment(1); });
+    auto *levelsAction = adjMenu->addAction(QStringLiteral("Levels..."), this, [this]() { applyAdjustment(2); });
+    auto *curvesAction = adjMenu->addAction(QStringLiteral("Curves..."), this, [this]() { applyAdjustment(3); });
     adjMenu->addSeparator();
-    auto *invertColorsAction = adjMenu->addAction(TR("Inverser les couleurs"), this, [this]() { applyAdjustment(4); });
-    auto *sepiaAction = adjMenu->addAction(TR("Sépia..."), this, [this]() { applyAdjustment(5); });
-    auto *posterizeAction = adjMenu->addAction(TR("Postériser..."), this, [this]() { applyAdjustment(6); });
-    auto *blackWhiteAction = adjMenu->addAction(TR("Noir et blanc"), this, [this]() { applyAdjustment(7); });
-    adjMenu->addAction(TR("Seuil..."), this, [this]() { applyAdjustment(14); });
-    adjMenu->addAction(TR("Balance des couleurs..."), this, [this]() { applyAdjustment(8); });
+    auto *invertColorsAction = adjMenu->addAction(QStringLiteral("Invert Colors"), this, [this]() { applyAdjustment(4); });
+    auto *sepiaAction = adjMenu->addAction(QStringLiteral("Sepia..."), this, [this]() { applyAdjustment(5); });
+    auto *posterizeAction = adjMenu->addAction(QStringLiteral("Posterize..."), this, [this]() { applyAdjustment(6); });
+    auto *blackWhiteAction = adjMenu->addAction(QStringLiteral("Black and White"), this, [this]() { applyAdjustment(7); });
+    adjMenu->addAction(QStringLiteral("Threshold..."), this, [this]() { applyAdjustment(14); });
+    adjMenu->addAction(QStringLiteral("Color Balance..."), this, [this]() { applyAdjustment(8); });
     adjMenu->addSeparator();
-    adjMenu->addAction(TR("Exposition..."), this, [this]() { applyAdjustment(10); });
-    adjMenu->addAction(TR("Hautes / Basses lumières..."), this, [this]() { applyAdjustment(11); });
-    adjMenu->addAction(TR("Température / Teinte..."), this, [this]() { applyAdjustment(12); });
-    adjMenu->addAction(TR("Inverser l'alpha"), this, [this]() { applyAdjustment(13); });
+    adjMenu->addAction(QStringLiteral("Exposure..."), this, [this]() { applyAdjustment(10); });
+    adjMenu->addAction(QStringLiteral("Highlights / Shadows..."), this, [this]() { applyAdjustment(11); });
+    adjMenu->addAction(QStringLiteral("Temperature / Tint..."), this, [this]() { applyAdjustment(12); });
+    adjMenu->addAction(QStringLiteral("Invert Alpha"), this, [this]() { applyAdjustment(13); });
     setShortcuts(autoLevelAction, {QKeySequence("Ctrl+Shift+L")});
     setShortcuts(brightnessAction, {QKeySequence("Ctrl+Shift+T")});
     setShortcuts(hueSatAction, {QKeySequence("Ctrl+Shift+U")});
@@ -566,72 +563,72 @@ void MainWindow::createMenus() {
     setShortcuts(blackWhiteAction, {QKeySequence("Ctrl+Shift+G")});
 
     // Menu Effets
-    auto *fxMenu = menuBar()->addMenu(TR("&Effets"));
+    auto *fxMenu = menuBar()->addMenu(QStringLiteral("Effe&cts"));
 
-    m_repeatEffectAction = fxMenu->addAction(TR("Répéter le dernier effet"), this, [this]() {
+    m_repeatEffectAction = fxMenu->addAction(QStringLiteral("Repeat last effect"), this, [this]() {
         if (m_lastEffect) m_lastEffect();
     });
     m_repeatEffectAction->setShortcut(QKeySequence("Ctrl+F"));
     m_repeatEffectAction->setEnabled(false);
     fxMenu->addSeparator();
 
-    auto *artisticMenu = fxMenu->addMenu(TR("Artistique"));
-    artisticMenu->addAction(TR("Croquis à l'encre..."), this, [this]() { applyEffect(8); });
-    artisticMenu->addAction(TR("Peinture à l'huile..."), this, [this]() { applyEffect(5); });
-    artisticMenu->addAction(TR("Croquis au crayon..."), this, [this]() { applyEffect(9); });
+    auto *artisticMenu = fxMenu->addMenu(QStringLiteral("Artistic"));
+    artisticMenu->addAction(QStringLiteral("Ink Sketch..."), this, [this]() { applyEffect(8); });
+    artisticMenu->addAction(QStringLiteral("Oil Painting..."), this, [this]() { applyEffect(5); });
+    artisticMenu->addAction(QStringLiteral("Pencil Sketch..."), this, [this]() { applyEffect(9); });
 
-    auto *blursMenu = fxMenu->addMenu(TR("Flous"));
-    blursMenu->addAction(TR("Fragment..."), this, [this]() { applyEffect(17); });
-    blursMenu->addAction(TR("Flou gaussien..."), this, [this]() { applyEffect(0); });
-    blursMenu->addAction(TR("Flou directionnel..."), this, [this]() { applyEffect(7); });
-    blursMenu->addAction(TR("Flou radial..."), this, [this]() { applyEffect(13); });
-    blursMenu->addAction(TR("Flou de surface..."), this, [this]() { applyEffect(15); });
-    blursMenu->addAction(TR("Flou..."), this, [this]() { applyEffect(16); });
-    blursMenu->addAction(TR("Flou de zoom..."), this, [this]() { applyEffect(14); });
+    auto *blursMenu = fxMenu->addMenu(QStringLiteral("Blurs"));
+    blursMenu->addAction(QStringLiteral("Fragment..."), this, [this]() { applyEffect(17); });
+    blursMenu->addAction(QStringLiteral("Gaussian Blur..."), this, [this]() { applyEffect(0); });
+    blursMenu->addAction(QStringLiteral("Motion Blur..."), this, [this]() { applyEffect(7); });
+    blursMenu->addAction(QStringLiteral("Radial Blur..."), this, [this]() { applyEffect(13); });
+    blursMenu->addAction(QStringLiteral("Surface Blur..."), this, [this]() { applyEffect(15); });
+    blursMenu->addAction(QStringLiteral("Unfocus..."), this, [this]() { applyEffect(16); });
+    blursMenu->addAction(QStringLiteral("Zoom Blur..."), this, [this]() { applyEffect(14); });
 
-    auto *distortMenu = fxMenu->addMenu(TR("Déformation"));
-    distortMenu->addAction(TR("Bombement..."), this, [this]() { applyEffect(18); });
-    distortMenu->addAction(TR("Cristalliser..."), this, [this]() { applyEffect(20); });
-    distortMenu->addAction(TR("Bosselure..."), this, [this]() { applyEffect(22); });
-    distortMenu->addAction(TR("Verre givré..."), this, [this]() { applyEffect(19); });
-    distortMenu->addAction(TR("Pixéliser..."), this, [this]() { applyEffect(6); });
-    distortMenu->addAction(TR("Inversion polaire..."), this, [this]() { applyEffect(23); });
-    distortMenu->addAction(TR("Réflexion en mosaïque..."), this, [this]() { applyEffect(21); });
-    distortMenu->addAction(TR("Torsion..."), this, [this]() { applyEffect(24); });
+    auto *distortMenu = fxMenu->addMenu(QStringLiteral("Distort"));
+    distortMenu->addAction(QStringLiteral("Bulge..."), this, [this]() { applyEffect(18); });
+    distortMenu->addAction(QStringLiteral("Crystalize..."), this, [this]() { applyEffect(20); });
+    distortMenu->addAction(QStringLiteral("Dents..."), this, [this]() { applyEffect(22); });
+    distortMenu->addAction(QStringLiteral("Frosted Glass..."), this, [this]() { applyEffect(19); });
+    distortMenu->addAction(QStringLiteral("Pixelate..."), this, [this]() { applyEffect(6); });
+    distortMenu->addAction(QStringLiteral("Polar Inversion..."), this, [this]() { applyEffect(23); });
+    distortMenu->addAction(QStringLiteral("Tile Reflection..."), this, [this]() { applyEffect(21); });
+    distortMenu->addAction(QStringLiteral("Twist..."), this, [this]() { applyEffect(24); });
 
-    auto *noiseMenu = fxMenu->addMenu(TR("Bruit"));
-    noiseMenu->addAction(TR("Ajouter du bruit..."), this, [this]() { applyEffect(2); });
-    noiseMenu->addAction(TR("Médiane..."), this, [this]() { applyEffect(25); });
-    noiseMenu->addAction(TR("Quantifier..."), this, [this]() { applyEffect(27); });
-    noiseMenu->addAction(TR("Réduire le bruit..."), this, [this]() { applyEffect(26); });
+    auto *noiseMenu = fxMenu->addMenu(QStringLiteral("Noise"));
+    noiseMenu->addAction(QStringLiteral("Add Noise..."), this, [this]() { applyEffect(2); });
+    noiseMenu->addAction(QStringLiteral("Median..."), this, [this]() { applyEffect(25); });
+    noiseMenu->addAction(QStringLiteral("Reduce Palette..."), this, [this]() { applyEffect(27); });
+    noiseMenu->addAction(QStringLiteral("Reduce Noise..."), this, [this]() { applyEffect(26); });
 
-    auto *objectMenu = fxMenu->addMenu(TR("Objet"));
-    objectMenu->addAction(TR("Ombre portée..."), this, [this]() { applyEffect(36); });
+    auto *objectMenu = fxMenu->addMenu(QStringLiteral("Object"));
+    objectMenu->addAction(QStringLiteral("Drop Shadow..."), this, [this]() { applyEffect(36); });
 
-    auto *photoMenu = fxMenu->addMenu(TR("Photo"));
-    photoMenu->addAction(TR("Lueur..."), this, [this]() { applyEffect(28); });
-    photoMenu->addAction(TR("Suppression yeux rouges..."), this, [this]() { applyEffect(29); });
-    photoMenu->addAction(TR("Netteté..."), this, [this]() { applyEffect(1); });
-    photoMenu->addAction(TR("Adoucir le portrait..."), this, [this]() { applyEffect(30); });
-    photoMenu->addAction(TR("Vignette..."), this, [this]() { applyEffect(31); });
+    auto *photoMenu = fxMenu->addMenu(QStringLiteral("Photo"));
+    photoMenu->addAction(QStringLiteral("Glow..."), this, [this]() { applyEffect(28); });
+    photoMenu->addAction(QStringLiteral("Red Eye Removal..."), this, [this]() { applyEffect(29); });
+    photoMenu->addAction(QStringLiteral("Sharpen..."), this, [this]() { applyEffect(1); });
+    photoMenu->addAction(QStringLiteral("Soften Portrait..."), this, [this]() { applyEffect(30); });
+    photoMenu->addAction(QStringLiteral("Vignette..."), this, [this]() { applyEffect(31); });
 
-    auto *renderMenu = fxMenu->addMenu(TR("Rendu"));
-    renderMenu->addAction(TR("Nuages..."), this, [this]() { applyEffect(10); });
-    renderMenu->addAction(TR("Fractale Julia..."), this, [this]() { applyEffect(11); });
-    renderMenu->addAction(TR("Fractale Mandelbrot..."), this, [this]() { applyEffect(12); });
-    renderMenu->addAction(TR("Turbulence..."), this, [this]() { applyEffect(32); });
+    auto *renderMenu = fxMenu->addMenu(QStringLiteral("Render"));
+    renderMenu->addAction(QStringLiteral("Clouds..."), this, [this]() { applyEffect(10); });
+    renderMenu->addAction(QStringLiteral("Julia Fractal..."), this, [this]() { applyEffect(11); });
+    renderMenu->addAction(QStringLiteral("Mandelbrot Fractal..."), this, [this]() { applyEffect(12); });
+    renderMenu->addAction(QStringLiteral("Turbulence..."), this, [this]() { applyEffect(32); });
 
-    auto *stylizeMenu = fxMenu->addMenu(TR("Styliser"));
-    stylizeMenu->addAction(TR("Détection de contours"), this, [this]() { applyEffect(4); });
-    stylizeMenu->addAction(TR("Estampage..."), this, [this]() { applyEffect(3); });
-    stylizeMenu->addAction(TR("Morphologie..."), this, [this]() { applyEffect(35); });
-    stylizeMenu->addAction(TR("Contour..."), this, [this]() { applyEffect(34); });
-    stylizeMenu->addAction(TR("Relief..."), this, [this]() { applyEffect(33); });
+    auto *stylizeMenu = fxMenu->addMenu(QStringLiteral("Stylize"));
+    stylizeMenu->addAction(QStringLiteral("Edge Detect"), this, [this]() { applyEffect(4); });
+    stylizeMenu->addAction(QStringLiteral("Emboss..."), this, [this]() { applyEffect(3); });
+    stylizeMenu->addAction(QStringLiteral("Morphology..."), this, [this]() { applyEffect(35); });
+    stylizeMenu->addAction(QStringLiteral("Outline..."), this, [this]() { applyEffect(34); });
+    stylizeMenu->addAction(QStringLiteral("Relief..."), this, [this]() { applyEffect(33); });
 
     // External effect plugins (Effets ▸ Plugins). Entirely additive — the submenu is
     // always present so the feature is discoverable, and lists whatever loaded.
     fxMenu->addSeparator();
-    auto *pluginsMenu = fxMenu->addMenu(TR("Plugins"));
+    auto *pluginsMenu = fxMenu->addMenu(QStringLiteral("Plugins"));
     populatePluginsMenu(pluginsMenu);
 
     // paint.net has no Window/Help menus: the four utility windows plus Settings
@@ -649,7 +646,7 @@ void MainWindow::populatePluginsMenu(QMenu *pluginsMenu) {
 
     const auto &effects = m_pluginManager->effects();
     if (effects.empty()) {
-        QAction *none = pluginsMenu->addAction(TR("Aucun plugin chargé"));
+        QAction *none = pluginsMenu->addAction(QStringLiteral("No plugin loaded"));
         none->setEnabled(false);
     } else {
         for (const auto &eff : effects) {
@@ -659,7 +656,7 @@ void MainWindow::populatePluginsMenu(QMenu *pluginsMenu) {
     }
 
     pluginsMenu->addSeparator();
-    pluginsMenu->addAction(TR("Ouvrir le dossier des plugins…"), this, [this]() {
+    pluginsMenu->addAction(QStringLiteral("Open the plugins folder..."), this, [this]() {
         const QStringList dirs = PluginManager::defaultPluginDirs();
         if (dirs.isEmpty()) return;
         const QString target = dirs.last();   // the writable app-data plugins dir
@@ -698,11 +695,11 @@ void MainWindow::runPluginEffect(PluginEffect *effect) {
 void MainWindow::rebuildToolsPaletteTooltips() {
     for (QToolButton *btn : m_toolButtons) {
         if (!btn) continue;
-        QString tip = "<b>" + TR(btn->property("toolName").toString()) + "</b>";
+        QString tip = "<b>" + (btn->property("toolName").toString()) + "</b>";
         const QString key = btn->property("toolKey").toString();
         if (!key.isEmpty()) tip += " (" + key + ")";
         const QString desc = toolDescription(static_cast<ToolType>(btn->property("toolTypeInt").toInt()));
-        if (!desc.isEmpty()) tip += "<br>" + TR(desc);
+        if (!desc.isEmpty()) tip += "<br>" + (desc);
         btn->setToolTip(tip);
     }
 }
@@ -722,20 +719,20 @@ void MainWindow::showShortcutsHelp() {
         "<tr><td>%10</td><td>Ctrl+Z · Ctrl+Y</td></tr>"
         "<tr><td>%11</td><td>Ctrl+F</td></tr>"
         "</table>")
-        .arg(TR("Raccourcis clavier"),
-             TR("Sélections (cycle)"),
-             TR("Déplacement (cycle)"),
-             TR("Ligne / Formes (cycle)"),
-             TR("Outils directs"),
-             TR("Taille du pinceau"),
-             TR("Échanger / basculer les couleurs"),
-             TR("Fenêtres Outils / Historique / Calques / Couleurs"),
-             TR("Replacer une fenêtre"))
-        .arg(TR("Annuler / Rétablir"),
-             TR("Répéter le dernier effet"));
+        .arg(QStringLiteral("Keyboard shortcuts"),
+             QStringLiteral("Selection tools (cycle)"),
+             QStringLiteral("Move tools (cycle)"),
+             QStringLiteral("Line / Shapes (cycle)"),
+             QStringLiteral("Direct tool keys"),
+             QStringLiteral("Brush size"),
+             QStringLiteral("Swap / toggle colors"),
+             QStringLiteral("Tools / History / Layers / Colors windows"),
+             QStringLiteral("Reset a window's position"))
+        .arg(QStringLiteral("Undo / Redo"),
+             QStringLiteral("Repeat last effect"));
 
     QMessageBox box(this);
-    box.setWindowTitle(TR("Raccourcis clavier"));
+    box.setWindowTitle(QStringLiteral("Keyboard shortcuts"));
     box.setTextFormat(Qt::RichText);
     box.setText(html);
     box.exec();
@@ -759,53 +756,12 @@ void MainWindow::applyTheme() {
     if (m_colorsPanel) m_colorsPanel->refreshIcons();
 }
 
-void MainWindow::retranslateUi() {
-    // Rebuild every piece of chrome that carries text, in the new language.
-    if (QWidget *old = menuBar()->cornerWidget(Qt::TopRightCorner)) {
-        menuBar()->setCornerWidget(nullptr, Qt::TopRightCorner);
-        old->deleteLater();
-    }
-    menuBar()->clear();
-    m_recentFilesMenu = nullptr;
-    m_repeatEffectAction = nullptr;
-    createMenus();          // also re-creates the corner icons
-
-    if (m_fixedToolbar) {
-        m_fixedToolbar->clear();
-        populateFixedToolbar();
-    }
-    if (m_toolOptionsPanel) m_toolOptionsPanel->retranslate();
-    if (m_layersPanel) m_layersPanel->retranslate();
-
-    if (m_toolsDock)   m_toolsDock->setWindowTitle(TR("Outils"));
-    if (m_historyDock) m_historyDock->setWindowTitle(TR("Historique"));
-    if (m_layersDock)  m_layersDock->setWindowTitle(TR("Calques"));
-    if (m_colorsDock)  m_colorsDock->setWindowTitle(TR("Couleurs"));
-
-    rebuildToolsPaletteTooltips();
-
-    // Re-running tool selection refreshes the status-bar name and help text.
-    if (m_currentTool) selectTool(m_currentTool->type());
-
-    // Undo/redo enablement was lost with the old actions.
-    if (m_document) {
-        const bool canUndo = m_document->history().canUndo();
-        const bool canRedo = m_document->history().canRedo();
-        if (m_undoAction) m_undoAction->setEnabled(canUndo);
-        if (m_redoAction) m_redoAction->setEnabled(canRedo);
-        if (m_undoToolbarAction) m_undoToolbarAction->setEnabled(canUndo);
-        if (m_redoToolbarAction) m_redoToolbarAction->setEnabled(canRedo);
-    }
-    updateTitle();
-}
-
 void MainWindow::showSettingsDialog() {
     SettingsDialog dlg(this);
     connect(&dlg, &SettingsDialog::colorSchemeChanged, this, [this, &dlg]() {
         applyTheme();
         dlg.setStyleSheet(Theme::styleSheet());
     });
-    connect(&dlg, &SettingsDialog::languageChanged, this, [this]() { retranslateUi(); });
     connect(&dlg, &SettingsDialog::canvasSettingsChanged, this, [this]() {
         if (m_canvas) m_canvas->reloadSettings();
     });
@@ -832,8 +788,8 @@ void MainWindow::createMenuBarCornerIcons() {
         btn->setCheckable(true);
         btn->setChecked(dock->isVisible());
         btn->setToolTip(QString("<b>%1</b> (%2)<br>%3<br><i>%4</i>")
-                            .arg(TR(label), key, TR(what),
-                                 TR("Ctrl+Maj+" ) + key + " : " + TR("replacer la fenêtre")));
+                            .arg((label), key, (what),
+                                 QStringLiteral("Ctrl+Shift+" ) + key + " : " + QStringLiteral("reset the window position")));
         btn->setAutoRaise(true);
         // "Active" state = a blue underline, NOT a filled blue background: the global
         // QToolButton:checked fill hid the blue Tools/History icons (blue on blue) in
@@ -847,7 +803,7 @@ void MainWindow::createMenuBarCornerIcons() {
         connect(dock, &QDockWidget::visibilityChanged, btn, &QToolButton::setChecked);
 
         // F5-F8 toggle; Ctrl+Shift+F* resets position (like paint.net).
-        auto *toggle = new QAction(TR(label), this);
+        auto *toggle = new QAction((label), this);
         toggle->setShortcut(QKeySequence(key));
         connect(toggle, &QAction::triggered, this, [dock]() { dock->setVisible(!dock->isVisible()); });
         addAction(toggle);
@@ -861,14 +817,14 @@ void MainWindow::createMenuBarCornerIcons() {
         return btn;
     };
 
-    addDockToggle(m_toolsDock, ToolIcons::toolsWindow(), "Outils", "F5",
-                  "Affiche ou masque la palette d'outils (pinceau, sélection, formes...).");
-    addDockToggle(m_historyDock, ToolIcons::historyWindow(), "Historique", "F6",
-                  "Affiche ou masque l'historique : chaque action est listée, cliquez pour y revenir.");
-    addDockToggle(m_layersDock, ToolIcons::layersWindow(), "Calques", "F7",
-                  "Affiche ou masque les calques : ajouter, supprimer, réordonner, opacité et fusion.");
-    addDockToggle(m_colorsDock, ToolIcons::colorsWindow(), "Couleurs", "F8",
-                  "Affiche ou masque les couleurs : couleur primaire/secondaire, roue, RVB/TSV et palette.");
+    addDockToggle(m_toolsDock, ToolIcons::toolsWindow(), "Tools", "F5",
+                  "Shows or hides the Tools palette (brush, selection, shapes...).");
+    addDockToggle(m_historyDock, ToolIcons::historyWindow(), "History", "F6",
+                  "Shows or hides History: every action is listed; click one to go back to it.");
+    addDockToggle(m_layersDock, ToolIcons::layersWindow(), "Layers", "F7",
+                  "Shows or hides Layers: add, delete, reorder, opacity and blend mode.");
+    addDockToggle(m_colorsDock, ToolIcons::colorsWindow(), "Colors", "F8",
+                  "Shows or hides Colors: primary/secondary color, wheel, RGB/HSV and palette.");
 
     // Settings
     auto *settingsBtn = new QToolButton(corner);
@@ -876,8 +832,8 @@ void MainWindow::createMenuBarCornerIcons() {
     settingsBtn->setIconSize(QSize(16, 16));
     settingsBtn->setAutoRaise(true);
     settingsBtn->setToolTip(QString("<b>%1</b><br>%2")
-        .arg(TR("Paramètres"),
-             TR("Ouvre les paramètres : langue (français / anglais), thème clair ou sombre, et canevas.")));
+        .arg(QStringLiteral("Settings"),
+             QStringLiteral("Opens Settings: light or dark color scheme, panels and canvas.")));
     connect(settingsBtn, &QToolButton::clicked, this, &MainWindow::showSettingsDialog);
     cornerLayout->addWidget(settingsBtn);
 
@@ -887,17 +843,22 @@ void MainWindow::createMenuBarCornerIcons() {
     helpBtn->setIconSize(QSize(16, 16));
     helpBtn->setAutoRaise(true);
     helpBtn->setToolTip(QString("<b>%1</b><br>%2")
-        .arg(TR("Aide"),
-             TR("Raccourcis clavier, documentation et informations sur la version.")));
+        .arg(QStringLiteral("Help"),
+             QStringLiteral("Keyboard shortcuts, documentation and version information.")));
     helpBtn->setPopupMode(QToolButton::InstantPopup);
     auto *helpMenu = new QMenu(helpBtn);
-    helpMenu->addAction(TR("Raccourcis clavier"), this, &MainWindow::showShortcutsHelp);
+    helpMenu->addAction(QStringLiteral("Keyboard shortcuts"), this, &MainWindow::showShortcutsHelp);
     helpMenu->addSeparator();
-    helpMenu->addAction(TR("À &propos de paint.software"), this, [this]() {
-        QMessageBox::about(this, TR("À propos de paint.software"),
-            "<h2>paint.software</h2>"
-            "<p>" + TR("Version") + " " PAINTSW_VERSION_STR " — " + TR("édition Linux") + "</p>"
-            "<p>Un éditeur d'images puissant construit avec Qt et C++.</p>");
+    helpMenu->addAction(QStringLiteral("&About Paint.with.me"), this, [this]() {
+        QMessageBox::about(this, QStringLiteral("About Paint.with.me"),
+            QStringLiteral("<h2>%1</h2>"
+                           "<p>Version %2</p>"
+                           "<p>A free image editor for Linux in the style of Paint.NET, built with Qt and C++.</p>"
+                           "<p>Based on <a href=\"https://github.com/Univers4craft/paint.software\">paint.software</a> "
+                           "by Univers4craft and contributors. MIT license.</p>"
+                           "<p><a href=\"%3\">%3</a></p>"
+                           "<p>Not affiliated with Paint.NET or dotPDN LLC.</p>")
+                .arg(AppInfo::kDisplayName, QStringLiteral(PWM_VERSION_STR), AppInfo::kHomepage));
     });
     helpBtn->setMenu(helpMenu);
     cornerLayout->addWidget(helpBtn);
@@ -971,13 +932,13 @@ void MainWindow::positionUtilityWindow(QDockWidget *dock, bool resetSize) {
 
 void MainWindow::scheduleUtilityWindowFollow() {
     if (!m_utilityWindowFollowTimer) return;
-    QSettings settings("PaintDali", "PaintDali");
+    QSettings settings(AppInfo::kId, AppInfo::kId);
     if (settings.value("ui/followUtilityPanels", false).toBool())
         m_utilityWindowFollowTimer->start();
 }
 
 void MainWindow::repositionFloatingUtilityWindows() {
-    QSettings settings("PaintDali", "PaintDali");
+    QSettings settings(AppInfo::kId, AppInfo::kId);
     if (!settings.value("ui/followUtilityPanels", false).toBool()) return;
     for (QDockWidget *dock : {m_toolsDock, m_historyDock, m_layersDock, m_colorsDock}) {
         if (dock && !dock->isHidden() && dock->window() != this)
@@ -1101,7 +1062,7 @@ void MainWindow::showLayerPropertiesDialog() {
         const int idx = m_document->activeLayerIndex();
         auto cmd = std::make_unique<LayerPropertyCommand>(
             m_document, idx, origOpacity, origVisible, static_cast<int>(origBlend),
-            layer->name(), layer->isLocked(), "Propriétés du calque");
+            layer->name(), layer->isLocked(), "Layer Properties");
         layer->setName(dlg.layerName());
         layer->setVisible(dlg.isVisible());
         layer->setBlendMode(dlg.blendMode());
@@ -1121,7 +1082,7 @@ void MainWindow::showLayerPropertiesDialog() {
 }
 
 void MainWindow::createKeyboardShortcuts() {
-    addShortcutAction("Desélectionner", {QKeySequence("Return"), QKeySequence("Enter")}, [this]() {
+    addShortcutAction("Deselect", {QKeySequence("Return"), QKeySequence("Enter")}, [this]() {
         if (!m_document || !m_document->selection().hasSelection()) return;
         if (m_currentTool && m_currentTool->type() == ToolType::Text) return;
         deselectAll();
@@ -1187,7 +1148,7 @@ void MainWindow::createKeyboardShortcuts() {
 }
 
 void MainWindow::createToolBar() {
-    auto *toolbar = addToolBar(TR("Barre d'outils"));
+    auto *toolbar = addToolBar(QStringLiteral("Toolbar"));
     toolbar->setObjectName("FixedToolbar");
     toolbar->setMovable(false);
     toolbar->setIconSize(QSize(16, 16));
@@ -1201,28 +1162,28 @@ void MainWindow::populateFixedToolbar() {
 
     // Exact paint.net toolbar order:
     // New, Open, Save, Print | Cut, Copy, Paste | Crop, Deselect | Undo, Redo | Grid, Rulers
-    toolbar->addAction(ToolIcons::newDoc(), TR("Nouveau"), this, &MainWindow::newDocument);
-    toolbar->addAction(ToolIcons::openDoc(), TR("Ouvrir"), this, &MainWindow::openDocument);
-    toolbar->addAction(ToolIcons::saveDoc(), TR("Enregistrer"), this, &MainWindow::saveDocument);
-    toolbar->addAction(ToolIcons::printAction(), TR("Imprimer"), this, &MainWindow::printDocument);
+    toolbar->addAction(ToolIcons::newDoc(), QStringLiteral("New"), this, &MainWindow::newDocument);
+    toolbar->addAction(ToolIcons::openDoc(), QStringLiteral("Open"), this, &MainWindow::openDocument);
+    toolbar->addAction(ToolIcons::saveDoc(), QStringLiteral("Save"), this, &MainWindow::saveDocument);
+    toolbar->addAction(ToolIcons::printAction(), QStringLiteral("Print"), this, &MainWindow::printDocument);
     toolbar->addSeparator();
-    toolbar->addAction(ToolIcons::cutAction(), TR("Couper"), this, &MainWindow::cut);
-    toolbar->addAction(ToolIcons::copyAction(), TR("Copier"), this, &MainWindow::copy);
-    toolbar->addAction(ToolIcons::pasteAction(), TR("Coller"), this, &MainWindow::paste);
+    toolbar->addAction(ToolIcons::cutAction(), QStringLiteral("Cut"), this, &MainWindow::cut);
+    toolbar->addAction(ToolIcons::copyAction(), QStringLiteral("Copy"), this, &MainWindow::copy);
+    toolbar->addAction(ToolIcons::pasteAction(), QStringLiteral("Paste"), this, &MainWindow::paste);
     toolbar->addSeparator();
-    toolbar->addAction(ToolIcons::cropAction(), TR("Rogner selon la sélection"), this, &MainWindow::cropToSelection);
-    toolbar->addAction(ToolIcons::deselectAction(), TR("Désélectionner"), this, &MainWindow::deselectAll);
+    toolbar->addAction(ToolIcons::cropAction(), QStringLiteral("Crop to Selection"), this, &MainWindow::cropToSelection);
+    toolbar->addAction(ToolIcons::deselectAction(), QStringLiteral("Deselect"), this, &MainWindow::deselectAll);
     toolbar->addSeparator();
-    m_undoToolbarAction = toolbar->addAction(ToolIcons::undoAction(), TR("Annuler"), this, &MainWindow::undo);
-    m_redoToolbarAction = toolbar->addAction(ToolIcons::redoAction(), TR("Rétablir"), this, &MainWindow::redo);
+    m_undoToolbarAction = toolbar->addAction(ToolIcons::undoAction(), QStringLiteral("Undo"), this, &MainWindow::undo);
+    m_redoToolbarAction = toolbar->addAction(ToolIcons::redoAction(), QStringLiteral("Redo"), this, &MainWindow::redo);
     m_undoToolbarAction->setEnabled(false);
     m_redoToolbarAction->setEnabled(false);
     toolbar->addSeparator();
 
-    auto *gridToggle = toolbar->addAction(ToolIcons::pixelGridAction(), TR("Grille de pixels"), this, &MainWindow::toggleGrid);
+    auto *gridToggle = toolbar->addAction(ToolIcons::pixelGridAction(), QStringLiteral("Pixel Grid"), this, &MainWindow::toggleGrid);
     gridToggle->setCheckable(true);
     gridToggle->setChecked(m_canvas && m_canvas->showGrid());
-    auto *rulersToggle = toolbar->addAction(ToolIcons::rulersAction(), TR("Règles"), this, [this]() {
+    auto *rulersToggle = toolbar->addAction(ToolIcons::rulersAction(), QStringLiteral("Rulers"), this, [this]() {
         bool show = !m_canvas->showRulers();
         m_canvas->setShowRulers(show);
         if (m_rulersAction) m_rulersAction->setChecked(show);
@@ -1243,8 +1204,7 @@ void MainWindow::populateFixedToolbar() {
     spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
     toolbar->addWidget(spacer);
 
-    // QToolBar::clear() destroys the previous bar on retranslate, so recreate it
-    // and re-establish its connections here.
+    // Created here, together with the toolbar that hosts it.
     m_imageListBar = new ImageListBar(this);
     connect(m_imageListBar, &ImageListBar::imageSelected, this, &MainWindow::setActiveDocument);
     connect(m_imageListBar, &ImageListBar::imageCloseRequested, this, &MainWindow::closeDocument);
@@ -1263,25 +1223,25 @@ void MainWindow::populateFixedToolbar() {
 // (Forward-declared near the top so rebuildToolsPaletteTooltips can use it.)
 QString toolDescription(ToolType t) {
     switch (t) {
-    case ToolType::RectSelection:   return "Sélectionne une zone rectangulaire à modifier.";
-    case ToolType::EllipseSelection:return "Sélectionne une zone ovale à modifier.";
-    case ToolType::LassoSelection:  return "Sélectionne une zone à main levée en la traçant.";
-    case ToolType::MagicWand:       return "Sélectionne automatiquement une plage de couleurs similaires.";
-    case ToolType::Move:            return "Déplace les pixels de la sélection (ou tout le calque).";
-    case ToolType::MoveSelection:   return "Déplace le contour de la sélection sans déplacer les pixels.";
-    case ToolType::Zoom:            return "Agrandit (clic gauche) ou réduit (clic droit) l'affichage.";
-    case ToolType::Pan:             return "Déplace la vue dans l'image en cliquant-glissant (main).";
-    case ToolType::Fill:            return "Remplit une zone de couleur uniforme avec la couleur active.";
-    case ToolType::Gradient:        return "Trace un dégradé entre la couleur primaire et secondaire.";
-    case ToolType::Brush:           return "Peint des traits doux avec la couleur active.";
-    case ToolType::Eraser:          return "Efface vers la transparence (ou la couleur secondaire).";
-    case ToolType::Pencil:          return "Dessine des pixels nets, sans anticrénelage, en 1 px.";
-    case ToolType::ColorPicker:     return "Prélève une couleur de l'image comme couleur active.";
-    case ToolType::CloneStamp:      return "Duplique une partie de l'image (Ctrl+clic définit la source).";
-    case ToolType::Recolor:         return "Remplace une couleur par la couleur active là où l'on peint.";
-    case ToolType::Text:            return "Ajoute du texte sur l'image.";
-    case ToolType::Line:            return "Trace des lignes et des courbes.";
-    case ToolType::Shape:           return "Dessine des formes (rectangle, ellipse, étoile...).";
+    case ToolType::RectSelection:   return "Selects a rectangular area to edit.";
+    case ToolType::EllipseSelection:return "Selects an oval area to edit.";
+    case ToolType::LassoSelection:  return "Selects a freehand area by drawing around it.";
+    case ToolType::MagicWand:       return "Automatically selects a range of similar colors.";
+    case ToolType::Move:            return "Moves the selected pixels (or the whole layer).";
+    case ToolType::MoveSelection:   return "Moves the selection outline without moving the pixels.";
+    case ToolType::Zoom:            return "Zooms in (left click) or out (right click).";
+    case ToolType::Pan:             return "Pans the view around the image by dragging (hand).";
+    case ToolType::Fill:            return "Fills a uniformly-colored area with the active color.";
+    case ToolType::Gradient:        return "Draws a gradient between the primary and secondary color.";
+    case ToolType::Brush:           return "Paints soft strokes with the active color.";
+    case ToolType::Eraser:          return "Erases to transparency (or the secondary color).";
+    case ToolType::Pencil:          return "Draws crisp 1-px pixels with no antialiasing.";
+    case ToolType::ColorPicker:     return "Picks a color from the image as the active color.";
+    case ToolType::CloneStamp:      return "Clones part of the image (Ctrl+click sets the source).";
+    case ToolType::Recolor:         return "Replaces a color with the active color where you paint.";
+    case ToolType::Text:            return "Adds text on the image.";
+    case ToolType::Line:            return "Draws lines and curves.";
+    case ToolType::Shape:           return "Draws shapes (rectangle, ellipse, star...).";
     default:                        return QString();
     }
 }
@@ -1310,30 +1270,30 @@ void MainWindow::createToolsPanel() {
     // the single-row horizontal palette follows.
     const QVector<ToolDef> toolDefs = {
         // Selection tools -> left column
-        {"Sélection rectangle",              "S",  ToolType::RectSelection,    0, 0},
-        {"Lasso de sélection",               "S",  ToolType::LassoSelection,   1, 0},
-        {"Sélection ellipse",                "S",  ToolType::EllipseSelection, 2, 0},
-        {"Baguette magique",                 "S",  ToolType::MagicWand,        3, 0},
+        {"Rectangle Select",              "S",  ToolType::RectSelection,    0, 0},
+        {"Lasso Select",               "S",  ToolType::LassoSelection,   1, 0},
+        {"Ellipse Select",                "S",  ToolType::EllipseSelection, 2, 0},
+        {"Magic Wand",                 "S",  ToolType::MagicWand,        3, 0},
         // Move + view tools -> right column
-        {"Déplacer les pixels sélectionnés", "M",  ToolType::Move,             0, 1},
-        {"Déplacer la sélection",            "M",  ToolType::MoveSelection,    1, 1},
-        {"Zoom / Loupe",                     "Z",  ToolType::Zoom,             2, 1},
-        {"Se déplacer dans l'image",         "H",  ToolType::Pan,              3, 1},
+        {"Move Selected Pixels", "M",  ToolType::Move,             0, 1},
+        {"Move Selection",            "M",  ToolType::MoveSelection,    1, 1},
+        {"Zoom",                     "Z",  ToolType::Zoom,             2, 1},
+        {"Pan",         "H",  ToolType::Pan,              3, 1},
         // Fill tools
-        {"Pot de peinture",                  "F",  ToolType::Fill,             4, 0},
-        {"Dégradé",                          "G",  ToolType::Gradient,         4, 1},
+        {"Paint Bucket",                  "F",  ToolType::Fill,             4, 0},
+        {"Gradient",                          "G",  ToolType::Gradient,         4, 1},
         // Drawing tools
-        {"Pinceau",                          "B",  ToolType::Brush,            5, 0},
-        {"Gomme",                            "E",  ToolType::Eraser,           5, 1},
-        {"Crayon",                           "P",  ToolType::Pencil,           6, 0},
+        {"Paintbrush",                          "B",  ToolType::Brush,            5, 0},
+        {"Eraser",                            "E",  ToolType::Eraser,           5, 1},
+        {"Pencil",                           "P",  ToolType::Pencil,           6, 0},
         // Photo tools
-        {"Sélecteur de couleur",             "K",  ToolType::ColorPicker,      6, 1},
-        {"Tampon de clonage",                "L",  ToolType::CloneStamp,       7, 0},
-        {"Recoloriage",                      "R",  ToolType::Recolor,          7, 1},
+        {"Color Picker",             "K",  ToolType::ColorPicker,      6, 1},
+        {"Clone Stamp",                "L",  ToolType::CloneStamp,       7, 0},
+        {"Recolor",                      "R",  ToolType::Recolor,          7, 1},
         // Text and shape tools
-        {"Texte",                            "T",  ToolType::Text,             8, 0},
-        {"Ligne / Courbe",                   "O",  ToolType::Line,             8, 1},
-        {"Formes",                           "O",  ToolType::Shape,            9, 0},
+        {"Text",                            "T",  ToolType::Text,             8, 0},
+        {"Line / Curve",                   "O",  ToolType::Line,             8, 1},
+        {"Shapes",                           "O",  ToolType::Shape,            9, 0},
     };
 
     auto *toolsWidget = new QWidget;
@@ -1354,10 +1314,10 @@ void MainWindow::createToolsPanel() {
         btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
         btn->setCheckable(true);
         // Rich tooltip: bold name + shortcut, then a one-line description.
-        QString tip = "<b>" + TR(td.name) + "</b>";
+        QString tip = "<b>" + (td.name) + "</b>";
         if (!td.shortcut.isEmpty()) tip += " (" + td.shortcut + ")";
         const QString desc = toolDescription(td.type);
-        if (!desc.isEmpty()) tip += "<br>" + TR(desc);
+        if (!desc.isEmpty()) tip += "<br>" + (desc);
         btn->setToolTip(tip);
         // Remember the untranslated name + key so tooltips can be rebuilt on a
         // language change.
@@ -1390,7 +1350,7 @@ void MainWindow::createToolsPanel() {
     m_toolsPaletteWidget = toolsWidget;
     layoutToolsPalette(false);   // vertical (2 columns) by default
 
-    m_toolsDock = new QDockWidget(TR("Outils"), this);
+    m_toolsDock = new QDockWidget(QStringLiteral("Tools"), this);
     m_toolsDock->setObjectName("ToolsDock");
     m_toolsDock->setWidget(toolsWidget);
     m_toolsDock->setAllowedAreas(Qt::AllDockWidgetAreas);
@@ -1476,7 +1436,7 @@ void MainWindow::createDockPanels() {
             this, &MainWindow::selectTool);
     connect(m_toolOptionsPanel, &ToolOptionsPanel::toolOptionsChanged,
             this, [this]() { if (m_canvas) m_canvas->update(); });
-    auto *optionsBar = new QToolBar("Barre d'outils variable", this);
+    auto *optionsBar = new QToolBar("Tool options", this);
     optionsBar->setObjectName("VariableToolbar");
     optionsBar->setMovable(false);
     optionsBar->setIconSize(QSize(14, 14));
@@ -1485,7 +1445,7 @@ void MainWindow::createDockPanels() {
     m_variableToolbar = optionsBar;
 
     // Colors panel - LEFT side (below Tools)
-    m_colorsDock = new QDockWidget(TR("Couleurs"), this);
+    m_colorsDock = new QDockWidget(QStringLiteral("Colors"), this);
     m_colorsDock->setObjectName("ColorsDock");
     m_colorsDock->setAllowedAreas(Qt::AllDockWidgetAreas);
     m_colorsDock->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
@@ -1498,7 +1458,7 @@ void MainWindow::createDockPanels() {
     });
 
     // History panel - RIGHT top
-    m_historyDock = new QDockWidget(TR("Historique"), this);
+    m_historyDock = new QDockWidget(QStringLiteral("History"), this);
     m_historyDock->setObjectName("HistoryDock");
     m_historyDock->setAllowedAreas(Qt::AllDockWidgetAreas);
     m_historyDock->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
@@ -1511,7 +1471,7 @@ void MainWindow::createDockPanels() {
     });
 
     // Layers panel - RIGHT bottom
-    m_layersDock = new QDockWidget(TR("Calques"), this);
+    m_layersDock = new QDockWidget(QStringLiteral("Layers"), this);
     m_layersDock->setObjectName("LayersDock");
     m_layersDock->setAllowedAreas(Qt::AllDockWidgetAreas);
     m_layersDock->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
@@ -1537,7 +1497,7 @@ void MainWindow::createDockPanels() {
     m_colorsDock->resize(220, 320);
 
     QTimer::singleShot(0, this, [this]() {
-        QSettings settings("PaintDali", "PaintDali");
+        QSettings settings(AppInfo::kId, AppInfo::kId);
         if (settings.contains("ui/mainWindowStateV2")) {
             // A saved layout exists; do not overwrite it with default startup positions.
             return;
@@ -1557,12 +1517,12 @@ void MainWindow::createDockPanels() {
 
 void MainWindow::createStatusBar() {
     // Active tool name on the far left.
-    m_toolLabel = new QLabel("Pinceau");
+    m_toolLabel = new QLabel("Paintbrush");
     m_toolLabel->setStyleSheet("font-size: 11px; font-weight: bold; padding-left: 4px; padding-right: 6px;");
     statusBar()->addWidget(m_toolLabel);
 
     // Help text on the left (like Paint.NET)
-    m_helpTextLabel = new QLabel(TR("Clic gauche pour dessiner avec la couleur primaire, clic droit avec la couleur secondaire."));
+    m_helpTextLabel = new QLabel(QStringLiteral("Left click to draw with the primary color, right click for the secondary color."));
     m_helpTextLabel->setStyleSheet("font-size: 11px; padding-left: 4px;");
 
     // Size icon (drawn grid icon) + dimensions
@@ -1613,7 +1573,7 @@ void MainWindow::createStatusBar() {
     auto *zoomOutBtn = new QToolButton;
     zoomOutBtn->setText("-");
     zoomOutBtn->setFixedSize(18, 16);
-    zoomOutBtn->setToolTip(TR("Zoom arrière"));
+    zoomOutBtn->setToolTip(QStringLiteral("Zoom Out"));
 
     auto *zoomSlider = new QSlider(Qt::Horizontal);
     zoomSlider->setFixedWidth(92);
@@ -1622,7 +1582,7 @@ void MainWindow::createStatusBar() {
     auto *zoomInBtn = new QToolButton;
     zoomInBtn->setText("+");
     zoomInBtn->setFixedSize(18, 16);
-    zoomInBtn->setToolTip(TR("Zoom avant"));
+    zoomInBtn->setToolTip(QStringLiteral("Zoom In"));
 
     static const int zoomSteps[] = {
         1, 2, 3, 5, 8, 12, 16, 25, 33, 50, 66, 75,
@@ -1766,8 +1726,8 @@ bool MainWindow::maybeSaveDocument(Document *doc) {
     int idx = m_documents.indexOf(doc);
     if (idx >= 0 && idx != m_activeDocIndex) setActiveDocument(idx);
 
-    auto result = QMessageBox::question(this, TR("Enregistrer les modifications"),
-        TR("Le document a été modifié.\nVoulez-vous enregistrer les modifications ?"),
+    auto result = QMessageBox::question(this, QStringLiteral("Save changes"),
+        QStringLiteral("The document has been modified.\nDo you want to save your changes?"),
         QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel);
     if (result == QMessageBox::Save) return saveDocument();
     if (result == QMessageBox::Cancel) return false;
@@ -1789,9 +1749,9 @@ void MainWindow::newDocument() {
 }
 
 void MainWindow::openDocument() {
-    QStringList files = QFileDialog::getOpenFileNames(this, TR("Ouvrir une image"),
-        QString(), "Tous les formats pris en charge (*.psw *.pdn *.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;"
-                   "paint.software (calques) (*.psw);;"
+    QStringList files = QFileDialog::getOpenFileNames(this, QStringLiteral("Open an image"),
+        QString(), "All supported formats (*.psw *.pdn *.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;"
+                   "Paint.with.me layers (*.psw);;"
                    "Paint.NET (*.pdn);;"
                    "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;All Files (*)");
     for (const QString &f : files)
@@ -1800,7 +1760,7 @@ void MainWindow::openDocument() {
 
 QString MainWindow::autosaveDir() const {
     QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
-    if (base.isEmpty()) base = QDir::homePath() + "/.paintdali";
+    if (base.isEmpty()) base = QDir::homePath() + "/." + AppInfo::kId;
     return base + "/recovery";
 }
 
@@ -1812,7 +1772,7 @@ void MainWindow::performAutosave() {
     const QString png = autosaveDir() + "/autosave.png";
     QImage flat = m_document->flatten();
     if (flat.save(png, "PNG")) {
-        QSettings s("PaintDali", "PaintDali");
+        QSettings s(AppInfo::kId, AppInfo::kId);
         s.setValue("recovery/pending", true);
         s.setValue("recovery/origPath", m_document->filePath());
         s.setValue("recovery/when", QDateTime::currentDateTime().toString(Qt::ISODate));
@@ -1821,25 +1781,24 @@ void MainWindow::performAutosave() {
 
 void MainWindow::clearAutosave() {
     QFile::remove(autosaveDir() + "/autosave.png");
-    QSettings s("PaintDali", "PaintDali");
+    QSettings s(AppInfo::kId, AppInfo::kId);
     s.remove("recovery/pending");
     s.remove("recovery/origPath");
     s.remove("recovery/when");
 }
 
 void MainWindow::checkForRecovery() {
-    QSettings s("PaintDali", "PaintDali");
+    QSettings s(AppInfo::kId, AppInfo::kId);
     if (!s.value("recovery/pending", false).toBool()) return;
     const QString png = autosaveDir() + "/autosave.png";
     if (!QFile::exists(png)) { clearAutosave(); return; }
 
     const QString orig = s.value("recovery/origPath").toString();
     const QString when = s.value("recovery/when").toString();
-    const QString what = orig.isEmpty() ? TR("un document sans titre") : QFileInfo(orig).fileName();
+    const QString what = orig.isEmpty() ? QStringLiteral("an untitled document") : QFileInfo(orig).fileName();
 
-    auto r = QMessageBox::question(this, TR("Récupération"),
-        TR("Une sauvegarde automatique a été trouvée (%1, %2).\n"
-           "Voulez-vous la récupérer ?").arg(what, when),
+    auto r = QMessageBox::question(this, QStringLiteral("Recovery"),
+        QStringLiteral("An autosave was found (%1, %2).\nDo you want to recover it?").arg(what, when),
         QMessageBox::Yes | QMessageBox::No);
     if (r == QMessageBox::Yes) {
         loadDocumentInto(png);
@@ -1881,14 +1840,14 @@ void MainWindow::loadDocumentInto(const QString &filePath) {
         addRecentFile(filePath);
     } else {
         delete newDoc;
-        QMessageBox::warning(this, TR("Erreur"), TR("Impossible d'ouvrir le fichier image."));
+        QMessageBox::warning(this, QStringLiteral("Error"), QStringLiteral("Could not open the image file."));
     }
 }
 
 void MainWindow::printDocument() {
     QPrinter printer(QPrinter::HighResolution);
     QPrintDialog dlg(&printer, this);
-    dlg.setWindowTitle(TR("Imprimer l'image"));
+    dlg.setWindowTitle(QStringLiteral("Print image"));
     if (dlg.exec() != QDialog::Accepted) return;
 
     QPainter painter(&printer);
@@ -1912,7 +1871,7 @@ void MainWindow::addRecentFile(const QString &filePath) {
     m_recentFiles.removeAll(filePath);
     m_recentFiles.prepend(filePath);
     while (m_recentFiles.size() > 10) m_recentFiles.removeLast();
-    QSettings().setValue("recentFiles", m_recentFiles);
+    QSettings(AppInfo::kId, AppInfo::kId).setValue("recentFiles", m_recentFiles);
     updateRecentFilesMenu();
 }
 
@@ -1920,7 +1879,7 @@ void MainWindow::updateRecentFilesMenu() {
     if (!m_recentFilesMenu) return;
     m_recentFilesMenu->clear();
     if (m_recentFiles.isEmpty()) {
-        m_recentFilesMenu->addAction(TR("(aucun)"))->setEnabled(false);
+        m_recentFilesMenu->addAction(QStringLiteral("(none)"))->setEnabled(false);
         return;
     }
     for (const QString &path : m_recentFiles) {
@@ -1930,9 +1889,9 @@ void MainWindow::updateRecentFilesMenu() {
         a->setToolTip(path);
     }
     m_recentFilesMenu->addSeparator();
-    m_recentFilesMenu->addAction(TR("Effacer la liste"), this, [this]() {
+    m_recentFilesMenu->addAction(QStringLiteral("Clear list"), this, [this]() {
         m_recentFiles.clear();
-        QSettings().setValue("recentFiles", m_recentFiles);
+        QSettings(AppInfo::kId, AppInfo::kId).setValue("recentFiles", m_recentFiles);
         updateRecentFilesMenu();
     });
 }
@@ -1942,7 +1901,7 @@ bool MainWindow::saveDocument() {
     if (m_document->filePath().isEmpty() || Document::isOpenOnlyFormat(m_document->filePath()))
         return saveDocumentAs();
     if (!m_document->save(m_document->filePath())) {
-        QMessageBox::warning(this, TR("Erreur"), TR("Impossible d'enregistrer le fichier."));
+        QMessageBox::warning(this, QStringLiteral("Error"), QStringLiteral("Could not save the file."));
         return false;
     }
     addRecentFile(m_document->filePath());
@@ -1959,8 +1918,8 @@ bool MainWindow::saveDocumentAs() {
         const QFileInfo info(current);
         suggested = info.dir().filePath(info.completeBaseName() + ".psw");
     }
-    QString filePath = QFileDialog::getSaveFileName(this, TR("Enregistrer l'image"),
-        suggested, "paint.software - garde les calques (*.psw);;PNG (*.png);;JPEG (*.jpg *.jpeg);;"
+    QString filePath = QFileDialog::getSaveFileName(this, QStringLiteral("Save image"),
+        suggested, "Paint.with.me layers (*.psw);;PNG (*.png);;JPEG (*.jpg *.jpeg);;"
                    "BMP (*.bmp);;TIFF (*.tiff);;WebP (*.webp);;All Files (*)",
         &selectedFilter);
     if (filePath.isEmpty()) return false;
@@ -1978,9 +1937,8 @@ bool MainWindow::saveDocumentAs() {
 
     // Warn when a multi-layer document is saved to a flat image format.
     if (!Document::isNativeFormat(filePath) && m_document->layerCount() > 1) {
-        auto res = QMessageBox::question(this, TR("Aplatir les calques ?"),
-            TR("Ce format ne conserve pas les calques : l'image sera aplatie.\n"
-               "Utilisez le format .psw pour garder vos calques.\n\nContinuer ?"),
+        auto res = QMessageBox::question(this, QStringLiteral("Flatten layers?"),
+            QStringLiteral("This format does not keep layers: the image will be flattened.\nUse the .psw format to keep your layers.\n\nContinue?"),
             QMessageBox::Save | QMessageBox::Cancel, QMessageBox::Save);
         if (res == QMessageBox::Cancel) return false;
     }
@@ -1996,7 +1954,7 @@ bool MainWindow::saveDocumentAs() {
     }
 
     if (!m_document->save(filePath, quality)) {
-        QMessageBox::warning(this, TR("Erreur"), TR("Impossible d'enregistrer le fichier."));
+        QMessageBox::warning(this, QStringLiteral("Error"), QStringLiteral("Could not save the file."));
         return false;
     }
     addRecentFile(filePath);
@@ -2087,7 +2045,7 @@ void MainWindow::paste() {
     // Finish any pending Line/Shape edit on its original layer, not the newly
     // pasted layer. This must remain after the dialog's cancellation boundary.
     selectTool(ToolType::Move);
-    m_document->pasteImage(img, TR("Calque collé"), expand);
+    m_document->pasteImage(img, QStringLiteral("Pasted Layer"), expand);
     m_canvas->updateCanvas();
 }
 
@@ -2130,7 +2088,7 @@ void MainWindow::fillSelection() {
     p.end();
 
     if (layer->image() != before) {
-        m_document->pushImageEdit(m_document->activeLayerIndex(), before, "Remplir la selection");
+        m_document->pushImageEdit(m_document->activeLayerIndex(), before, "Fill Selection");
         m_canvas->updateCanvas();
     }
 }
@@ -2173,12 +2131,12 @@ void MainWindow::moveActiveLayerDown() {
 
 void MainWindow::importLayerFromFile() {
     if (!m_document) return;
-    const QString file = QFileDialog::getOpenFileName(this, TR("Importer un calque depuis un fichier"),
-        QString(), TR("Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp)"));
+    const QString file = QFileDialog::getOpenFileName(this, QStringLiteral("Import Layer from File"),
+        QString(), QStringLiteral("Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp)"));
     if (file.isEmpty()) return;
     QImage img(file);
     if (img.isNull()) {
-        QMessageBox::warning(this, TR("Erreur"), TR("Impossible de charger le fichier image."));
+        QMessageBox::warning(this, QStringLiteral("Error"), QStringLiteral("Could not load the image file."));
         return;
     }
     m_document->addLayer(img, QFileInfo(file).fileName());
@@ -2191,7 +2149,7 @@ void MainWindow::flipActiveLayerHorizontal() {
     if (!layer || layer->isLocked()) return;
     QImage before = layer->image().copy();
     layer->setImage(layer->image().mirrored(true, false));
-    m_document->pushImageEdit(m_document->activeLayerIndex(), before, "Retourner le calque");
+    m_document->pushImageEdit(m_document->activeLayerIndex(), before, "Flip Layer");
     m_canvas->updateCanvas();
 }
 
@@ -2201,7 +2159,7 @@ void MainWindow::flipActiveLayerVertical() {
     if (!layer || layer->isLocked()) return;
     QImage before = layer->image().copy();
     layer->setImage(layer->image().mirrored(false, true));
-    m_document->pushImageEdit(m_document->activeLayerIndex(), before, "Retourner le calque");
+    m_document->pushImageEdit(m_document->activeLayerIndex(), before, "Flip Layer");
     m_canvas->updateCanvas();
 }
 
@@ -2211,11 +2169,11 @@ void MainWindow::showRotateZoomLayerDialog() {
     if (!layer || layer->isLocked()) return;
 
     QDialog dlg(this);
-    dlg.setWindowTitle(TR("Rotation / Zoom du calque"));
+    dlg.setWindowTitle(QStringLiteral("Rotate / Zoom Layer"));
     auto *form = new QVBoxLayout(&dlg);
 
     // Angle slider: -180..180 degrees.
-    auto *angleLabel = new QLabel(TR("Angle : 0°"), &dlg);
+    auto *angleLabel = new QLabel(QStringLiteral("Angle: 0°"), &dlg);
     auto *angleSlider = new QSlider(Qt::Horizontal, &dlg);
     angleSlider->setRange(-180, 180);
     angleSlider->setValue(0);
@@ -2223,7 +2181,7 @@ void MainWindow::showRotateZoomLayerDialog() {
     form->addWidget(angleSlider);
 
     // Scale slider: 10..400 %.
-    auto *scaleLabel = new QLabel(TR("Échelle : 100 %"), &dlg);
+    auto *scaleLabel = new QLabel(QStringLiteral("Scale: 100 %"), &dlg);
     auto *scaleSlider = new QSlider(Qt::Horizontal, &dlg);
     scaleSlider->setRange(10, 400);
     scaleSlider->setValue(100);
@@ -2231,10 +2189,10 @@ void MainWindow::showRotateZoomLayerDialog() {
     form->addWidget(scaleSlider);
 
     connect(angleSlider, &QSlider::valueChanged, angleLabel, [angleLabel](int v) {
-        angleLabel->setText(TR("Angle : ") + QString::number(v) + "°");
+        angleLabel->setText(QStringLiteral("Angle: ") + QString::number(v) + "°");
     });
     connect(scaleSlider, &QSlider::valueChanged, scaleLabel, [scaleLabel](int v) {
-        scaleLabel->setText(TR("Échelle : ") + QString::number(v) + " %");
+        scaleLabel->setText(QStringLiteral("Scale: ") + QString::number(v) + " %");
     });
 
     auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel, &dlg);
@@ -2266,15 +2224,15 @@ void MainWindow::showRotateZoomLayerDialog() {
         p.drawImage(0, 0, before);
     }
     layer->setImage(result);
-    m_document->pushImageEdit(m_document->activeLayerIndex(), before, "Rotation / Zoom du calque");
+    m_document->pushImageEdit(m_document->activeLayerIndex(), before, "Rotate / Zoom Layer");
     m_canvas->updateCanvas();
 }
 
 void MainWindow::growSelection() {
     if (!m_document || !m_document->selection().hasSelection()) return;
     bool ok = false;
-    const int px = QInputDialog::getInt(this, TR("Agrandir la sélection"),
-                                        TR("Agrandir de (pixels) :"), 1, 1, 500, 1, &ok);
+    const int px = QInputDialog::getInt(this, QStringLiteral("Grow Selection"),
+                                        QStringLiteral("Grow by (pixels):"), 1, 1, 500, 1, &ok);
     if (!ok) return;
     m_document->selection().expand(px);
     emit m_document->selectionChanged();
@@ -2284,8 +2242,8 @@ void MainWindow::growSelection() {
 void MainWindow::shrinkSelection() {
     if (!m_document || !m_document->selection().hasSelection()) return;
     bool ok = false;
-    const int px = QInputDialog::getInt(this, TR("Rétrécir la sélection"),
-                                        TR("Rétrécir de (pixels) :"), 1, 1, 500, 1, &ok);
+    const int px = QInputDialog::getInt(this, QStringLiteral("Shrink Selection"),
+                                        QStringLiteral("Shrink by (pixels):"), 1, 1, 500, 1, &ok);
     if (!ok) return;
     m_document->selection().contract(px);
     emit m_document->selectionChanged();
@@ -2295,8 +2253,8 @@ void MainWindow::shrinkSelection() {
 void MainWindow::featherSelection() {
     if (!m_document || !m_document->selection().hasSelection()) return;
     bool ok = false;
-    const int px = QInputDialog::getInt(this, TR("Adoucir la sélection"),
-                                        TR("Rayon d'adoucissement (pixels) :"), 2, 1, 200, 1, &ok);
+    const int px = QInputDialog::getInt(this, QStringLiteral("Feather Selection"),
+                                        QStringLiteral("Feather radius (pixels):"), 2, 1, 200, 1, &ok);
     if (!ok) return;
     m_document->selection().feather(px);
     emit m_document->selectionChanged();
@@ -2343,7 +2301,7 @@ void MainWindow::applyImageOperationToTargetLayers(const std::function<QImage(co
     m_lastEffectLabel = description;
     if (m_repeatEffectAction) {
         m_repeatEffectAction->setEnabled(true);
-        m_repeatEffectAction->setText(TR("Répéter : ") + description);
+        m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + description);
     }
 
     // When a selection is active, confine the effect to it (paint.net behaviour).
@@ -2460,7 +2418,7 @@ void MainWindow::deleteSelectionContents() {
         QImage before = layer->image().copy();
         m_document->selection().eraseFromImage(layer->image(), layer->offset());
         if (layer->image() != before) {
-            m_document->pushImageEdit(index, before, "Supprimer la selection");
+            m_document->pushImageEdit(index, before, "Erase Selection");
             changed = true;
         }
     }
@@ -2474,60 +2432,60 @@ void MainWindow::showSelectionContextMenu(const QPoint &globalPos) {
     if (!m_document || !m_document->selection().hasSelection()) return;
 
     QMenu menu(this);
-    menu.addAction(TR("Supprimer"), this, &MainWindow::deleteSelectionContents);
-    menu.addAction(TR("Couper"), this, &MainWindow::cut);
-    menu.addAction(TR("Copier"), this, &MainWindow::copy);
+    menu.addAction(QStringLiteral("Delete"), this, &MainWindow::deleteSelectionContents);
+    menu.addAction(QStringLiteral("Cut"), this, &MainWindow::cut);
+    menu.addAction(QStringLiteral("Copy"), this, &MainWindow::copy);
     menu.addSeparator();
-    menu.addAction(TR("Rotation 90° horaire"), this, [this]() {
+    menu.addAction(QStringLiteral("Rotate 90° Clockwise"), this, [this]() {
         QTransform t;
         t.rotate(90);
         transformSelectionContents([t](const QImage &image) {
             return image.transformed(t, Qt::SmoothTransformation);
-        }, "Rotation selection 90° CW");
+        }, "Rotate Selection 90° CW");
     });
-    menu.addAction(TR("Rotation 90° anti-horaire"), this, [this]() {
+    menu.addAction(QStringLiteral("Rotate 90° Counter-Clockwise"), this, [this]() {
         QTransform t;
         t.rotate(-90);
         transformSelectionContents([t](const QImage &image) {
             return image.transformed(t, Qt::SmoothTransformation);
-        }, "Rotation selection 90° CCW");
+        }, "Rotate Selection 90° CCW");
     });
-    menu.addAction(TR("Retourner horizontalement"), this, [this]() {
+    menu.addAction(QStringLiteral("Flip Horizontal"), this, [this]() {
         transformSelectionContents([](const QImage &image) {
             return image.mirrored(true, false);
-        }, "Retourner selection horizontalement");
+        }, "Flip Selection Horizontal");
     });
-    menu.addAction(TR("Retourner verticalement"), this, [this]() {
+    menu.addAction(QStringLiteral("Flip Vertical"), this, [this]() {
         transformSelectionContents([](const QImage &image) {
             return image.mirrored(false, true);
-        }, "Retourner selection verticalement");
+        }, "Flip Selection Vertical");
     });
 
-    auto *effectsMenu = menu.addMenu(TR("Effets rapides"));
-    effectsMenu->addAction(TR("Inverser les couleurs"), this, [this]() {
+    auto *effectsMenu = menu.addMenu(QStringLiteral("Quick effects"));
+    effectsMenu->addAction(QStringLiteral("Invert Colors"), this, [this]() {
         InvertColors adj;
         applySelectionFilterToTargetLayers([adj](const QImage &image) mutable {
             return adj.apply(image);
-        }, "Inverser couleurs selection");
+        }, "Invert Colors (Selection)");
     });
-    effectsMenu->addAction(TR("Noir et blanc"), this, [this]() {
+    effectsMenu->addAction(QStringLiteral("Black and White"), this, [this]() {
         Desaturate adj;
         applySelectionFilterToTargetLayers([adj](const QImage &image) mutable {
             return adj.apply(image);
-        }, "Noir et blanc selection");
+        }, "Black and White (Selection)");
     });
-    effectsMenu->addAction(TR("Sépia"), this, [this]() {
+    effectsMenu->addAction(QStringLiteral("Sepia"), this, [this]() {
         Sepia adj;
         adj.setIntensity(80);
         applySelectionFilterToTargetLayers([adj](const QImage &image) mutable {
             return adj.apply(image);
-        }, "Sepia selection");
+        }, "Sepia (Selection)");
     });
 
     menu.addSeparator();
-    menu.addAction(TR("Rogner selon la sélection"), this, &MainWindow::cropToSelection);
-    menu.addAction(TR("Inverser la sélection"), this, &MainWindow::invertSelection);
-    menu.addAction(TR("Désélectionner"), this, &MainWindow::deselectAll);
+    menu.addAction(QStringLiteral("Crop to Selection"), this, &MainWindow::cropToSelection);
+    menu.addAction(QStringLiteral("Invert Selection"), this, &MainWindow::invertSelection);
+    menu.addAction(QStringLiteral("Deselect"), this, &MainWindow::deselectAll);
     menu.exec(globalPos);
 }
 
@@ -2618,7 +2576,7 @@ void MainWindow::selectTool(ToolType type) {
             m_canvas->setCurrentTool(m_currentTool);
             m_canvas->setCursor(m_currentTool->cursor());
             m_toolOptionsPanel->setTool(m_currentTool);
-            if (m_toolLabel) m_toolLabel->setText(TR(m_currentTool->name()));
+            if (m_toolLabel) m_toolLabel->setText((m_currentTool->name()));
             // Keep the tool palette highlight in sync when selection comes from
             // a keyboard shortcut or tool-group cycling (not just a button click).
             if (auto *action = m_toolActions.value(type, nullptr))
@@ -2628,62 +2586,62 @@ void MainWindow::selectTool(ToolType type) {
             if (m_helpTextLabel) {
                 switch (type) {
                 case ToolType::Brush:
-                    m_helpTextLabel->setText(TR("Clic gauche pour dessiner avec la couleur primaire, clic droit avec la couleur secondaire."));
+                    m_helpTextLabel->setText(QStringLiteral("Left click to draw with the primary color, right click for the secondary color."));
                     break;
                 case ToolType::Eraser:
-                    m_helpTextLabel->setText(TR("Clic gauche pour effacer vers transparent. Clic droit vers la couleur secondaire."));
+                    m_helpTextLabel->setText(QStringLiteral("Left click to erase to transparent. Right click to the secondary color."));
                     break;
                 case ToolType::Fill:
-                    m_helpTextLabel->setText(TR("Clic gauche pour remplir une zone avec la couleur primaire."));
+                    m_helpTextLabel->setText(QStringLiteral("Left click to fill an area with the primary color."));
                     break;
                 case ToolType::ColorPicker:
-                    m_helpTextLabel->setText(TR("Clic gauche pour définir la couleur primaire. Clic droit pour la secondaire."));
+                    m_helpTextLabel->setText(QStringLiteral("Left click to set the primary color. Right click for the secondary."));
                     break;
                 case ToolType::RectSelection:
                 case ToolType::EllipseSelection:
-                    m_helpTextLabel->setText(TR("Cliquer-glisser pour tracer une sélection. Maintenir Maj pour contraindre."));
+                    m_helpTextLabel->setText(QStringLiteral("Click and drag to draw a selection. Hold Shift to constrain."));
                     break;
                 case ToolType::MagicWand:
-                    m_helpTextLabel->setText(TR("Cliquer pour sélectionner une zone de couleur similaire."));
+                    m_helpTextLabel->setText(QStringLiteral("Click to select an area of similar color."));
                     break;
                 case ToolType::Move:
-                    m_helpTextLabel->setText(TR("Cliquer-glisser pour déplacer les pixels sélectionnés ou le calque."));
+                    m_helpTextLabel->setText(QStringLiteral("Click and drag to move the selected pixels or the layer."));
                     break;
                 case ToolType::MoveSelection:
-                    m_helpTextLabel->setText(TR("Cliquer-glisser pour déplacer le contour de sélection sans déplacer les pixels."));
+                    m_helpTextLabel->setText(QStringLiteral("Click and drag to move the selection outline without moving pixels."));
                     break;
                 case ToolType::Zoom:
-                    m_helpTextLabel->setText(TR("Clic gauche pour zoomer. Clic droit pour dézoomer."));
+                    m_helpTextLabel->setText(QStringLiteral("Left click to zoom in. Right click to zoom out."));
                     break;
                 case ToolType::Pan:
-                    m_helpTextLabel->setText(TR("Cliquer-glisser pour se déplacer dans l'image."));
+                    m_helpTextLabel->setText(QStringLiteral("Click and drag to pan around the image."));
                     break;
                 case ToolType::LassoSelection:
-                    m_helpTextLabel->setText(TR("Cliquer-glisser pour tracer une sélection à main levée."));
+                    m_helpTextLabel->setText(QStringLiteral("Click and drag to draw a freehand selection."));
                     break;
                 case ToolType::Text:
-                    m_helpTextLabel->setText(TR("Cliquer pour placer du texte sur le canevas."));
+                    m_helpTextLabel->setText(QStringLiteral("Click to place text on the canvas."));
                     break;
                 case ToolType::Line:
-                    m_helpTextLabel->setText(TR("Cliquer-glisser pour tracer une ligne. Maintenir Maj pour contraindre l'angle."));
+                    m_helpTextLabel->setText(QStringLiteral("Click and drag to draw a line. Hold Shift to constrain the angle."));
                     break;
                 case ToolType::Shape:
-                    m_helpTextLabel->setText(TR("Cliquer-glisser pour tracer une forme. Maintenir Maj pour contraindre les proportions."));
+                    m_helpTextLabel->setText(QStringLiteral("Click and drag to draw a shape. Hold Shift to constrain proportions."));
                     break;
                 case ToolType::Gradient:
-                    m_helpTextLabel->setText(TR("Cliquer-glisser pour tracer un dégradé de couleur."));
+                    m_helpTextLabel->setText(QStringLiteral("Click and drag to draw a color gradient."));
                     break;
                 case ToolType::CloneStamp:
-                    m_helpTextLabel->setText(TR("Ctrl + clic pour définir la source. Clic gauche pour peindre depuis la source."));
+                    m_helpTextLabel->setText(QStringLiteral("Ctrl + click to set the source. Left click to paint from the source."));
                     break;
                 case ToolType::Pencil:
-                    m_helpTextLabel->setText(TR("Clic gauche pour dessiner en 1px avec la couleur primaire. Clic droit pour la secondaire."));
+                    m_helpTextLabel->setText(QStringLiteral("Left click to draw 1px with the primary color. Right click for the secondary."));
                     break;
                 case ToolType::Recolor:
-                    m_helpTextLabel->setText(TR("Clic gauche pour remplacer la couleur secondaire par la primaire."));
+                    m_helpTextLabel->setText(QStringLiteral("Left click to replace the secondary color with the primary."));
                     break;
                 default:
-                    m_helpTextLabel->setText(TR("Prêt."));
+                    m_helpTextLabel->setText(QStringLiteral("Ready."));
                     break;
                 }
             }
@@ -2702,8 +2660,8 @@ void MainWindow::applyEffect(int effectIndex) {
     switch (effectIndex) {
     case 0: {
         BlurEffect def;
-        PreviewDialog dlg(TR("Flou gaussien"), layer->image(),
-            {{TR("Rayon"), 1, 100, def.radius(), ""}},
+        PreviewDialog dlg(QStringLiteral("Gaussian Blur"), layer->image(),
+            {{QStringLiteral("Radius"), 1, 100, def.radius(), ""}},
             [](const QImage &src, const QVector<int> &v) { BlurEffect t; t.setRadius(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new BlurEffect; e->setRadius(dlg.values()[0]);
@@ -2712,8 +2670,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 1: {
         SharpenEffect def;
-        PreviewDialog dlg(TR("Netteté"), layer->image(),
-            {{TR("Quantité"), 1, 100, def.amount(), ""}},
+        PreviewDialog dlg(QStringLiteral("Sharpen"), layer->image(),
+            {{QStringLiteral("Amount"), 1, 100, def.amount(), ""}},
             [](const QImage &src, const QVector<int> &v) { SharpenEffect t; t.setAmount(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new SharpenEffect; e->setAmount(dlg.values()[0]);
@@ -2722,8 +2680,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 2: {
         NoiseEffect def;
-        PreviewDialog dlg(TR("Ajouter du bruit"), layer->image(),
-            {{TR("Intensité"), 1, 100, def.intensity(), ""}},
+        PreviewDialog dlg(QStringLiteral("Add Noise"), layer->image(),
+            {{QStringLiteral("Intensity"), 1, 100, def.intensity(), ""}},
             [](const QImage &src, const QVector<int> &v) { NoiseEffect t; t.setIntensity(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new NoiseEffect; e->setIntensity(dlg.values()[0]);
@@ -2740,8 +2698,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 5: {
         OilPaintEffect def;
-        PreviewDialog dlg(TR("Peinture à l'huile"), layer->image(),
-            {{TR("Taille du pinceau"), 1, 10, def.radius(), ""}},
+        PreviewDialog dlg(QStringLiteral("Oil Painting"), layer->image(),
+            {{QStringLiteral("Brush size"), 1, 10, def.radius(), ""}},
             [](const QImage &src, const QVector<int> &v) { OilPaintEffect t; t.setRadius(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new OilPaintEffect; e->setRadius(dlg.values()[0]);
@@ -2750,8 +2708,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 6: {
         PixelateEffect def;
-        PreviewDialog dlg(TR("Pixéliser"), layer->image(),
-            {{TR("Taille de cellule"), 2, 100, def.cellSize(), ""}},
+        PreviewDialog dlg(QStringLiteral("Pixelate"), layer->image(),
+            {{QStringLiteral("Cell size"), 2, 100, def.cellSize(), ""}},
             [](const QImage &src, const QVector<int> &v) { PixelateEffect t; t.setCellSize(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new PixelateEffect; e->setCellSize(dlg.values()[0]);
@@ -2760,8 +2718,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 7: {
         MotionBlurEffect def;
-        PreviewDialog dlg(TR("Flou directionnel"), layer->image(),
-            {{TR("Distance"), 1, 100, def.distance(), ""}},
+        PreviewDialog dlg(QStringLiteral("Motion Blur"), layer->image(),
+            {{QStringLiteral("Distance"), 1, 100, def.distance(), ""}},
             [](const QImage &src, const QVector<int> &v) { MotionBlurEffect t; t.setDistance(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new MotionBlurEffect; e->setDistance(dlg.values()[0]);
@@ -2789,8 +2747,8 @@ void MainWindow::applyEffect(int effectIndex) {
             }
             return edges;
         };
-        PreviewDialog dlg(TR("Croquis à l'encre"), layer->image(),
-            {{TR("Contour encre"), 1, 100, 50, ""}},
+        PreviewDialog dlg(QStringLiteral("Ink Sketch"), layer->image(),
+            {{QStringLiteral("Ink outline"), 1, 100, 50, ""}},
             [inkSketch](const QImage &src, const QVector<int> &v) { return inkSketch(src, v[0]); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         const int strength = dlg.values()[0];
@@ -2845,8 +2803,8 @@ void MainWindow::applyEffect(int effectIndex) {
             }
             return edges;
         };
-        PreviewDialog dlg(TR("Croquis au crayon"), layer->image(),
-            {{TR("Taille de mine"), 1, 20, 2, ""}},
+        PreviewDialog dlg(QStringLiteral("Pencil Sketch"), layer->image(),
+            {{QStringLiteral("Lead size"), 1, 20, 2, ""}},
             [pencilSketch](const QImage &src, const QVector<int> &v) { return pencilSketch(src, v[0]); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         const int pencilSize = dlg.values()[0];
@@ -2873,8 +2831,8 @@ void MainWindow::applyEffect(int effectIndex) {
             }
             return img;
         };
-        PreviewDialog dlg(TR("Nuages"), layer->image(),
-            {{TR("Échelle"), 10, 500, 100, ""}},
+        PreviewDialog dlg(QStringLiteral("Clouds"), layer->image(),
+            {{QStringLiteral("Scale"), 10, 500, 100, ""}},
             [genClouds](const QImage &src, const QVector<int> &v) { return genClouds(src.width(), src.height(), v[0]); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         QImage img = genClouds(m_document->width(), m_document->height(), dlg.values()[0]);
@@ -2937,8 +2895,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 13: {
         RadialBlurEffect def;
-        PreviewDialog dlg(TR("Flou radial"), layer->image(),
-            {{TR("Angle"), 1, 90, def.angle(), ""}},
+        PreviewDialog dlg(QStringLiteral("Radial Blur"), layer->image(),
+            {{QStringLiteral("Angle"), 1, 90, def.angle(), ""}},
             [](const QImage &src, const QVector<int> &v) {
                 RadialBlurEffect t; t.setAngle(v[0]);
                 t.setCenter(QPoint(src.width() / 2, src.height() / 2));
@@ -2952,8 +2910,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 14: {
         ZoomBlurEffect def;
-        PreviewDialog dlg(TR("Flou de zoom"), layer->image(),
-            {{TR("Quantité"), 1, 100, def.amount(), ""}},
+        PreviewDialog dlg(QStringLiteral("Zoom Blur"), layer->image(),
+            {{QStringLiteral("Amount"), 1, 100, def.amount(), ""}},
             [](const QImage &src, const QVector<int> &v) { ZoomBlurEffect t; t.setAmount(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new ZoomBlurEffect; e->setAmount(dlg.values()[0]);
@@ -2962,8 +2920,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 15: {
         SurfaceBlurEffect def;
-        PreviewDialog dlg(TR("Flou de surface"), layer->image(),
-            {{TR("Rayon"), 1, 20, def.radius(), ""}, {TR("Seuil"), 1, 100, def.threshold(), ""}},
+        PreviewDialog dlg(QStringLiteral("Surface Blur"), layer->image(),
+            {{QStringLiteral("Radius"), 1, 20, def.radius(), ""}, {QStringLiteral("Threshold"), 1, 100, def.threshold(), ""}},
             [](const QImage &src, const QVector<int> &v) { SurfaceBlurEffect t; t.setRadius(v[0]); t.setThreshold(v[1]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new SurfaceBlurEffect; e->setRadius(dlg.values()[0]); e->setThreshold(dlg.values()[1]);
@@ -2972,8 +2930,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 16: {
         UnfocusEffect def;
-        PreviewDialog dlg(TR("Flou"), layer->image(),
-            {{TR("Rayon"), 1, 50, def.radius(), ""}},
+        PreviewDialog dlg(QStringLiteral("Blur"), layer->image(),
+            {{QStringLiteral("Radius"), 1, 50, def.radius(), ""}},
             [](const QImage &src, const QVector<int> &v) { UnfocusEffect t; t.setRadius(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new UnfocusEffect; e->setRadius(dlg.values()[0]);
@@ -2982,8 +2940,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 17: {
         FragmentEffect def;
-        PreviewDialog dlg(TR("Fragment"), layer->image(),
-            {{TR("Fragments"), 2, 16, def.fragments(), ""}, {TR("Distance"), 1, 50, def.distance(), ""}},
+        PreviewDialog dlg(QStringLiteral("Fragment"), layer->image(),
+            {{QStringLiteral("Fragments"), 2, 16, def.fragments(), ""}, {QStringLiteral("Distance"), 1, 50, def.distance(), ""}},
             [](const QImage &src, const QVector<int> &v) { FragmentEffect t; t.setFragments(v[0]); t.setDistance(v[1]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new FragmentEffect; e->setFragments(dlg.values()[0]); e->setDistance(dlg.values()[1]);
@@ -2992,8 +2950,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 18: {
         BulgeEffect def;
-        PreviewDialog dlg(TR("Bombement"), layer->image(),
-            {{TR("Quantité"), -100, 100, def.amount(), ""}},
+        PreviewDialog dlg(QStringLiteral("Bulge"), layer->image(),
+            {{QStringLiteral("Amount"), -100, 100, def.amount(), ""}},
             [](const QImage &src, const QVector<int> &v) { BulgeEffect t; t.setAmount(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new BulgeEffect; e->setAmount(dlg.values()[0]);
@@ -3002,8 +2960,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 19: {
         FrostedGlassEffect def;
-        PreviewDialog dlg(TR("Verre givré"), layer->image(),
-            {{TR("Quantité"), 1, 20, def.amount(), ""}},
+        PreviewDialog dlg(QStringLiteral("Frosted Glass"), layer->image(),
+            {{QStringLiteral("Amount"), 1, 20, def.amount(), ""}},
             [](const QImage &src, const QVector<int> &v) { FrostedGlassEffect t; t.setAmount(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new FrostedGlassEffect; e->setAmount(dlg.values()[0]);
@@ -3012,8 +2970,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 20: {
         CrystalizeEffect def;
-        PreviewDialog dlg(TR("Cristalliser"), layer->image(),
-            {{TR("Taille de cellule"), 2, 100, def.cellSize(), ""}},
+        PreviewDialog dlg(QStringLiteral("Crystalize"), layer->image(),
+            {{QStringLiteral("Cell size"), 2, 100, def.cellSize(), ""}},
             [](const QImage &src, const QVector<int> &v) { CrystalizeEffect t; t.setCellSize(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new CrystalizeEffect; e->setCellSize(dlg.values()[0]);
@@ -3022,8 +2980,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 21: {
         TileEffect def;
-        PreviewDialog dlg(TR("Réflexion en mosaïque"), layer->image(),
-            {{TR("Taille de tuile"), 2, 200, def.tileSize(), ""}, {TR("Rotation"), -180, 180, def.rotation(), ""}},
+        PreviewDialog dlg(QStringLiteral("Tile Reflection"), layer->image(),
+            {{QStringLiteral("Tile size"), 2, 200, def.tileSize(), ""}, {QStringLiteral("Rotation"), -180, 180, def.rotation(), ""}},
             [](const QImage &src, const QVector<int> &v) { TileEffect t; t.setTileSize(v[0]); t.setRotation(v[1]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new TileEffect; e->setTileSize(dlg.values()[0]); e->setRotation(dlg.values()[1]);
@@ -3032,8 +2990,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 22: {
         DentsEffect def;
-        PreviewDialog dlg(TR("Bosselure"), layer->image(),
-            {{TR("Échelle"), 1, 200, def.scale(), ""}, {TR("Réfraction"), 1, 200, def.refraction(), ""}},
+        PreviewDialog dlg(QStringLiteral("Dents"), layer->image(),
+            {{QStringLiteral("Scale"), 1, 200, def.scale(), ""}, {QStringLiteral("Refraction"), 1, 200, def.refraction(), ""}},
             [](const QImage &src, const QVector<int> &v) { DentsEffect t; t.setScale(v[0]); t.setRefraction(v[1]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new DentsEffect; e->setScale(dlg.values()[0]); e->setRefraction(dlg.values()[1]);
@@ -3042,8 +3000,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 23: {
         PolarInversionEffect def;
-        PreviewDialog dlg(TR("Inversion polaire"), layer->image(),
-            {{TR("Quantité"), 0, 100, def.amount(), ""}},
+        PreviewDialog dlg(QStringLiteral("Polar Inversion"), layer->image(),
+            {{QStringLiteral("Amount"), 0, 100, def.amount(), ""}},
             [](const QImage &src, const QVector<int> &v) { PolarInversionEffect t; t.setAmount(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new PolarInversionEffect; e->setAmount(dlg.values()[0]);
@@ -3052,8 +3010,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 24: {
         TwistEffect def;
-        PreviewDialog dlg(TR("Torsion"), layer->image(),
-            {{TR("Quantité"), -360, 360, def.amount(), ""}},
+        PreviewDialog dlg(QStringLiteral("Twist"), layer->image(),
+            {{QStringLiteral("Amount"), -360, 360, def.amount(), ""}},
             [](const QImage &src, const QVector<int> &v) { TwistEffect t; t.setAmount(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new TwistEffect; e->setAmount(dlg.values()[0]);
@@ -3062,8 +3020,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 25: {
         MedianEffect def;
-        PreviewDialog dlg(TR("Médiane"), layer->image(),
-            {{TR("Rayon"), 1, 10, def.radius(), ""}},
+        PreviewDialog dlg(QStringLiteral("Median"), layer->image(),
+            {{QStringLiteral("Radius"), 1, 10, def.radius(), ""}},
             [](const QImage &src, const QVector<int> &v) { MedianEffect t; t.setRadius(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new MedianEffect; e->setRadius(dlg.values()[0]);
@@ -3072,8 +3030,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 26: {
         ReduceNoiseEffect def;
-        PreviewDialog dlg(TR("Réduire le bruit"), layer->image(),
-            {{TR("Rayon"), 1, 10, def.radius(), ""}, {TR("Force"), 1, 100, def.strength(), ""}},
+        PreviewDialog dlg(QStringLiteral("Reduce Noise"), layer->image(),
+            {{QStringLiteral("Radius"), 1, 10, def.radius(), ""}, {QStringLiteral("Strength"), 1, 100, def.strength(), ""}},
             [](const QImage &src, const QVector<int> &v) { ReduceNoiseEffect t; t.setRadius(v[0]); t.setStrength(v[1]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new ReduceNoiseEffect; e->setRadius(dlg.values()[0]); e->setStrength(dlg.values()[1]);
@@ -3082,8 +3040,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 27: {
         QuantizeEffect def;
-        PreviewDialog dlg(TR("Quantifier"), layer->image(),
-            {{TR("Couleurs"), 2, 256, def.colors(), ""}},
+        PreviewDialog dlg(QStringLiteral("Quantize"), layer->image(),
+            {{QStringLiteral("Colors"), 2, 256, def.colors(), ""}},
             [](const QImage &src, const QVector<int> &v) { QuantizeEffect t; t.setColors(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new QuantizeEffect; e->setColors(dlg.values()[0]);
@@ -3092,8 +3050,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 28: {
         GlowEffect def;
-        PreviewDialog dlg(TR("Lueur"), layer->image(),
-            {{TR("Rayon"), 1, 20, def.radius(), ""}, {TR("Luminosité"), 0, 100, def.brightness(), ""}},
+        PreviewDialog dlg(QStringLiteral("Glow"), layer->image(),
+            {{QStringLiteral("Radius"), 1, 20, def.radius(), ""}, {QStringLiteral("Brightness"), 0, 100, def.brightness(), ""}},
             [](const QImage &src, const QVector<int> &v) { GlowEffect t; t.setRadius(v[0]); t.setBrightness(v[1]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new GlowEffect; e->setRadius(dlg.values()[0]); e->setBrightness(dlg.values()[1]);
@@ -3102,8 +3060,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 29: {
         RedEyeRemoveEffect def;
-        PreviewDialog dlg(TR("Suppression yeux rouges"), layer->image(),
-            {{TR("Tolérance"), 0, 100, def.tolerance(), ""}, {TR("Saturation"), 0, 100, def.saturation(), ""}},
+        PreviewDialog dlg(QStringLiteral("Red Eye Removal"), layer->image(),
+            {{QStringLiteral("Tolerance"), 0, 100, def.tolerance(), ""}, {QStringLiteral("Saturation"), 0, 100, def.saturation(), ""}},
             [](const QImage &src, const QVector<int> &v) { RedEyeRemoveEffect t; t.setTolerance(v[0]); t.setSaturation(v[1]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new RedEyeRemoveEffect; e->setTolerance(dlg.values()[0]); e->setSaturation(dlg.values()[1]);
@@ -3112,8 +3070,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 30: {
         SoftenPortraitEffect def;
-        PreviewDialog dlg(TR("Adoucir le portrait"), layer->image(),
-            {{TR("Douceur"), 1, 20, def.softness(), ""}, {TR("Chaleur"), 0, 100, def.warmth(), ""}},
+        PreviewDialog dlg(QStringLiteral("Soften Portrait"), layer->image(),
+            {{QStringLiteral("Softness"), 1, 20, def.softness(), ""}, {QStringLiteral("Warmth"), 0, 100, def.warmth(), ""}},
             [](const QImage &src, const QVector<int> &v) { SoftenPortraitEffect t; t.setSoftness(v[0]); t.setWarmth(v[1]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new SoftenPortraitEffect; e->setSoftness(dlg.values()[0]); e->setWarmth(dlg.values()[1]);
@@ -3122,8 +3080,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 31: {
         VignetteEffect def;
-        PreviewDialog dlg(TR("Vignette"), layer->image(),
-            {{TR("Quantité"), 0, 100, def.amount(), ""}, {TR("Rayon"), 0, 100, def.radius(), ""}},
+        PreviewDialog dlg(QStringLiteral("Vignette"), layer->image(),
+            {{QStringLiteral("Amount"), 0, 100, def.amount(), ""}, {QStringLiteral("Radius"), 0, 100, def.radius(), ""}},
             [](const QImage &src, const QVector<int> &v) { VignetteEffect t; t.setAmount(v[0]); t.setRadius(v[1]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new VignetteEffect; e->setAmount(dlg.values()[0]); e->setRadius(dlg.values()[1]);
@@ -3132,8 +3090,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 32: {
         TurbulenceEffect def;
-        PreviewDialog dlg(TR("Turbulence"), layer->image(),
-            {{TR("Échelle"), 10, 500, def.scale(), ""}, {TR("Rugosité"), 1, 100, def.roughness(), ""}},
+        PreviewDialog dlg(QStringLiteral("Turbulence"), layer->image(),
+            {{QStringLiteral("Scale"), 10, 500, def.scale(), ""}, {QStringLiteral("Roughness"), 1, 100, def.roughness(), ""}},
             [](const QImage &src, const QVector<int> &v) { TurbulenceEffect t; t.setScale(v[0]); t.setRoughness(v[1]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new TurbulenceEffect; e->setScale(dlg.values()[0]); e->setRoughness(dlg.values()[1]);
@@ -3142,8 +3100,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 33: {
         ReliefEffect def;
-        PreviewDialog dlg(TR("Relief"), layer->image(),
-            {{TR("Angle"), 0, 360, def.angle(), ""}},
+        PreviewDialog dlg(QStringLiteral("Relief"), layer->image(),
+            {{QStringLiteral("Angle"), 0, 360, def.angle(), ""}},
             [](const QImage &src, const QVector<int> &v) { ReliefEffect t; t.setAngle(v[0]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new ReliefEffect; e->setAngle(dlg.values()[0]);
@@ -3152,8 +3110,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 34: {
         OutlineEffect def;
-        PreviewDialog dlg(TR("Contour"), layer->image(),
-            {{TR("Épaisseur"), 1, 10, def.thickness(), ""}, {TR("Intensité"), 1, 100, def.intensity(), ""}},
+        PreviewDialog dlg(QStringLiteral("Outline"), layer->image(),
+            {{QStringLiteral("Thickness"), 1, 10, def.thickness(), ""}, {QStringLiteral("Intensity"), 1, 100, def.intensity(), ""}},
             [](const QImage &src, const QVector<int> &v) { OutlineEffect t; t.setThickness(v[0]); t.setIntensity(v[1]); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new OutlineEffect; e->setThickness(dlg.values()[0]); e->setIntensity(dlg.values()[1]);
@@ -3162,8 +3120,8 @@ void MainWindow::applyEffect(int effectIndex) {
     }
     case 35: {
         MorphologyEffect def;
-        PreviewDialog dlg(TR("Morphologie"), layer->image(),
-            {{TR("Rayon"), 1, 10, def.radius(), ""}, {TR("Mode (0=Dilater, 1=Éroder)"), 0, 1, 0, ""}},
+        PreviewDialog dlg(QStringLiteral("Morphology"), layer->image(),
+            {{QStringLiteral("Radius"), 1, 10, def.radius(), ""}, {QStringLiteral("Mode (0=Dilate, 1=Erode)"), 0, 1, 0, ""}},
             [](const QImage &src, const QVector<int> &v) { MorphologyEffect t; t.setRadius(v[0]); t.setDilate(v[1] == 0); return t.apply(src); }, this);
         if (dlg.exec() != QDialog::Accepted) return;
         auto *e = new MorphologyEffect; e->setRadius(dlg.values()[0]); e->setDilate(dlg.values()[1] == 0);
@@ -3171,9 +3129,9 @@ void MainWindow::applyEffect(int effectIndex) {
         break;
     }
     case 36: {   // Drop Shadow
-        PreviewDialog dlg(TR("Ombre portée"), layer->image(),
-            {{TR("Rayon"), 0, 50, 8, ""}, {TR("Décalage X"), -100, 100, 6, ""},
-             {TR("Décalage Y"), -100, 100, 6, ""}, {TR("Opacité"), 0, 100, 70, ""}},
+        PreviewDialog dlg(QStringLiteral("Drop Shadow"), layer->image(),
+            {{QStringLiteral("Radius"), 0, 50, 8, ""}, {QStringLiteral("Offset X"), -100, 100, 6, ""},
+             {QStringLiteral("Offset Y"), -100, 100, 6, ""}, {QStringLiteral("Opacity"), 0, 100, 70, ""}},
             [](const QImage &src, const QVector<int> &v) {
                 DropShadowEffect t; t.setRadius(v[0]); t.setOffsetX(v[1]); t.setOffsetY(v[2]); t.setOpacity(v[3]);
                 return t.apply(src);
@@ -3206,8 +3164,8 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         auto build = [](const QVector<int> &v) {
             BrightnessContrast a; a.setBrightness(v[0]); a.setContrast(v[1]); return a;
         };
-        PreviewDialog dlg(TR("Luminosité / Contraste"), layer->image(),
-            {{TR("Luminosité"), -100, 100, 0, ""}, {TR("Contraste"), -100, 100, 0, ""}},
+        PreviewDialog dlg(QStringLiteral("Brightness / Contrast"), layer->image(),
+            {{QStringLiteral("Brightness"), -100, 100, 0, ""}, {QStringLiteral("Contrast"), -100, 100, 0, ""}},
             [build](const QImage &src, const QVector<int> &v) mutable { return build(v).apply(src); }, this);
         AdjustmentPreview preview(m_document, m_canvas, targetLayerIndices());
         auto operation = [build](const QVector<int> &values) -> ImageOperation {
@@ -3229,7 +3187,7 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         m_lastEffectLabel = name;
         if (m_repeatEffectAction) {
             m_repeatEffectAction->setEnabled(true);
-            m_repeatEffectAction->setText(TR("Répéter : ") + name);
+            m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + name);
         }
         break;
     }
@@ -3265,7 +3223,7 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         m_lastEffectLabel = name;
         if (m_repeatEffectAction) {
             m_repeatEffectAction->setEnabled(true);
-            m_repeatEffectAction->setText(TR("Répéter : ") + name);
+            m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + name);
         }
         break;
     }
@@ -3274,10 +3232,10 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         auto build = [](const QVector<int> &v) {
             Levels a; a.setInputBlack(v[0]); a.setInputWhite(v[1]); a.setGamma(v[2] / 100.0); return a;
         };
-        PreviewDialog dlg(TR("Niveaux"), layer->image(),
-            {{TR("Noir d'entrée"), 0, 255, 0, ""},
-             {TR("Blanc d'entrée"), 0, 255, 255, ""},
-             {TR("Gamma"), 10, 1000, 100, "%"}},
+        PreviewDialog dlg(QStringLiteral("Levels"), layer->image(),
+            {{QStringLiteral("Input black"), 0, 255, 0, ""},
+             {QStringLiteral("Input white"), 0, 255, 255, ""},
+             {QStringLiteral("Gamma"), 10, 1000, 100, "%"}},
             [build](const QImage &src, const QVector<int> &v) mutable { return build(v).apply(src); }, this);
         AdjustmentPreview preview(m_document, m_canvas, targetLayerIndices());
         auto operation = [build](const QVector<int> &values) -> ImageOperation {
@@ -3299,7 +3257,7 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         m_lastEffectLabel = name;
         if (m_repeatEffectAction) {
             m_repeatEffectAction->setEnabled(true);
-            m_repeatEffectAction->setText(TR("Répéter : ") + name);
+            m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + name);
         }
         break;
     }
@@ -3327,7 +3285,7 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         m_lastEffectLabel = "Curves";
         if (m_repeatEffectAction) {
             m_repeatEffectAction->setEnabled(true);
-            m_repeatEffectAction->setText(TR("Répéter : ") + m_lastEffectLabel);
+            m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + m_lastEffectLabel);
         }
         break;
     }
@@ -3340,8 +3298,8 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
     }
     case 5: {
         auto build = [](const QVector<int> &v) { Sepia a; a.setIntensity(v[0]); return a; };
-        PreviewDialog dlg(TR("Sépia"), layer->image(),
-            {{TR("Intensité"), 0, 100, 80, "%"}},
+        PreviewDialog dlg(QStringLiteral("Sepia"), layer->image(),
+            {{QStringLiteral("Intensity"), 0, 100, 80, "%"}},
             [build](const QImage &src, const QVector<int> &v) mutable { return build(v).apply(src); }, this);
         AdjustmentPreview preview(m_document, m_canvas, targetLayerIndices());
         auto operation = [build](const QVector<int> &values) -> ImageOperation {
@@ -3363,14 +3321,14 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         m_lastEffectLabel = name;
         if (m_repeatEffectAction) {
             m_repeatEffectAction->setEnabled(true);
-            m_repeatEffectAction->setText(TR("Répéter : ") + name);
+            m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + name);
         }
         break;
     }
     case 6: {
         auto build = [](const QVector<int> &v) { Posterize a; a.setLevels(v[0]); return a; };
-        PreviewDialog dlg(TR("Postériser"), layer->image(),
-            {{TR("Niveaux"), 2, 64, 4, ""}},
+        PreviewDialog dlg(QStringLiteral("Posterize"), layer->image(),
+            {{QStringLiteral("Levels"), 2, 64, 4, ""}},
             [build](const QImage &src, const QVector<int> &v) mutable { return build(v).apply(src); }, this);
         AdjustmentPreview preview(m_document, m_canvas, targetLayerIndices());
         auto operation = [build](const QVector<int> &values) -> ImageOperation {
@@ -3392,7 +3350,7 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         m_lastEffectLabel = name;
         if (m_repeatEffectAction) {
             m_repeatEffectAction->setEnabled(true);
-            m_repeatEffectAction->setText(TR("Répéter : ") + name);
+            m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + name);
         }
         break;
     }
@@ -3408,10 +3366,10 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         auto build = [](const QVector<int> &v) {
             ColorBalance a; a.setCyanRed(v[0]); a.setMagentaGreen(v[1]); a.setYellowBlue(v[2]); return a;
         };
-        PreviewDialog dlg(TR("Balance des couleurs"), layer->image(),
-            {{TR("Cyan / Rouge"), -100, 100, 0, ""},
-             {TR("Magenta / Vert"), -100, 100, 0, ""},
-             {TR("Jaune / Bleu"), -100, 100, 0, ""}},
+        PreviewDialog dlg(QStringLiteral("Color Balance"), layer->image(),
+            {{QStringLiteral("Cyan / Red"), -100, 100, 0, ""},
+             {QStringLiteral("Magenta / Green"), -100, 100, 0, ""},
+             {QStringLiteral("Yellow / Blue"), -100, 100, 0, ""}},
             [build](const QImage &src, const QVector<int> &v) mutable { return build(v).apply(src); }, this);
         AdjustmentPreview preview(m_document, m_canvas, targetLayerIndices());
         auto operation = [build](const QVector<int> &values) -> ImageOperation {
@@ -3433,7 +3391,7 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         m_lastEffectLabel = name;
         if (m_repeatEffectAction) {
             m_repeatEffectAction->setEnabled(true);
-            m_repeatEffectAction->setText(TR("Répéter : ") + name);
+            m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + name);
         }
         break;
     }
@@ -3472,8 +3430,8 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
     }
     case 10: {   // Exposure
         auto build = [](const QVector<int> &v) { Exposure a; a.setExposure(v[0]); return a; };
-        PreviewDialog dlg(TR("Exposition"), layer->image(),
-            {{TR("Exposition"), -100, 100, 0, ""}},
+        PreviewDialog dlg(QStringLiteral("Exposure"), layer->image(),
+            {{QStringLiteral("Exposure"), -100, 100, 0, ""}},
             [build](const QImage &src, const QVector<int> &v) mutable { return build(v).apply(src); }, this);
         AdjustmentPreview preview(m_document, m_canvas, targetLayerIndices());
         auto operation = [build](const QVector<int> &values) -> ImageOperation {
@@ -3495,7 +3453,7 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         m_lastEffectLabel = name;
         if (m_repeatEffectAction) {
             m_repeatEffectAction->setEnabled(true);
-            m_repeatEffectAction->setText(TR("Répéter : ") + name);
+            m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + name);
         }
         break;
     }
@@ -3503,8 +3461,8 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         auto build = [](const QVector<int> &v) {
             HighlightsShadows a; a.setHighlights(v[0]); a.setShadows(v[1]); return a;
         };
-        PreviewDialog dlg(TR("Hautes / Basses lumières"), layer->image(),
-            {{TR("Hautes lumières"), -100, 100, 0, ""}, {TR("Basses lumières"), -100, 100, 0, ""}},
+        PreviewDialog dlg(QStringLiteral("Highlights / Shadows"), layer->image(),
+            {{QStringLiteral("Highlights"), -100, 100, 0, ""}, {QStringLiteral("Shadows"), -100, 100, 0, ""}},
             [build](const QImage &src, const QVector<int> &v) mutable { return build(v).apply(src); }, this);
         AdjustmentPreview preview(m_document, m_canvas, targetLayerIndices());
         auto operation = [build](const QVector<int> &values) -> ImageOperation {
@@ -3526,7 +3484,7 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         m_lastEffectLabel = name;
         if (m_repeatEffectAction) {
             m_repeatEffectAction->setEnabled(true);
-            m_repeatEffectAction->setText(TR("Répéter : ") + name);
+            m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + name);
         }
         break;
     }
@@ -3534,9 +3492,9 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         auto build = [](const QVector<int> &v) {
             TemperatureTint a; a.setTemperature(v[0]); a.setTint(v[1]); return a;
         };
-        PreviewDialog dlg(TR("Température / Teinte"), layer->image(),
-            {{TR("Température (froid → chaud)"), -100, 100, 0, ""},
-             {TR("Teinte (vert → magenta)"), -100, 100, 0, ""}},
+        PreviewDialog dlg(QStringLiteral("Temperature / Tint"), layer->image(),
+            {{QStringLiteral("Temperature (cool → warm)"), -100, 100, 0, ""},
+             {QStringLiteral("Tint (green → magenta)"), -100, 100, 0, ""}},
             [build](const QImage &src, const QVector<int> &v) mutable { return build(v).apply(src); }, this);
         AdjustmentPreview preview(m_document, m_canvas, targetLayerIndices());
         auto operation = [build](const QVector<int> &values) -> ImageOperation {
@@ -3558,7 +3516,7 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         m_lastEffectLabel = name;
         if (m_repeatEffectAction) {
             m_repeatEffectAction->setEnabled(true);
-            m_repeatEffectAction->setText(TR("Répéter : ") + name);
+            m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + name);
         }
         break;
     }
@@ -3569,8 +3527,8 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
     }
     case 14: {   // Threshold
         auto build = [](const QVector<int> &v) { Threshold a; a.setThreshold(v[0]); return a; };
-        PreviewDialog dlg(TR("Seuil"), layer->image(),
-            {{TR("Seuil :"), 0, 255, 128, ""}},
+        PreviewDialog dlg(QStringLiteral("Threshold"), layer->image(),
+            {{QStringLiteral("Threshold:"), 0, 255, 128, ""}},
             [build](const QImage &src, const QVector<int> &v) mutable { return build(v).apply(src); }, this);
         AdjustmentPreview preview(m_document, m_canvas, targetLayerIndices());
         auto operation = [build](const QVector<int> &values) -> ImageOperation {
@@ -3592,7 +3550,7 @@ void MainWindow::applyAdjustment(int adjustmentIndex) {
         m_lastEffectLabel = name;
         if (m_repeatEffectAction) {
             m_repeatEffectAction->setEnabled(true);
-            m_repeatEffectAction->setText(TR("Répéter : ") + name);
+            m_repeatEffectAction->setText(QStringLiteral("Repeat: ") + name);
         }
         break;
     }
@@ -3608,11 +3566,11 @@ void MainWindow::updateTitle() {
             QFileInfo fi(m_document->filePath());
             filename = fi.fileName();
         } else {
-            filename = TR("Sans titre");
+            filename = QStringLiteral("Untitled");
         }
         if (m_document->isModified()) filename += " *";
     } else {
-        filename = TR("Sans titre");
+        filename = QStringLiteral("Untitled");
     }
     setWindowTitle(filename + appTitleSuffix());
 }
@@ -3682,7 +3640,7 @@ void MainWindow::syncUtilityWindowsToMainState() {
     bool minimized = isMinimized();
     if (QWindow *wh = windowHandle())
         if (wh->visibility() == QWindow::Minimized) minimized = true;
-    QSettings settings("PaintDali", "PaintDali");
+    QSettings settings(AppInfo::kId, AppInfo::kId);
     const bool hideOnDeactivate = settings.value("ui/hideUtilityPanelsOnDeactivate", false).toBool();
     const bool shouldHide = minimized || (hideOnDeactivate && !m_applicationActive);
     if (shouldHide == m_utilityWindowsHidden) return;
@@ -3758,7 +3716,7 @@ void MainWindow::dropEvent(QDropEvent *event)
     }
 
     if (!m_document) {
-        QMessageBox::warning(this, TR("Erreur"), TR("Veuillez créer un document avant d'ajouter un calque."));
+        QMessageBox::warning(this, QStringLiteral("Error"), QStringLiteral("Please create a document before adding a layer."));
         return;
     }
 
@@ -3802,7 +3760,7 @@ void MainWindow::dropEvent(QDropEvent *event)
                     updateTitle();
                     event->acceptProposedAction();
                 } else {
-                    QMessageBox::warning(this, TR("Erreur"), TR("Impossible de charger le fichier image."));
+                    QMessageBox::warning(this, QStringLiteral("Error"), QStringLiteral("Could not load the image file."));
                 }
             }
         }

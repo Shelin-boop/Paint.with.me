@@ -16,10 +16,9 @@ public:
     explicit SettingsDialog(QWidget *parent = nullptr);
 
 signals:
-    // Emitted as soon as the user picks a new colour scheme / language, so the
+    // Emitted as soon as the user picks a new color scheme, so the
     // application can restyle live.
     void colorSchemeChanged();
-    void languageChanged();
     void canvasSettingsChanged();
     void panelBehaviorChanged();
 
@@ -32,6 +31,5 @@ private:
     QStackedWidget *m_pages;
 
     QComboBox *m_schemeCombo;
-    QComboBox *m_languageCombo;
     QSlider *m_checkerSlider;
 };

@@ -3,8 +3,7 @@ name: Package (.deb)
 # Builds a Debian package. On a version tag (v*) it publishes the .deb on the
 # GitHub Release; on a manual run it uploads the .deb as a downloadable artifact.
 on:
-  # Paint.with.me: publishing is manual-only until the fork is rebranded
-  # (see FORK.md). Re-enable the push trigger after the rebrand.
+  # Manual only: run it from the Actions tab when a .deb is wanted.
   workflow_dispatch:
 
 permissions:
@@ -40,7 +39,7 @@ jobs:
       - name: Upload .deb as workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: paint.software-deb
+          name: paint-with-me-deb
           path: build/*.deb
 
       - name: Attach .deb to the GitHub Release

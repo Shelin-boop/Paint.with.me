@@ -10,7 +10,7 @@ enum class GradientRepeat { None, Repeat, Reflect };
 class GradientTool : public Tool {
 public:
     ToolType type() const override { return ToolType::Gradient; }
-    QString name() const override { return "Dégradé"; }
+    QString name() const override { return "Gradient"; }
 
     void mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;
     void mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;

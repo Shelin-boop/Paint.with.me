@@ -1,6 +1,5 @@
 #include "layerspanel.h"
 #include "core/document.h"
-#include "i18n.h"
 #include "theme.h"
 #include "core/layer.h"
 #include <QVBoxLayout>
@@ -134,36 +133,36 @@ LayersPanel::LayersPanel(QWidget *parent) : QWidget(parent) {
     m_addBtn = new QPushButton;
     m_addBtn->setIcon(addLayerIcon());
     m_addBtn->setIconSize(QSize(14, 14));
-    m_addBtn->setToolTip(TR("Ajouter un calque"));
+    m_addBtn->setToolTip(QStringLiteral("Add New Layer"));
     m_addBtn->setFixedSize(26, 26);
     m_removeBtn = new QPushButton;
     m_removeBtn->setIcon(removeLayerIcon());
     m_removeBtn->setIconSize(QSize(14, 14));
-    m_removeBtn->setToolTip(TR("Supprimer le calque"));
+    m_removeBtn->setToolTip(QStringLiteral("Delete Layer"));
     m_removeBtn->setFixedSize(26, 26);
     m_duplicateBtn = new QPushButton;
     m_duplicateBtn->setIcon(duplicateLayerIcon());
     m_duplicateBtn->setIconSize(QSize(14, 14));
-    m_duplicateBtn->setToolTip(TR("Dupliquer le calque"));
+    m_duplicateBtn->setToolTip(QStringLiteral("Duplicate Layer"));
     m_duplicateBtn->setFixedSize(26, 26);
     m_mergeBtn = new QPushButton;
     m_mergeBtn->setIcon(mergeDownIcon());
     m_mergeBtn->setIconSize(QSize(14, 14));
-    m_mergeBtn->setToolTip(TR("Fusionner vers le bas"));
+    m_mergeBtn->setToolTip(QStringLiteral("Merge Layer Down"));
     m_mergeBtn->setFixedSize(26, 26);
     m_moveUpBtn = new QPushButton;
     m_moveUpBtn->setIcon(moveUpIcon());
     m_moveUpBtn->setIconSize(QSize(14, 14));
-    m_moveUpBtn->setToolTip(TR("Monter le calque"));
+    m_moveUpBtn->setToolTip(QStringLiteral("Move Layer Up"));
     m_moveUpBtn->setFixedSize(26, 26);
     m_moveDownBtn = new QPushButton;
     m_moveDownBtn->setIcon(moveDownIcon());
     m_moveDownBtn->setIconSize(QSize(14, 14));
-    m_moveDownBtn->setToolTip(TR("Descendre le calque"));
+    m_moveDownBtn->setToolTip(QStringLiteral("Move Layer Down"));
     m_moveDownBtn->setFixedSize(26, 26);
-    m_applyAllBtn = new QPushButton(TR("Tous"));
+    m_applyAllBtn = new QPushButton(QStringLiteral("All"));
     m_applyAllBtn->setCheckable(true);
-    m_applyAllBtn->setToolTip(TR("Appliquer les modifications a tous les calques"));
+    m_applyAllBtn->setToolTip(QStringLiteral("Apply changes to all layers"));
     m_applyAllBtn->setFixedHeight(26);
 
     btnLayout->addWidget(m_addBtn);
@@ -317,28 +316,28 @@ void LayersPanel::showLayerContextMenu(const QPoint &pos) {
     m_document->setActiveLayer(index);
 
     QMenu menu(this);
-    QAction *rename = menu.addAction(TR("Renommer..."));
-    QAction *opacity = menu.addAction(TR("Opacité..."));
+    QAction *rename = menu.addAction(QStringLiteral("Rename..."));
+    QAction *opacity = menu.addAction(QStringLiteral("Opacity..."));
     menu.addSeparator();
-    QAction *dup = menu.addAction(TR("Dupliquer le calque"));
-    QAction *merge = menu.addAction(TR("Fusionner vers le bas"));
-    QAction *del = menu.addAction(TR("Supprimer le calque"));
+    QAction *dup = menu.addAction(QStringLiteral("Duplicate Layer"));
+    QAction *merge = menu.addAction(QStringLiteral("Merge Layer Down"));
+    QAction *del = menu.addAction(QStringLiteral("Delete Layer"));
 
     QAction *chosen = menu.exec(m_layerList->mapToGlobal(pos));
     if (!chosen) return;
 
     if (chosen == rename) {
         bool ok;
-        QString name = QInputDialog::getText(this, TR("Renommer le calque"),
-                                             TR("Nom du calque :"), QLineEdit::Normal,
+        QString name = QInputDialog::getText(this, QStringLiteral("Rename Layer"),
+                                             QStringLiteral("Layer name:"), QLineEdit::Normal,
                                              layer->name(), &ok);
         if (ok && !name.isEmpty())
             m_document->setLayerName(index, name);
     } else if (chosen == opacity) {
         bool ok;
         int cur = static_cast<int>(layer->opacity() * 100);
-        int v = QInputDialog::getInt(this, TR("Opacité du calque"),
-                                     TR("Opacité (0-100 %) :"), cur, 0, 100, 1, &ok);
+        int v = QInputDialog::getInt(this, QStringLiteral("Layer Opacity"),
+                                     QStringLiteral("Opacity (0-100%):"), cur, 0, 100, 1, &ok);
         if (ok)
             m_document->setLayerOpacity(index, v / 100.0f);
     } else if (chosen == dup) {
@@ -394,20 +393,20 @@ void LayersPanel::mergeWithChoice(int topIndex) {
     // If exactly one layer is flat, the artwork choice is obvious enough to skip
     // the dialog only when BOTH are non-trivial; otherwise always ask.
     QString hint;
-    if (bottomFlat && !topFlat)      hint = TR("Le calque du dessous est une couleur unie (arrière-plan).");
-    else if (topFlat && !bottomFlat) hint = TR("Le calque du dessus est une couleur unie (arrière-plan).");
-    else if (!topFlat && !bottomFlat) hint = TR("Les deux calques contiennent un dessin.");
+    if (bottomFlat && !topFlat)      hint = QStringLiteral("The bottom layer is a solid colour (background).");
+    else if (topFlat && !bottomFlat) hint = QStringLiteral("The top layer is a solid colour (background).");
+    else if (!topFlat && !bottomFlat) hint = QStringLiteral("Both layers contain artwork.");
 
     QMessageBox box(this);
-    box.setWindowTitle(TR("Fusionner les calques"));
-    QString text = QString("<b>%1</b>").arg(TR("Comment fusionner les deux calques ?"));
+    box.setWindowTitle(QStringLiteral("Merge Layers"));
+    QString text = QString("<b>%1</b>").arg(QStringLiteral("How should the two layers be merged?"));
     if (!hint.isEmpty()) text += "<br>" + hint;
     box.setText(text);
-    QPushButton *combine = box.addButton(TR("Superposer (normal)"), QMessageBox::AcceptRole);
-    QPushButton *knockout = box.addButton(TR("Garder les deux dessins"), QMessageBox::ActionRole);
-    QPushButton *keepTop = box.addButton(TR("Garder le calque du dessus"), QMessageBox::ActionRole);
-    QPushButton *keepBottom = box.addButton(TR("Garder le calque du dessous"), QMessageBox::ActionRole);
-    box.addButton(TR("Annuler|bouton"), QMessageBox::RejectRole);
+    QPushButton *combine = box.addButton(QStringLiteral("Combine (normal)"), QMessageBox::AcceptRole);
+    QPushButton *knockout = box.addButton(QStringLiteral("Keep both drawings"), QMessageBox::ActionRole);
+    QPushButton *keepTop = box.addButton(QStringLiteral("Keep the top layer"), QMessageBox::ActionRole);
+    QPushButton *keepBottom = box.addButton(QStringLiteral("Keep the bottom layer"), QMessageBox::ActionRole);
+    box.addButton(QStringLiteral("Cancel"), QMessageBox::RejectRole);
     // Default to the knock-out merge when the top layer's flat background would
     // otherwise hide the bottom artwork; otherwise a plain normal merge is safest
     // (a normal merge no longer silently removes a photo's uniform border).
@@ -496,13 +495,3 @@ void LayersPanel::syncOrderFromList() {
     m_document->reorderLayers(newOrder, active);
 }
 
-void LayersPanel::retranslate() {
-    m_addBtn->setToolTip(TR("Ajouter un calque"));
-    m_removeBtn->setToolTip(TR("Supprimer le calque"));
-    m_duplicateBtn->setToolTip(TR("Dupliquer le calque"));
-    m_mergeBtn->setToolTip(TR("Fusionner vers le bas"));
-    m_moveUpBtn->setToolTip(TR("Monter le calque"));
-    m_moveDownBtn->setToolTip(TR("Descendre le calque"));
-    m_applyAllBtn->setText(TR("Tous"));
-    m_applyAllBtn->setToolTip(TR("Appliquer les modifications a tous les calques"));
-}

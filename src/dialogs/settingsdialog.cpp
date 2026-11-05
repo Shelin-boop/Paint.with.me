@@ -1,5 +1,4 @@
 #include "settingsdialog.h"
-#include "i18n.h"
 #include "theme.h"
 
 #include <QVBoxLayout>
@@ -13,9 +12,10 @@
 #include <QLabel>
 #include <QPushButton>
 #include <QSettings>
+#include "appinfo.h"
 
 SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
-    setWindowTitle(TR("Paramètres"));
+    setWindowTitle(QStringLiteral("Settings"));
     resize(560, 400);
 
     auto *root = new QVBoxLayout(this);
@@ -24,10 +24,10 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     // ---- Category list (left) ----
     m_categories = new QListWidget;
     m_categories->setFixedWidth(160);
-    m_categories->addItem(TR("Interface utilisateur"));
-    m_categories->addItem(TR("Canevas"));
-    m_categories->addItem(TR("Outils"));
-    m_categories->addItem(TR("Aide"));
+    m_categories->addItem(QStringLiteral("User Interface"));
+    m_categories->addItem(QStringLiteral("Canvas"));
+    m_categories->addItem(QStringLiteral("Tools"));
+    m_categories->addItem(QStringLiteral("Help"));
     body->addWidget(m_categories);
 
     // ---- Pages (right) ----
@@ -35,9 +35,9 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_pages->addWidget(buildUserInterfacePage());
     m_pages->addWidget(buildCanvasPage());
     m_pages->addWidget(buildPlaceholderPage(
-        TR("Largeur du pinceau ( [ et ] pour ajuster )")));
+        QStringLiteral("Brush width ( [ and ] to adjust )")));
     m_pages->addWidget(buildPlaceholderPage(
-        TR("Astuce : F5–F8 affichent/masquent les fenêtres Outils, Historique, ")));
+        QStringLiteral("Tip: F5–F8 show/hide the Tools, History, ")));
     body->addWidget(m_pages, 1);
 
     connect(m_categories, &QListWidget::currentRowChanged,
@@ -49,7 +49,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     // ---- Close button ----
     auto *btnRow = new QHBoxLayout;
     btnRow->addStretch();
-    auto *closeBtn = new QPushButton(TR("Fermer"));
+    auto *closeBtn = new QPushButton(QStringLiteral("Close"));
     closeBtn->setDefault(true);
     connect(closeBtn, &QPushButton::clicked, this, &QDialog::accept);
     btnRow->addWidget(closeBtn);
@@ -64,59 +64,43 @@ QWidget *SettingsDialog::buildUserInterfacePage() {
 
     // Color Scheme: Default / Light / Dark, applied immediately.
     m_schemeCombo = new QComboBox;
-    m_schemeCombo->addItem(TR("Défaut (système)"), int(Theme::Scheme::Default));
-    m_schemeCombo->addItem(TR("Clair"),            int(Theme::Scheme::Light));
-    m_schemeCombo->addItem(TR("Sombre"),           int(Theme::Scheme::Dark));
+    m_schemeCombo->addItem(QStringLiteral("Default (system)"), int(Theme::Scheme::Default));
+    m_schemeCombo->addItem(QStringLiteral("Light"),            int(Theme::Scheme::Light));
+    m_schemeCombo->addItem(QStringLiteral("Dark"),           int(Theme::Scheme::Dark));
     m_schemeCombo->setCurrentIndex(int(Theme::scheme()));
     connect(m_schemeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int i) {
         Theme::setScheme(static_cast<Theme::Scheme>(m_schemeCombo->itemData(i).toInt()));
         Theme::saveToSettings();
         emit colorSchemeChanged();
     });
-    form->addRow(TR("Thème :"), m_schemeCombo);
+    form->addRow(QStringLiteral("Color Scheme:"), m_schemeCombo);
 
-    // Language: French / English, applied immediately.
-    m_languageCombo = new QComboBox;
-    m_languageCombo->addItem(TR("Français"), int(I18n::Lang::French));
-    m_languageCombo->addItem(TR("Anglais"),  int(I18n::Lang::English));
-    m_languageCombo->setCurrentIndex(int(I18n::language()));
-    connect(m_languageCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, [this](int i) {
-        I18n::setLanguage(static_cast<I18n::Lang>(m_languageCombo->itemData(i).toInt()));
-        I18n::saveToSettings();
-        I18n::applyQtTranslations();
-        emit languageChanged();
-    });
-    form->addRow(TR("Langue :"), m_languageCombo);
 
     layout->addLayout(form);
 
-    QSettings settings("PaintDali", "PaintDali");
-    auto *followPanels = new QCheckBox(TR("Panneaux flottants liés à la fenêtre principale"));
+    QSettings settings(AppInfo::kId, AppInfo::kId);
+    auto *followPanels = new QCheckBox(QStringLiteral("Keep floating panels attached to the main window"));
     followPanels->setObjectName("followUtilityPanels");
-    followPanels->setToolTip(TR("Repositionne les panneaux flottants dans les coins quand la fenêtre principale est déplacée ou redimensionnée."));
+    followPanels->setToolTip(QStringLiteral("Repositions floating panels in the corners when the main window is moved or resized."));
     followPanels->setChecked(settings.value("ui/followUtilityPanels", false).toBool());
     connect(followPanels, &QCheckBox::toggled, this, [this](bool checked) {
-        QSettings settings("PaintDali", "PaintDali");
+        QSettings settings(AppInfo::kId, AppInfo::kId);
         settings.setValue("ui/followUtilityPanels", checked);
         emit panelBehaviorChanged();
     });
     layout->addWidget(followPanels);
 
-    auto *hidePanels = new QCheckBox(TR("Masquer les panneaux flottants hors focus"));
+    auto *hidePanels = new QCheckBox(QStringLiteral("Hide floating panels when the application loses focus"));
     hidePanels->setObjectName("hideUtilityPanelsOnDeactivate");
-    hidePanels->setToolTip(TR("Les panneaux visibles réapparaissent quand paint.software reprend le focus. Les panneaux ancrés ne sont pas concernés."));
+    hidePanels->setToolTip(QStringLiteral("Visible panels reappear when Paint.with.me regains focus. Docked panels are not affected."));
     hidePanels->setChecked(settings.value("ui/hideUtilityPanelsOnDeactivate", false).toBool());
     connect(hidePanels, &QCheckBox::toggled, this, [this](bool checked) {
-        QSettings settings("PaintDali", "PaintDali");
+        QSettings settings(AppInfo::kId, AppInfo::kId);
         settings.setValue("ui/hideUtilityPanelsOnDeactivate", checked);
         emit panelBehaviorChanged();
     });
     layout->addWidget(hidePanels);
 
-    auto *note = new QLabel(TR("Le changement de langue est appliqué immédiatement."));
-    note->setStyleSheet("color: #4a90d9;");
-    note->setWordWrap(true);
-    layout->addWidget(note);
 
     layout->addStretch();
     return page;
@@ -126,16 +110,16 @@ QWidget *SettingsDialog::buildCanvasPage() {
     auto *page = new QWidget;
     auto *layout = new QVBoxLayout(page);
 
-    QSettings s("PaintDali", "PaintDali");
+    QSettings s(AppInfo::kId, AppInfo::kId);
 
-    auto *label = new QLabel(TR("Luminosité du damier de transparence :"));
+    auto *label = new QLabel(QStringLiteral("Transparency checkerboard brightness:"));
     layout->addWidget(label);
 
     m_checkerSlider = new QSlider(Qt::Horizontal);
     m_checkerSlider->setRange(0, 100);
     m_checkerSlider->setValue(s.value("canvas/checkerBrightness", 80).toInt());
     connect(m_checkerSlider, &QSlider::valueChanged, this, [this](int v) {
-        QSettings s2("PaintDali", "PaintDali");
+        QSettings s2(AppInfo::kId, AppInfo::kId);
         s2.setValue("canvas/checkerBrightness", v);
         emit canvasSettingsChanged();
     });

@@ -1,5 +1,4 @@
 #include "curvesdialog.h"
-#include "../i18n.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -135,9 +134,9 @@ private:
 
 // ---- Dialog ----
 CurvesDialog::CurvesDialog(QWidget *parent) : QDialog(parent) {
-    setWindowTitle("Courbes");
+    setWindowTitle("Curves");
     auto *layout = new QVBoxLayout(this);
-    layout->addWidget(new QLabel(TR("Glissez les points. Clic pour ajouter, clic droit pour supprimer.")));
+    layout->addWidget(new QLabel(QStringLiteral("Drag the points. Click to add, right-click to remove.")));
 
     m_curve = new CurveWidget(this);
     m_curve->onChanged = [this]() { emit curveChanged(); };
@@ -148,12 +147,12 @@ CurvesDialog::CurvesDialog(QWidget *parent) : QDialog(parent) {
     layout->addLayout(curveRow);
 
     auto *btnRow = new QHBoxLayout;
-    auto *resetBtn = new QPushButton(TR("Réinitialiser"));
+    auto *resetBtn = new QPushButton(QStringLiteral("Reset"));
     connect(resetBtn, &QPushButton::clicked, m_curve, [this]() { m_curve->reset(); });
     auto *okBtn = new QPushButton("OK");
     okBtn->setDefault(true);
     connect(okBtn, &QPushButton::clicked, this, &QDialog::accept);
-    auto *cancelBtn = new QPushButton("Annuler");
+    auto *cancelBtn = new QPushButton("Undo");
     connect(cancelBtn, &QPushButton::clicked, this, &QDialog::reject);
     btnRow->addWidget(resetBtn);
     btnRow->addStretch();

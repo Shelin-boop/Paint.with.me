@@ -8,7 +8,7 @@
 # machine, so a package built on ubuntu-latest asks for libqt6gui6t64, which
 # simply does not exist on Debian 13 / LMDE 7:
 #
-#   paint.software : Depends: libqt6gui6t64 (>= 6.4.0) but it is not installable
+#   paint-with-me : Depends: libqt6gui6t64 (>= 6.4.0) but it is not installable
 #
 # Rather than hard-code a dependency list (fragile, and it broke before), keep
 # the auto-detected one and offer the Debian name as an alternative for each t64

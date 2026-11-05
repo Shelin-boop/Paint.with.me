@@ -1,0 +1,68 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>io.github.shelin_boop.PaintWithMe</id>
+  <metadata_license>MIT</metadata_license>
+  <project_license>MIT</project_license>
+  <name>Paint.with.me</name>
+  <summary>Image editor for Linux in the style of Paint.NET</summary>
+
+  <description>
+    <p>
+      Paint.with.me is a free and open-source raster image editor with the
+      familiar layout and workflow of Paint.NET, built natively for Linux with
+      Qt. No Wine and no .NET runtime are needed.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Layers with opacity and blend modes</li>
+      <li>Opens Paint.NET .pdn files with their layers</li>
+      <li>PNG, JPEG, BMP, GIF, TIFF and WebP</li>
+      <li>Brushes, selections, color adjustments, effects and a plugin system</li>
+      <li>Light and dark themes</li>
+    </ul>
+    <p>
+      Based on paint.software by Univers4craft. Not affiliated with Paint.NET
+      or dotPDN LLC.
+    </p>
+  </description>
+
+  <launchable type="desktop-id">io.github.shelin_boop.PaintWithMe.desktop</launchable>
+
+  <categories>
+    <category>Graphics</category>
+    <category>2DGraphics</category>
+    <category>RasterGraphics</category>
+  </categories>
+
+  <keywords>
+    <keyword>paint</keyword>
+    <keyword>image</keyword>
+    <keyword>editor</keyword>
+    <keyword>photo</keyword>
+    <keyword>pdn</keyword>
+  </keywords>
+
+  <url type="homepage">https://github.com/Shelin-boop/Paint.with.me</url>
+  <url type="bugtracker">https://github.com/Shelin-boop/Paint.with.me/issues</url>
+
+  <screenshots>
+    <screenshot type="default">
+      <caption>Paint.with.me with a layered image</caption>
+      <image>https://raw.githubusercontent.com/Shelin-boop/Paint.with.me/main/docs/screenshot.png</image>
+    </screenshot>
+  </screenshots>
+
+  <developer id="io.github.shelin_boop">
+    <name>Shelin</name>
+  </developer>
+
+  <content_rating type="oars-1.1" />
+
+  <releases>
+    <release version="0.1" date="2026-11-05">
+      <description>
+        <p>First release under the Paint.with.me name: English-only interface and new branding.</p>
+      </description>
+    </release>
+  </releases>
+</component>

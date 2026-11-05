@@ -26,7 +26,6 @@
 #include "mainwindow.h"
 #include "canvas/canvaswidget.h"
 #include "core/document.h"
-#include "i18n.h"
 #include "tools/magicwandtool.h"
 #include "tools/filltool.h"
 #include "tools/brushtool.h"
@@ -40,6 +39,7 @@
 #include "tools/clonestamptool.h"
 #include "tools/colorpickertool.h"
 #include "tools/movetool.h"
+#include "appinfo.h"
 
 
 static int checks = 0, failures = 0;
@@ -71,7 +71,7 @@ static void paths() {
 }
 
 static void utilityPanelPreferences() {
-    QSettings settings("PaintDali", "PaintDali");
+    QSettings settings(AppInfo::kId, AppInfo::kId);
     settings.remove("ui/followUtilityPanels");
     settings.remove("ui/hideUtilityPanelsOnDeactivate");
 
@@ -676,8 +676,7 @@ static void pasteDialogStyles() {
             QApplication::setStyle(QStyleFactory::create(key));
             Theme::setScheme(scheme);
             qApp->setStyleSheet(Theme::styleSheet());
-            for (I18n::Lang lang : {I18n::Lang::English,I18n::Lang::French}) {
-                I18n::setLanguage(lang);
+            {
                 PasteDialog dialog(fixture(840,630));
                 dialog.show();
                 dialog.activateWindow();
@@ -685,17 +684,13 @@ static void pasteDialogStyles() {
                 const auto rows = dialog.findChildren<QPushButton *>();
                 CHECK(rows.size() == 3);
                 if (rows.size() != 3) continue;
-                CHECK(rows[0]->text() == (lang == I18n::Lang::English ? "Expand canvas" : "Agrandir le canevas"));
-                CHECK(rows[1]->text() == (lang == I18n::Lang::English ? "Keep canvas size" : "Conserver la taille du canevas"));
-                CHECK(rows[2]->text() == (lang == I18n::Lang::English ? "Cancel" : "Annuler"));
+                CHECK(rows[0]->text() == "Expand canvas");
+                CHECK(rows[1]->text() == "Keep canvas size");
+                CHECK(rows[2]->text() == "Cancel");
                 CHECK(rows[0]->isDefault() && rows[0]->hasFocus());
-                const QStringList descriptions = lang == I18n::Lang::English
-                    ? QStringList{"Automatically expands the canvas to fit the image being pasted.",
+                const QStringList descriptions = QStringList{"Automatically expands the canvas to fit the image being pasted.",
                         "Does not expand the canvas. You will have to move the pasted image around to make sure that the part you want is within the canvas boundaries.",
-                        "Cancels the paste action."}
-                    : QStringList{"Agrandit automatiquement le canevas pour contenir l'image à coller.",
-                        "N'agrandit pas le canevas. Vous devrez déplacer l'image collée pour que la partie souhaitée se trouve dans les limites du canevas.",
-                        "Annule l'action de collage."};
+                        "Cancels the paste action."};
                 for (int index=0;index<rows.size();++index) {
                     CHECK(rows[index]->accessibleDescription() == descriptions[index]);
                     bool heading = false, explanation = false;
@@ -755,7 +750,6 @@ static void pasteDialogStyles() {
     qApp->setPalette(originalPalette);
     Theme::setScheme(originalScheme);
     qApp->setStyleSheet(originalSheet);
-    I18n::setLanguage(I18n::Lang::English);
 }
 
 int main(int argc, char **argv) {
@@ -770,8 +764,6 @@ int main(int argc, char **argv) {
         qputenv(name, path.toUtf8());
     }
     QApplication app(argc, argv);
-    QSettings("PaintDali", "PaintDali").setValue("ui/language", "en");
-    I18n::setLanguage(I18n::Lang::English);
     pasteDialogStyles();
     utilityPanelPreferences();
     paths();

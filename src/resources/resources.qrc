@@ -1,6 +1,6 @@
 <RCC>
     <qresource prefix="/">
-        <file>paintdali-logo.png</file>
+        <file>app-icon.png</file>
         <file>spin-up.png</file>
         <file>spin-down.png</file>
     </qresource>

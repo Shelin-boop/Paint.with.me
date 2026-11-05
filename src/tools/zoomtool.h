@@ -4,7 +4,7 @@
 class ZoomTool : public Tool {
 public:
     ToolType type() const override { return ToolType::Zoom; }
-    QString name() const override { return "Zoom / Loupe"; }
+    QString name() const override { return "Zoom"; }
     QCursor cursor() const override;
 
     void mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;

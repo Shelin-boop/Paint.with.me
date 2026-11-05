@@ -1,5 +1,8 @@
 /*
- * paint.software plugin API — stable C ABI.
+ * Paint.with.me plugin API: stable C ABI.
+ *
+ * Inherited unchanged from paint.software, so plugins written for it load here
+ * too. The psw_ / PSW_ prefixes are kept for that reason.
  *
  * A plugin is a shared library (.so / .dll / .dylib) that exports a single
  * function, psw_register_plugin(). The host calls it once at startup; the plugin

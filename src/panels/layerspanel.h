@@ -18,8 +18,6 @@ public:
     explicit LayersPanel(QWidget *parent = nullptr);
 
     void setDocument(Document *doc);
-    // Re-applies button tooltips in the current language.
-    void retranslate();
 
 signals:
     void layerSelected(int index);

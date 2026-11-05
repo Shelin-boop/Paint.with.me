@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.16)
-project(PaintDali VERSION 1.1.1 LANGUAGES C CXX)
+project(PaintWithMe VERSION 0.1.0 LANGUAGES C CXX)
 
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -12,15 +12,15 @@ find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui PrintSupport Concurrent)
 find_package(ZLIB REQUIRED)
 
 # Single source of truth for the version shown to users. CI passes
-# -DPAINTSW_VERSION=<major.minor.commitcount>; a local build falls back to the
+# -DPWM_VERSION=<major.minor.commitcount>; a local build falls back to the
 # project version. It reaches both the binary (title bar, About) and the .deb, so
 # they can no longer drift apart — they were hard-coded and stuck at 1.0/1.1.
-if(DEFINED PAINTSW_VERSION AND NOT PAINTSW_VERSION STREQUAL "")
-  set(PAINTSW_VERSION_STR "${PAINTSW_VERSION}")
+if(DEFINED PWM_VERSION AND NOT PWM_VERSION STREQUAL "")
+  set(PWM_VERSION_STR "${PWM_VERSION}")
 else()
-  set(PAINTSW_VERSION_STR "${PROJECT_VERSION}")
+  set(PWM_VERSION_STR "${PROJECT_VERSION}")
 endif()
-message(STATUS "paint.software version: ${PAINTSW_VERSION_STR}")
+message(STATUS "Paint.with.me version: ${PWM_VERSION_STR}")
 
 set(CORE_SOURCES
     src/core/adjustmentpreview.cpp
@@ -144,7 +144,6 @@ set(MAIN_SOURCES
     src/main.cpp
     src/mainwindow.cpp
     src/toolicons.cpp
-    src/i18n.cpp
     src/theme.cpp
     src/dockdropoverlay.cpp
 )
@@ -166,13 +165,13 @@ set(ALL_SOURCES
     ${RESOURCES}
 )
 
-add_executable(paintdotnet ${ALL_SOURCES})
+add_executable(paint-with-me ${ALL_SOURCES})
 
-target_include_directories(paintdotnet PRIVATE
+target_include_directories(paint-with-me PRIVATE
     ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
 
-target_link_libraries(paintdotnet PRIVATE
+target_link_libraries(paint-with-me PRIVATE
     Qt6::Widgets
     Qt6::PrintSupport
     Qt6::Concurrent
@@ -181,9 +180,9 @@ target_link_libraries(paintdotnet PRIVATE
     ZLIB::ZLIB
 )
 
-target_compile_definitions(paintdotnet PRIVATE PAINTSW_VERSION_STR="${PAINTSW_VERSION_STR}")
+target_compile_definitions(paint-with-me PRIVATE PWM_VERSION_STR="${PWM_VERSION_STR}")
 
-install(TARGETS paintdotnet DESTINATION bin)
+install(TARGETS paint-with-me DESTINATION bin)
 
 # ---- Test harness (headless functional tests) ----
 set(NONMAIN_SOURCES
@@ -196,41 +195,40 @@ set(NONMAIN_SOURCES
     ${DIALOGS_SOURCES}
     ${PLUGINS_SOURCES}
     src/toolicons.cpp
-    src/i18n.cpp
     src/theme.cpp
     ${RESOURCES}
 )
 
-add_executable(paintdotnet_tests EXCLUDE_FROM_ALL
+add_executable(pwm_tests EXCLUDE_FROM_ALL
     tests/test_all.cpp
     ${NONMAIN_SOURCES}
 )
-target_include_directories(paintdotnet_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(paintdotnet_tests PRIVATE
+target_include_directories(pwm_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(pwm_tests PRIVATE
     Qt6::Widgets Qt6::PrintSupport Qt6::Concurrent Qt6::Core Qt6::Gui ZLIB::ZLIB)
 
-add_executable(paintdotnet_brush_tests EXCLUDE_FROM_ALL
+add_executable(pwm_brush_tests EXCLUDE_FROM_ALL
     tests/test_brush.cpp tests/referencebrush.cpp
     ${CORE_SOURCES} ${CANVAS_SOURCES} src/tools/tool.cpp src/tools/brushtool.cpp)
-target_include_directories(paintdotnet_brush_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(paintdotnet_brush_tests PRIVATE Qt6::Widgets Qt6::Concurrent Qt6::Core Qt6::Gui ZLIB::ZLIB)
-add_executable(paintdotnet_paste_tests EXCLUDE_FROM_ALL
+target_include_directories(pwm_brush_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(pwm_brush_tests PRIVATE Qt6::Widgets Qt6::Concurrent Qt6::Core Qt6::Gui ZLIB::ZLIB)
+add_executable(pwm_paste_tests EXCLUDE_FROM_ALL
     tests/test_paste.cpp src/mainwindow.cpp src/dockdropoverlay.cpp ${NONMAIN_SOURCES})
-target_include_directories(paintdotnet_paste_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(paintdotnet_paste_tests PRIVATE Qt6::Widgets Qt6::PrintSupport Qt6::Concurrent Qt6::Core Qt6::Gui ZLIB::ZLIB)
+target_include_directories(pwm_paste_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(pwm_paste_tests PRIVATE Qt6::Widgets Qt6::PrintSupport Qt6::Concurrent Qt6::Core Qt6::Gui ZLIB::ZLIB)
 
 enable_testing()
-add_test(NAME paste_regression COMMAND paintdotnet_paste_tests)
+add_test(NAME paste_regression COMMAND pwm_paste_tests)
 set_tests_properties(paste_regression PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-add_test(NAME functional COMMAND paintdotnet_tests)
-target_compile_definitions(paintdotnet_tests PRIVATE PAINTSW_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
-add_test(NAME brush_regression COMMAND paintdotnet_brush_tests)
+add_test(NAME functional COMMAND pwm_tests)
+target_compile_definitions(pwm_tests PRIVATE PWM_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
+add_test(NAME brush_regression COMMAND pwm_brush_tests)
 set_tests_properties(functional brush_regression PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
-add_executable(paintdotnet_preview_tests EXCLUDE_FROM_ALL tests/test_adjustmentpreview.cpp src/mainwindow.cpp src/dockdropoverlay.cpp ${NONMAIN_SOURCES})
-target_include_directories(paintdotnet_preview_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(paintdotnet_preview_tests PRIVATE Qt6::Widgets Qt6::PrintSupport Qt6::Concurrent Qt6::Core Qt6::Gui ZLIB::ZLIB)
-add_test(NAME adjustment_preview COMMAND paintdotnet_preview_tests)
+add_executable(pwm_preview_tests EXCLUDE_FROM_ALL tests/test_adjustmentpreview.cpp src/mainwindow.cpp src/dockdropoverlay.cpp ${NONMAIN_SOURCES})
+target_include_directories(pwm_preview_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(pwm_preview_tests PRIVATE Qt6::Widgets Qt6::PrintSupport Qt6::Concurrent Qt6::Core Qt6::Gui ZLIB::ZLIB)
+add_test(NAME adjustment_preview COMMAND pwm_preview_tests)
 set_tests_properties(adjustment_preview PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 
@@ -245,29 +243,33 @@ set_target_properties(sample_sepia_plugin PROPERTIES
     LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/plugins)
 
 # ---- Desktop integration (installed by the package) ----
-install(FILES packaging/paint.software.desktop DESTINATION share/applications)
-# AppStream metadata, so software centres and the AppImage describe the app.
-install(FILES packaging/io.github.univers4craft.PaintSoftware.metainfo.xml
+install(FILES packaging/io.github.shelin_boop.PaintWithMe.desktop DESTINATION share/applications)
+# AppStream metadata, so software centers and the AppImage describe the app.
+install(FILES packaging/io.github.shelin_boop.PaintWithMe.metainfo.xml
         DESTINATION share/metainfo)
-install(FILES src/resources/paintdali-logo.png
-        DESTINATION share/pixmaps RENAME paint.software.png)
+install(FILES packaging/icons/io.github.shelin_boop.PaintWithMe.svg
+        DESTINATION share/icons/hicolor/scalable/apps)
+foreach(size 16 32 48 64 128 256 512)
+  install(FILES packaging/icons/hicolor/${size}x${size}/apps/io.github.shelin_boop.PaintWithMe.png
+          DESTINATION share/icons/hicolor/${size}x${size}/apps)
+endforeach()
 # Ship the sample plugin as a system plugin so a fresh install has a working example
-# (loaded from /usr/lib/paint.software/plugins).
-install(TARGETS sample_sepia_plugin LIBRARY DESTINATION lib/paint.software/plugins)
+# (loaded from /usr/lib/paint-with-me/plugins).
+install(TARGETS sample_sepia_plugin LIBRARY DESTINATION lib/paint-with-me/plugins)
 
 # ---- CPack: build a Debian package with `cpack -G DEB` ----
-set(CPACK_PACKAGE_NAME "paint.software")
-set(CPACK_PACKAGE_VENDOR "Univers4craft")
-# CI passes -DPAINTSW_VERSION=<major.minor.commitcount> so every push to main
+set(CPACK_PACKAGE_NAME "paint-with-me")
+set(CPACK_PACKAGE_VENDOR "Shelin")
+# CI passes -DPWM_VERSION=<major.minor.commitcount> so every push to main
 # produces a higher version that APT sees as an upgrade; otherwise use PROJECT_VERSION.
-set(CPACK_PACKAGE_VERSION "${PAINTSW_VERSION_STR}")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Open-source Paint.NET clone for Linux (C++/Qt6)")
-set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Univers4craft/paint.software")
-set(CPACK_PACKAGE_CONTACT "Univers4craft <Univers4craft@users.noreply.github.com>")
+set(CPACK_PACKAGE_VERSION "${PWM_VERSION_STR}")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Image editor for Linux in the style of Paint.NET (C++/Qt 6)")
+set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Shelin-boop/Paint.with.me")
+set(CPACK_PACKAGE_CONTACT "Shelin <Shelin-boop@users.noreply.github.com>")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 
 set(CPACK_GENERATOR "DEB")
-set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Univers4craft <Univers4craft@users.noreply.github.com>")
+set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Shelin <Shelin-boop@users.noreply.github.com>")
 set(CPACK_DEBIAN_PACKAGE_SECTION "graphics")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "${CPACK_PACKAGE_HOMEPAGE_URL}")
@@ -289,5 +291,5 @@ set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "qt6-translations-l10n")
 # apt refuses before the package is ever unpacked (see the script's comment).
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_CURRENT_SOURCE_DIR}/packaging/deb-control/preinst")
-set(CPACK_PACKAGE_FILE_NAME "paint.software_${CPACK_PACKAGE_VERSION}_amd64")
+set(CPACK_PACKAGE_FILE_NAME "paint-with-me_${CPACK_PACKAGE_VERSION}_amd64")
 include(CPack)

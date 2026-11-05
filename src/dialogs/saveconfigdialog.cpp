@@ -1,5 +1,4 @@
 #include "saveconfigdialog.h"
-#include "i18n.h"
 
 #include <QVBoxLayout>
 #include <QHBoxLayout>
@@ -24,7 +23,7 @@ SaveConfigDialog::SaveConfigDialog(const QImage &flat, const QString &suffix, QW
     const QString s = suffix.toLower();
     m_format = (s == "jpg" || s == "jpeg") ? "jpeg" : s;
 
-    setWindowTitle(TR("Configuration d'enregistrement"));
+    setWindowTitle(QStringLiteral("Save Configuration"));
 
     // Match Document::save's colour handling: formats without an alpha channel
     // get an opaque white background so transparent areas aren't encoded black.
@@ -49,7 +48,7 @@ SaveConfigDialog::SaveConfigDialog(const QImage &flat, const QString &suffix, QW
     root->addWidget(m_preview);
 
     auto *grid = new QGridLayout;
-    grid->addWidget(new QLabel(TR("Qualité :")), 0, 0);
+    grid->addWidget(new QLabel(QStringLiteral("Quality:")), 0, 0);
     m_slider = new QSlider(Qt::Horizontal);
     m_slider->setRange(0, 100);
     m_slider->setValue(90);
@@ -106,7 +105,7 @@ void SaveConfigDialog::updatePreview() {
 
     // Estimated on-disk size.
     const QString size = QLocale().formattedDataSize(bytes.size(), 1, QLocale::DataSizeSIFormat);
-    m_sizeLabel->setText(TR("Taille estimée : ") + size);
+    m_sizeLabel->setText(QStringLiteral("Estimated size: ") + size);
 
     // Show the *decoded* compressed result so JPEG/WebP artefacts are visible.
     QImage decoded = QImage::fromData(bytes, m_format.toUtf8());
