@@ -1,0 +1,152 @@
+#pragma once
+
+#include <QWidget>
+#include <QSlider>
+#include <QSpinBox>
+#include <QCheckBox>
+#include <QComboBox>
+#include <QFontComboBox>
+#include <QToolButton>
+#include <QLabel>
+#include <QFrame>
+#include <QEvent>
+
+#include "tools/tool.h"
+#include "tools/selectiontool.h"
+
+class Tool;
+
+// paint.net's second toolbar row: a tool selector dropdown followed by the
+// controls that configure the active tool.
+class ToolOptionsPanel : public QWidget {
+    Q_OBJECT
+public:
+    explicit ToolOptionsPanel(QWidget *parent = nullptr);
+
+    void setTool(Tool *tool);
+    // Reveals the Pressure toggle once a graphics tablet has been detected, as
+    // Paint.NET does (the control is hidden until then).
+    void setTabletPresent(bool present);
+    // Re-applies all visible labels in the current language.
+    void retranslate();
+
+signals:
+    void toolOptionsChanged();
+    void toolChangeRequested(ToolType type);
+
+private slots:
+    void onBrushSizeChanged();
+    void showBrushSize(double size);   // display helper (compact, no trailing zeros)
+    void onHardnessChanged(int value);
+    void onOpacityChanged(int value);
+    void onToleranceChanged(int value);
+    void onAntialiasToggled(bool checked);
+    void onPressureToggled(bool checked);
+    void onBlendModeChanged(int index);
+    void onSamplingChanged(int index);
+    void onRecolorTargetChanged(int index);
+    void onSelectionModeChanged(int index);
+    void onSelectionSizeChanged();
+    void onFillModeChanged(int index);
+    void onFillStyleChanged(int index);
+    // Gradient tool: repeat mode + transparency toggle.
+    void onGradientRepeatChanged(int index);
+    void onGradientTransparencyToggled(bool checked);
+    void onCornerSizeChanged(int value);
+    void onSpacingChanged(int value);
+    // Tool-specific variant: shape type / gradient type / line style / flood mode.
+    void onVariantChanged(int index);
+    // Line/Curve tool: curve type (Straight / Cubic Spline / Bézier).
+    void onCurveTypeChanged(int index);
+    // Text tool.
+    void onFontChanged(const QFont &font);
+    void onFontSizeChanged(int value);
+    void onTextStyleChanged();
+
+private:
+    void updateFromTool();
+    void populateVariantCombo();
+    QWidget *createSep();
+    // A labelled slider with a live percentage readout.
+    QWidget *makeSliderGroup(const QString &labelText, QLabel *&label, QSlider *&slider,
+                             QLabel *&valueLabel, int min, int max, int value);
+
+    Tool *m_tool = nullptr;
+
+    QComboBox *m_toolCombo;
+
+    QLabel *m_brushSizeLabel;
+    QComboBox *m_brushSizeCombo;   // editable: type a size or pick a preset (Paint.NET style)
+
+    QLabel *m_hardnessLabel;
+    QSlider *m_hardnessSlider;
+    QLabel *m_hardnessValue;
+    QWidget *m_hardnessGroup;
+
+    QLabel *m_spacingLabel;
+    QSlider *m_spacingSlider;
+    QLabel *m_spacingValue;
+    QWidget *m_spacingGroup;
+
+    QLabel *m_opacityLabel;
+    QSpinBox *m_opacitySpin;
+
+    QLabel *m_toleranceLabel;
+    QSlider *m_toleranceSlider;
+    QLabel *m_toleranceValue;
+    QWidget *m_toleranceGroup;
+
+    QCheckBox *m_antialiasCheck;
+    QCheckBox *m_pressureCheck;   // stylus pressure varies dab size (Paint.NET)
+    bool m_tabletPresent = false;   // Pressure toggle is shown only once a tablet is seen
+
+    QLabel *m_fillLabel;
+    QComboBox *m_fillCombo;
+    QLabel *m_fillStyleLabel;
+    QComboBox *m_fillStyleCombo;   // Solid Color + hatch patterns (Paint.NET Fill Style)
+
+    QLabel *m_cornerLabel;
+    QSpinBox *m_cornerSpin;   // rounded-rectangle corner radius (shape tool only)
+
+    // Tool-specific variant: shape type / gradient type / line style / flood mode.
+    QLabel *m_variantLabel;
+    QComboBox *m_variantCombo;
+
+    // Line/Curve tool: curve type (Straight / Cubic Spline / Bézier), a second
+    // dedicated combo so the LineStyle variant combo still works.
+    QLabel *m_curveTypeLabel;
+    QComboBox *m_curveTypeCombo;
+
+    // Gradient tool: repeat mode dropdown + transparency (alpha-only) checkbox.
+    QLabel *m_gradientRepeatLabel;
+    QComboBox *m_gradientRepeatCombo;
+    QCheckBox *m_gradientTransparencyCheck;
+
+    QLabel *m_blendModeLabel;
+    QComboBox *m_blendModeCombo;
+
+    // Sampling source (Fill / Magic Wand): Image (composite) vs Layer (active).
+    QLabel *m_samplingLabel;
+    QComboBox *m_samplingCombo;
+
+    // Recolor target (Paint.NET "Sampling"): clicked pixel vs secondary colour.
+    QLabel *m_recolorTargetLabel;
+    QComboBox *m_recolorTargetCombo;
+
+    // Selection constraint (Normal / Fixed Ratio / Fixed Size), matching paint.NET.
+    QLabel *m_selectionModeLabel;
+    QComboBox *m_selectionModeCombo;
+    QWidget *m_selectionSizeGroup;   // container for the W×H spin boxes
+    QSpinBox *m_selectionWSpin;
+    QSpinBox *m_selectionHSpin;
+
+    // Text tool controls.
+    QFontComboBox *m_fontCombo;
+    QLabel *m_fontSizeLabel;
+    QSpinBox *m_fontSizeSpin;
+    QToolButton *m_boldBtn;
+    QToolButton *m_italicBtn;
+    QToolButton *m_underlineBtn;
+    QToolButton *m_strikeBtn;
+    class QComboBox *m_alignCombo;   // Left / Center / Right
+};
