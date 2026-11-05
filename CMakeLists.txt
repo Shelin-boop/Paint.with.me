@@ -163,6 +163,7 @@ set(APP_SOURCES
     src/mainwindow_edit.cpp
     src/mainwindow_effects.cpp
     src/desktopintegration.cpp
+    src/displayserver.cpp
     src/toolicons.cpp
     src/theme.cpp
     src/dockdropoverlay.cpp
@@ -228,9 +229,11 @@ set_tests_properties(functional brush_regression paste_regression adjustment_pre
 #   cmake --build build --target pwm_bench && QT_QPA_PLATFORM=offscreen build/pwm_bench
 pwm_test(pwm_bench tests/bench_large.cpp)
 
-# AppImage application-menu entry; small and fast, Qt Core only.
+# AppImage application-menu entry and the X11/Wayland choice; small and fast,
+# Qt Core only.
 add_executable(pwm_integration_tests EXCLUDE_FROM_ALL
-    tests/test_desktopintegration.cpp src/desktopintegration.cpp ${RESOURCES})
+    tests/test_desktopintegration.cpp src/desktopintegration.cpp src/displayserver.cpp
+    ${RESOURCES})
 target_include_directories(pwm_integration_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
 target_link_libraries(pwm_integration_tests PRIVATE Qt6::Core)
 target_compile_definitions(pwm_integration_tests PRIVATE PWM_VERSION_STR="${PWM_VERSION_STR}")

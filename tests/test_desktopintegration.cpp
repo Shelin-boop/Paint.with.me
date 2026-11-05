@@ -3,11 +3,13 @@
 
 #include "desktopintegration.h"
 #include "appinfo.h"
+#include "displayserver.h"
 
 #include <QCoreApplication>
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QSettings>
 #include <QTemporaryDir>
 #include <cstdio>
 
@@ -179,7 +181,82 @@ static void environmentFromSystem() {
     qunsetenv("APPDIR");
 }
 
+// X11 through XWayland by default in a Wayland session; natively when chosen.
+static void displayServerChoice() {
+    using DisplayServer::Environment;
+    using DisplayServer::platformFor;
+    Environment x11;
+    x11.xDisplay = true;
+    Environment wayland;
+    wayland.waylandSession = true;
+    wayland.xDisplay = true;
+    Environment waylandOnly;
+    waylandOnly.waylandSession = true;
+    Environment forced = wayland;
+    forced.platformForced = true;
+    // A plain X11 session: Qt's own choice.
+    CHECK(platformFor(x11, false).isEmpty());
+    CHECK(platformFor(x11, true).isEmpty());
+    // A Wayland session: XWayland, or Wayland with XWayland as the fallback.
+    CHECK(platformFor(wayland, false) == "xcb");
+    CHECK(platformFor(wayland, true) == "wayland;xcb");
+    // No XWayland running: Wayland either way.
+    CHECK(platformFor(waylandOnly, false).isEmpty());
+    CHECK(platformFor(waylandOnly, true) == "wayland");
+    // QT_QPA_PLATFORM or -platform always wins.
+    CHECK(platformFor(forced, false).isEmpty());
+    CHECK(platformFor(forced, true).isEmpty());
+
+    // Reading the environment and the command line.
+    const QByteArray saved[] = {qgetenv("QT_QPA_PLATFORM"), qgetenv("WAYLAND_DISPLAY"), qgetenv("DISPLAY")};
+    qunsetenv("QT_QPA_PLATFORM");
+    qputenv("WAYLAND_DISPLAY", "wayland-0");
+    qputenv("DISPLAY", ":0");
+    char prog[] = "paint-with-me", file[] = "picture.png", flag[] = "-platform", name[] = "xcb";
+    char *plain[] = {prog, file};
+    char *withFlag[] = {prog, flag, name};
+    const Environment env = Environment::fromSystem(2, plain);
+    CHECK(env.waylandSession && env.xDisplay && !env.platformForced);
+    CHECK(Environment::fromSystem(3, withFlag).platformForced);
+
+    // The setting: off by default, read at startup.
+    CHECK(!DisplayServer::nativeWaylandEnabled());
+    DisplayServer::applyAtStartup(2, plain);
+    CHECK(qgetenv("QT_QPA_PLATFORM") == "xcb");
+    CHECK(!DisplayServer::platformForcedAtStartup());
+    qunsetenv("QT_QPA_PLATFORM");
+    DisplayServer::setNativeWaylandEnabled(true);
+    CHECK(DisplayServer::nativeWaylandEnabled());
+    CHECK(QSettings(AppInfo::kId, AppInfo::kId).value("display/nativeWayland").toBool());
+    DisplayServer::applyAtStartup(2, plain);
+    CHECK(qgetenv("QT_QPA_PLATFORM") == "wayland;xcb");
+    // Chosen outside the app: left alone, and reported.
+    qputenv("QT_QPA_PLATFORM", "offscreen");
+    DisplayServer::applyAtStartup(2, plain);
+    CHECK(qgetenv("QT_QPA_PLATFORM") == "offscreen");
+    CHECK(DisplayServer::platformForcedAtStartup());
+    DisplayServer::setNativeWaylandEnabled(false);
+    CHECK(!DisplayServer::nativeWaylandEnabled());
+    const char *names[] = {"QT_QPA_PLATFORM", "WAYLAND_DISPLAY", "DISPLAY"};
+    for (int i = 0; i < 3; ++i) {
+        if (saved[i].isNull()) qunsetenv(names[i]);
+        else qputenv(names[i], saved[i]);
+    }
+
+    // What people are told, and whether the app may place its windows.
+    CHECK(DisplayServer::describe("wayland", true) == "Wayland (native)");
+    CHECK(DisplayServer::describe("wayland-egl", true) == "Wayland (native)");
+    CHECK(DisplayServer::describe("xcb", true) == "X11 through XWayland");
+    CHECK(DisplayServer::describe("xcb", false) == "X11");
+    CHECK(DisplayServer::describe("offscreen", false) == "offscreen");
+    CHECK(!DisplayServer::canPlaceWindows("wayland"));
+    CHECK(DisplayServer::canPlaceWindows("xcb"));
+}
+
 int main(int argc, char **argv) {
+    // Settings go to a temporary folder, not the real ~/.config.
+    QTemporaryDir config;
+    qputenv("XDG_CONFIG_HOME", config.path().toUtf8());
     QCoreApplication app(argc, argv);
     notAnAppImage();
     firstLaunchInstalls();
@@ -189,6 +266,7 @@ int main(int argc, char **argv) {
     removeAndRemember();
     foreignEntryIsLeftAlone();
     environmentFromSystem();
+    displayServerChoice();
     printf("desktop integration: %d checks, %d failed\n", checks, failures);
     return failures == 0 ? 0 : 1;
 }

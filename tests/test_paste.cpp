@@ -21,6 +21,7 @@
 #include <QDockWidget>
 #include "dialogs/pastedialog.h"
 #include "dialogs/settingsdialog.h"
+#include "displayserver.h"
 #include "theme.h"
 #include <iostream>
 #include "mainwindow.h"
@@ -134,6 +135,53 @@ static void dockedPanels() {
     CHECK(!docks[2]->isFloating() && window.dockWidgetArea(docks[2]) == Qt::RightDockWidgetArea);
     CHECK(docks[1]->mapTo(&window, QPoint()).y() < docks[2]->mapTo(&window, QPoint()).y());
     settings.remove("ui/mainWindowStateV8");
+}
+
+// Settings > User Interface > Window System: XWayland or native Wayland.
+static void windowSystemPreference() {
+    QSettings settings(AppInfo::kId, AppInfo::kId);
+    settings.remove("display/nativeWayland");
+    const QByteArray savedWayland = qgetenv("WAYLAND_DISPLAY");
+    const QString running = QStringLiteral("Running on: ")
+        + DisplayServer::describe(QGuiApplication::platformName(), false);
+    qunsetenv("WAYLAND_DISPLAY");
+    {
+        // Not a Wayland session: nothing to choose.
+        SettingsDialog dialog;
+        auto *native = dialog.findChild<QCheckBox *>("nativeWayland");
+        auto *label = dialog.findChild<QLabel *>("windowSystem");
+        auto *note = dialog.findChild<QLabel *>("nativeWaylandNote");
+        CHECK(native && !native->isEnabled() && !native->isChecked());
+        CHECK(label && label->text() == running);
+        CHECK(note && note->text().contains("Wayland session"));
+        // Only off Wayland can the app place its floating panels itself.
+        auto *follow = dialog.findChild<QCheckBox *>("followUtilityPanels");
+        CHECK(follow && follow->isEnabled() == DisplayServer::canPlaceWindows(QGuiApplication::platformName()));
+    }
+    qputenv("WAYLAND_DISPLAY", "wayland-test");
+    {
+        SettingsDialog dialog;
+        auto *native = dialog.findChild<QCheckBox *>("nativeWayland");
+        auto *note = dialog.findChild<QLabel *>("nativeWaylandNote");
+        CHECK(native && native->isEnabled());
+        CHECK(note && note->text().contains("next time"));
+        const QByteArray shots = qgetenv("PWM_SCREENSHOT_DIR");
+        if (!shots.isEmpty()) {
+            QDir().mkpath(QString::fromLocal8Bit(shots));
+            dialog.resize(dialog.sizeHint().expandedTo(QSize(560, 400)));
+            dialog.grab().save(QString::fromLocal8Bit(shots) + "/settings-window-system.png");
+        }
+        if (native) {
+            native->setChecked(true);
+            CHECK(settings.value("display/nativeWayland").toBool());
+            CHECK(DisplayServer::nativeWaylandEnabled());
+            native->setChecked(false);
+            CHECK(!DisplayServer::nativeWaylandEnabled());
+        }
+    }
+    if (savedWayland.isNull()) qunsetenv("WAYLAND_DISPLAY");
+    else qputenv("WAYLAND_DISPLAY", savedWayland);
+    settings.remove("display/nativeWayland");
 }
 
 static void utilityPanelPreferences() {
@@ -842,6 +890,7 @@ int main(int argc, char **argv) {
     QApplication app(argc, argv);
     pasteDialogStyles();
     utilityPanelPreferences();
+    windowSystemPreference();
     paths();
     cancelPrompt();
     expandPaste();

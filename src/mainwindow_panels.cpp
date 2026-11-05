@@ -36,6 +36,8 @@
 #include <QFontMetrics>
 #include "appinfo.h"
 #include "desktopintegration.h"
+#include "displayserver.h"
+#include <QGuiApplication>
 
 Qt::Orientation MainWindow::splitOrientationForArea(Qt::DockWidgetArea area) const {
     // Left/right areas keep narrow docks readable by stacking vertically.
@@ -173,6 +175,8 @@ void MainWindow::scheduleUtilityWindowFollow() {
 }
 
 void MainWindow::repositionFloatingUtilityWindows() {
+    // On Wayland the desktop places windows; moving them would do nothing.
+    if (!DisplayServer::canPlaceWindows(QGuiApplication::platformName())) return;
     QSettings settings(AppInfo::kId, AppInfo::kId);
     if (!settings.value("ui/followUtilityPanels", false).toBool()) return;
     for (QDockWidget *dock : {m_toolsDock, m_historyDock, m_layersDock, m_colorsDock}) {
