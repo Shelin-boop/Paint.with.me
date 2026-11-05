@@ -22,10 +22,12 @@ Claude sessions and milestones, not in hours of human work.
 - File formats: no format of our own. Layered: open `.pdn` (Paint.NET), open
   and save `.psd` (Adobe), open `.psb`. Flat: PNG, JPEG, BMP, GIF, TIFF, WebP
   and the like. The inherited `.psw` format was removed on 2026-11-05.
-- Undo: to be reworked into a memory-efficient history (store only what
-  changed, with a memory budget instead of a fixed step count).
+- Undo: a memory budget instead of a fixed step count (done 2026-11-05).
 - New tools: a smudge tool (German "verwischen", drags color like a finger
-  through wet paint) and a blur brush. Paint.NET has neither.
+  through wet paint) and a blur brush. Paint.NET has neither. A perspective
+  tool exists since 2026-11-05.
+- Owner's pen display: XPPen Artist 15.6 Pro V2 on Kubuntu; pen pressure
+  reaches the app (confirmed by the owner 2026-11-05).
 - Clean up code that is badly structured, as part of the work.
 - Default panel layout (owner's choice, 2026-11-05): Tools above Colors on the
   left, History above Layers on the right. The Tools panel widens to 3 or 4
@@ -40,8 +42,8 @@ Claude sessions and milestones, not in hours of human work.
    600 dpi) and panels docked inside the main window. Done 2026-11-05.
 4. File formats: remove `.psw`; layered PSD read and write; autosave keeps
    layers. Done 2026-11-05.
-5. Undo rework: memory budget instead of 100 steps. (Image edits already
-   store only the changed rectangle.)
+5. Undo rework: memory budget instead of 100 steps. Done 2026-11-05. Also
+   done on the owner's request: PDF export and a perspective tool.
 6. Code cleanup, especially `src/mainwindow.cpp` and a tool registry. Then
    ship Qt's Wayland plugin in the AppImage, test on Plasma and drop the
    XWayland preference in `src/main.cpp`.
@@ -62,14 +64,14 @@ Claude sessions and milestones, not in hours of human work.
 - Keep `tests/data/pdn/LICENSE-pypdn` with the pypdn test files.
 - Write documentation and UI text in American English. Dates as yyyy-mm-dd,
   times in 24-hour format, SI units. Menus use "..." (three dots), not "…".
-- Every change keeps all seven test suites passing; new behavior gets a test.
+- Every change keeps all nine test suites passing; new behavior gets a test.
 
 ## Build and test
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_integration_tests
+cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
@@ -117,6 +119,9 @@ PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_panel_tests
 | AppImage menu entry (install, update, remove) | `src/desktopintegration.cpp` |
 | Main window, menus, tool registration, shortcuts | `src/mainwindow.cpp` (about 3,800 lines) |
 | Document, layers, selection, undo history | `src/core/` |
+| Undo memory budget (steps report their images; shared pixels count once) | `HistoryManager::memoryUsed`, `trim` in `src/core/history.cpp` |
+| PDF export (own writer) and its dialog | `src/core/pdfexport.cpp`, `src/dialogs/pdfexportdialog.cpp` |
+| Perspective guides: geometry, drawing, settings; the tool; canvas snapping | `src/core/perspective.cpp`, `src/tools/perspectivetool.cpp`, `CanvasWidget::perspectiveSnapped` |
 | `.pdn` reader (own MS-NRBF parser, read-only) | `src/core/pdnformat.cpp` |
 | `.psd` / `.psb` reader and `.psd` writer | `src/core/psdformat.cpp` |
 | Saving and opening, resolution, load notes | `Document::save`, `Document::load` in `src/core/document.cpp` |
@@ -181,6 +186,13 @@ mouse move. `tests/test_brush.cpp` compares such tools against a full redraw.
   file.psd`, or GIMP's `file-psd-load` in `gimp-console -i -b`.
 - Never write to a file directly: `QSaveFile`, so a failed save leaves the old
   file intact.
+
+### Undo
+
+- `HistoryCommand::forEachImage()` lists the images a step keeps; a new kind
+  of step must implement it, or its memory is invisible to the budget.
+- The budget is enforced when a step is pushed and when it is changed in
+  Settings; the latest step is always kept.
 
 ### Settings
 
