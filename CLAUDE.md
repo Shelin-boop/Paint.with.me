@@ -78,6 +78,8 @@ test targets take about 15 minutes to build, because three of them compile
   `gh api repos/Shelin-boop/Paint.with.me/actions/workflows/appimage.yml/dispatches -f ref=main`),
   replaces the rolling `continuous` pre-release ("Latest build").
 - Pushing a tag `vX.Y.Z` creates a normal release.
+- The AppImage uses Qt 6.12.0 (pinned in the workflow; the input "latest" tries
+  the newest Qt 6). It needs glibc 2.35 or newer (Ubuntu 22.04 and later).
 - Version shown to users: `<project major.minor>.<commit count>`, for example 0.1.115.
 - The CI workflow (`ci.yml`) runs on every push; the AppImage workflow does not,
   to save build minutes on the private repository.

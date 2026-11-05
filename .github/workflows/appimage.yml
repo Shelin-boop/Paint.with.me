@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       qt_version:
-        description: 'Qt version (empty = newest Qt 6 that aqtinstall offers)'
+        description: 'Qt version (empty = the tested default below; "latest" = newest Qt 6)'
         required: false
         default: ''
 
@@ -56,7 +56,9 @@ jobs:
         env:
           QT_VERSION: ${{ inputs.qt_version }}
         run: |
-          if [ -z "$QT_VERSION" ]; then
+          # Tested default. Change it deliberately, after a successful "latest" run.
+          QT_VERSION="${QT_VERSION:-6.12.0}"
+          if [ "$QT_VERSION" = latest ]; then
             QT_VERSION=$(aqt list-qt linux desktop | tr ' ' '\n' \
               | grep -E '^6\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
           fi
