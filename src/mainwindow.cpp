@@ -228,13 +228,6 @@ void MainWindow::saveUiState() {
     if (m_colorsDock) settings.setValue("ui/colorsVisible", m_colorsDock->isVisible());
 }
 
-bool MainWindow::eventFilter(QObject *watched, QEvent *event)
-{
-    Q_UNUSED(watched);
-    Q_UNUSED(event);
-    return QMainWindow::eventFilter(watched, event);
-}
-
 void MainWindow::createTools() {
     for (const ToolInfo &info : toolInfos()) m_tools.push_back(createTool(info.type));
 }
