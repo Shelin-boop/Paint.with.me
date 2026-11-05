@@ -55,8 +55,9 @@ public:
     enum class Unit { Pixels, Inches, Centimeters };
     void setUnit(Unit u) { m_unit = u; update(); }
     Unit unit() const { return m_unit; }
-    double dpi() const { return m_dpi; }
-    void setDpi(double d) { m_dpi = d > 0 ? d : 96.0; update(); }
+    // Resolution for the rulers in inches and centimeters: the document's own.
+    double dpi() const;
+    void setDpi(double d);
 
     // Backdrop around the image; follows the active colour scheme.
     void setBackdropColor(const QColor &c) { m_backdrop = c; update(); }

@@ -4,6 +4,7 @@
 #include <QImage>
 #include <QColor>
 #include <QSize>
+#include <QStringList>
 #include <memory>
 #include <vector>
 
@@ -111,15 +112,25 @@ public:
     // like Paint.NET remembering its Save Configuration).
     bool save(const QString &filePath, int quality = -1);
     bool load(const QString &filePath);
-    // Native layered format (.psw) — preserves every layer, not just a flattened
-    // image. Used automatically when the path ends in ".psw".
-    bool saveNative(const QString &filePath);
-    bool loadNative(const QString &filePath);
-    static bool isNativeFormat(const QString &filePath);
-    // Paint.NET's layered .pdn: opened with every layer, but not written back
-    // (Save goes through Save As so the user picks .psw or a flat format).
+    // Photoshop .psd (layers kept) is the layered format; everything else is
+    // saved flattened. Saving replaces the old file only once the new one is
+    // complete, so a crash while saving cannot damage it.
+    static bool isLayeredFormat(const QString &filePath);   // .psd
+    bool loadPsd(const QString &filePath);
+    // Paint.NET's layered .pdn and Photoshop's large-document .psb: opened
+    // with every layer, but not written (Save goes through Save As).
     bool loadPdn(const QString &filePath);
     static bool isOpenOnlyFormat(const QString &filePath);
+    // What the last load could not keep as it was (PSD groups, styles ...),
+    // in plain words; empty when nothing was lost.
+    QStringList loadNotes() const { return m_loadNotes; }
+    // Why the last save or load failed, in plain words (may be empty).
+    QString lastError() const { return m_lastError; }
+    // Print resolution in dots per inch, stored in PSD and image files.
+    double dpi() const { return m_dpi; }
+    void setDpi(double dpi) { if (dpi > 0) m_dpi = dpi; }
+    // Where Save writes; used when recovering an autosave of a saved file.
+    void setFilePath(const QString &filePath) { m_filePath = filePath; }
     QString filePath() const { return m_filePath; }
     bool isModified() const { return m_modified; }
     void setModified(bool modified) { m_modified = modified; }
@@ -157,6 +168,9 @@ private:
     QString m_filePath;
     bool m_modified = false;
     int m_saveQuality = -1;   // last lossy-format quality chosen via Save As
+    double m_dpi = 96.0;
+    QStringList m_loadNotes;
+    QString m_lastError;
     bool m_editAllLayers = false;
     QColor m_primaryColor = Qt::black;
     QColor m_secondaryColor = Qt::white;

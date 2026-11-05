@@ -18,6 +18,7 @@
 #include <QDir>
 #include <QElapsedTimer>
 #include <QFile>
+#include <QFileInfo>
 #include <QListWidget>
 #include <QMouseEvent>
 #include <QPainter>
@@ -388,6 +389,28 @@ int main(int argc, char **argv) {
         const Busy after = busyFor(3000);
         const double first = busy.total;
         row("window blocked by one autosave", first + after.total);
+        // The layered .psd is written in the background; wait for it.
+        const QString recovery = QDir(home.path()).filePath(QStringLiteral("data/paint-with-me-bench/recovery/autosave.psd"));
+        while (!QFile::exists(recovery) && t.elapsed() < 120000) busyFor(100);
+        row("  autosave written (in the background, layers kept)", ms(t));
+    }
+
+    // ---- Photoshop file ----
+    {
+        std::printf("\nPhotoshop file (.psd, all layers)\n");
+        const QString path = home.path() + QStringLiteral("/bench.psd");
+        QElapsedTimer t;
+        t.start();
+        const bool saved = doc->save(path);
+        row("save", ms(t));
+        row("  file size", QFileInfo(path).size() / 1.0e6, "MB");
+        Document opened;
+        t.restart();
+        const bool loaded = opened.load(path);
+        row("open", ms(t));
+        if (!saved || !loaded || opened.layerCount() != doc->layerCount())
+            std::printf("  ERROR: the .psd did not round-trip\n");
+        row("peak memory", peakMb(), "MB");
     }
 
     doc->setModified(false);

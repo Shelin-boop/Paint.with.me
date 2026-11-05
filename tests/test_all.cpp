@@ -249,15 +249,11 @@ static void retainedCropRegression() {
             CHECK(doc.flatten() == after && doc.activeLayer()->offset().isNull(), "crop redo restores pixels and origin");
             CHECK(!doc.activeLayer()->retainsOffCanvasPixels(), "crop redo clears retained state again");
             QTemporaryDir directory;
-            const QString path = directory.path()+"/cropped.psw";
-            CHECK(doc.saveNative(path), "save destructively cropped document");
-            QFile file(path);
-            CHECK(file.open(QIODevice::ReadOnly), "open cropped native file");
-            QDataStream stream(&file);
-            stream.setVersion(QDataStream::Qt_6_0);
-            quint32 magic; qint32 version;
-            stream >> magic >> version;
-            CHECK(version == 1, "crop with no retained layers writes legacy v1");
+            const QString path = directory.path()+"/cropped.psd";
+            CHECK(doc.save(path), "save destructively cropped document");
+            Document reloaded;
+            CHECK(reloaded.load(path) && reloaded.flatten() == doc.flatten(), "cropped document reopens identical");
+            CHECK(!reloaded.activeLayer()->retainsOffCanvasPixels(), "cropped layers reopen as ordinary layers");
             for (bool keepArtwork : {false,true}) {
                 doc.mergeLayerDown(1,keepArtwork);
                 CHECK(!doc.activeLayer()->retainsOffCanvasPixels(), "merge does not inherit stale crop state");
@@ -490,132 +486,35 @@ static void ordinaryMoveAuthorityRegression() {
     }
 }
 
-static void nativeRetentionCompatibility() {
-    SECTION("Native retained state has a versioned format and reads PSW v1");
+static void savedRetentionCompatibility() {
+    SECTION("Saved retained layers keep their off-canvas pixels (PSD)");
     QTemporaryDir directory;
-    auto writeV1 = [&](const QString &path, const QImage &image, QPoint offset, int version) {
-        QFile file(path);
-        if (!file.open(QIODevice::WriteOnly)) return false;
-        QDataStream out(&file);
-        out.setVersion(QDataStream::Qt_6_0);
-        out << quint32(0x50535731) << qint32(version) << qint32(800) << qint32(600)
-            << qint32(0) << qint32(1);
-        out << QString("v1 fixture") << float(0.75) << bool(true) << bool(false)
-            << qint32(0) << offset << image;
-        return out.status() == QDataStream::Ok;
-    };
-    for (bool retained : {false, true}) {
-        const QImage image = retained ? retainedPattern() : makeImage(800,600,Qt::red);
-        const QPoint offset = retained ? QPoint(-50,-40) : QPoint();
-        const QString path = directory.path() + (retained ? "/retained-v1.psw" : "/ordinary-v1.psw");
-        CHECK(writeV1(path, image, offset, 1), "write an independent old-format fixture");
-        Document loaded;
-        CHECK(loaded.loadNative(path), "v1 files remain readable");
-        CHECK(loaded.activeLayer()->retainsOffCanvasPixels() == retained,
-              "v1 geometry inference distinguishes ordinary and oversized/positioned fixtures");
-        CHECK(loaded.activeLayer()->image() == image && loaded.activeLayer()->offset() == offset &&
-              loaded.activeLayer()->name() == "v1 fixture" && loaded.activeLayer()->opacity() == 0.75f,
-              "v1 layer metadata and full bitmap preserved");
-        // Expansion to equal dimensions must not erase the inferred retained
-        // semantics of an old file with a positioned/oversized bitmap.
-        if (retained) {
-            loaded.pasteImage(image,"expand",true);
-            loaded.setActiveLayer(0);
-        }
-        CanvasWidget canvas;
-        canvas.setDocument(&loaded);
-        MoveTool move;
-        const QImage expanded = loaded.activeLayer()->image();
-        strokeTool(&move,canvas,QPointF(300,200),QPointF(350,240));
-        if (retained)
-            CHECK(loaded.activeLayer()->image() == expanded && expanded.copy(image.rect()) == image &&
-                  loaded.activeLayer()->offset().isNull(),
-                  "v1 retained layer keeps full padded bitmap after canvas expansion and Move");
-        else
-            CHECK(loaded.activeLayer()->offset().isNull() && loaded.activeLayer()->image() != image &&
-                  loaded.activeLayer()->image().pixelColor(0,0).alpha() == 0,
-                  "v1 ordinary layer still uses the established baked move");
-    }
-    for (const auto &geometry : {std::make_pair(QSize(800,600),QPoint(3,-2)),
-                                 std::make_pair(QSize(840,630),QPoint()),
-                                 std::make_pair(QSize(840,630),QPoint(-3,2))}) {
-        Document ordinary(800,600);
-        const QImage before = makeImage(geometry.first.width(),geometry.first.height(),QColor(210,70,30,117));
-        ordinary.activeLayer()->setImage(before);
-        ordinary.activeLayer()->setOffset(geometry.second);
-        CHECK(!ordinary.activeLayer()->retainsOffCanvasPixels(), "positioned ordinary fixture has explicit false retention");
-        const QString path = directory.path()+"/positioned-ordinary.psw";
-        CHECK(ordinary.saveNative(path), "save ordinary state that legacy geometry would infer as retained");
-        Document restored;
-        CHECK(restored.loadNative(path), "reload positioned ordinary document");
-        CHECK(!restored.activeLayer()->retainsOffCanvasPixels(), "native roundtrip preserves explicit ordinary movement state");
-        CHECK(restored.activeLayer()->image() == before && restored.activeLayer()->offset() == geometry.second,
-              "native roundtrip preserves positioned ordinary bitmap and origin");
-        QImage expected(before.size(),QImage::Format_ARGB32_Premultiplied);
-        expected.fill(Qt::transparent);
-        { QPainter painter(&expected); painter.drawImage(4,3,before); }
-        CanvasWidget canvas;
-        canvas.setDocument(&restored);
-        MoveTool move;
-        strokeTool(&move,canvas,QPointF(20,20),QPointF(24,23));
-        CHECK(restored.activeLayer()->image() == expected && restored.activeLayer()->offset() == geometry.second,
-              "ordinary Move remains pixel-baked after native roundtrip");
-        restored.history().undo();
-        CHECK(restored.activeLayer()->image() == before && !restored.activeLayer()->retainsOffCanvasPixels(),
-              "native ordinary Move undo preserves explicit state");
-    }
-    const QString unknown = directory.path()+"/unknown.psw";
-    CHECK(writeV1(unknown, retainedPattern(), QPoint(), 42), "write unknown-version fixture");
-    Document untouched(23,17);
-    const QImage before = untouched.flatten();
-    CHECK(!untouched.loadNative(unknown), "reject unsupported native versions");
-    CHECK(untouched.size() == QSize(23,17) && untouched.flatten() == before,
-          "unknown format does not replace the live document");
     Document current(800,600);
     current.pasteImage(retainedPattern(),"Keep",false);
-    const QString path = directory.path()+"/current.psw";
-    CHECK(current.saveNative(path), "write current native format");
-    QFile file(path);
-    CHECK(file.open(QIODevice::ReadOnly), "open current native file");
-    QDataStream in(&file);
-    in.setVersion(QDataStream::Qt_6_0);
-    quint32 magic = 0;
-    qint32 version = 0;
-    in >> magic >> version;
-    CHECK(magic == quint32(0x50535731) && version == 2, "retained-state layout is explicitly version 2");
-    file.close();
-    Document ordinary(23,17);
-    const QString ordinaryPath = directory.path()+"/ordinary-current.psw";
-    CHECK(ordinary.saveNative(ordinaryPath), "save an ordinary document without retained state");
-    QFile ordinaryFile(ordinaryPath);
-    CHECK(ordinaryFile.open(QIODevice::ReadOnly), "open ordinary native output");
-    QDataStream ordinaryStream(&ordinaryFile);
-    ordinaryStream.setVersion(QDataStream::Qt_6_0);
-    ordinaryStream >> magic >> version;
-    CHECK(magic == quint32(0x50535731) && version == 1,
-          "ordinary documents retain the legacy v1 output layout");
-    for (bool retained : {false,true}) {
-        // Both fixtures have identical dimensions and zero origin: only v2's
-        // explicit flag can distinguish their movement provenance.
-        const QString matchedPath = directory.path() + (retained ? "/matched-retained.psw" : "/matched-ordinary.psw");
-        QFile matchedFile(matchedPath);
-        CHECK(matchedFile.open(QIODevice::WriteOnly), "open independent matched-size v2 fixture");
-        QDataStream out(&matchedFile);
-        out.setVersion(QDataStream::Qt_6_0);
-        const QImage image = makeImage(800,600,QColor(210,70,30,117));
-        out << quint32(0x50535731) << qint32(2) << qint32(800) << qint32(600) << qint32(0) << qint32(1);
-        out << QString("matched v2") << float(1) << true << false << qint32(0) << QPoint() << retained << image;
-        CHECK(out.status() == QDataStream::Ok, "write independent v2 flag and bitmap");
-        matchedFile.close();
-        Document loaded;
-        CHECK(loaded.loadNative(matchedPath), "read matched-size v2 fixture");
-        CHECK(loaded.activeLayer()->retainsOffCanvasPixels() == retained && loaded.activeLayer()->image() == image &&
-              loaded.activeLayer()->offset().isNull(), "v2 honours explicit provenance, never legacy geometry inference");
-        CHECK(loaded.saveNative(matchedPath), "save matched-size native state again");
-        Document reread;
-        CHECK(reread.loadNative(matchedPath) && reread.activeLayer()->retainsOffCanvasPixels() == retained,
-              "matched-size native save/load preserves retained or ordinary state");
-    }
+    current.activeLayer()->setOffset(QPoint(-50,-40));
+    const QString path = directory.path()+"/current.psd";
+    CHECK(current.save(path), "write a layer reaching past the canvas");
+    Document loaded;
+    CHECK(loaded.load(path), "reopen it");
+    CHECK(loaded.activeLayer()->retainsOffCanvasPixels(), "reopened layer still retains off-canvas pixels");
+    CHECK(loaded.flatten() == current.flatten(), "visible pixels identical");
+    // Moving it back reveals the pixels that were outside the canvas.
+    CanvasWidget canvas;
+    canvas.setDocument(&loaded);
+    MoveTool move;
+    strokeTool(&move,canvas,QPointF(300,200),QPointF(350,240));
+    const QPoint shift(50,40);
+    const QImage pattern = retainedPattern();
+    const QPoint yellow = QPoint(25,25) + QPoint(-50,-40) + shift;   // image pixel (25,25)
+    CHECK(loaded.flatten().pixelColor(yellow) == QColor(Qt::yellow), "off-canvas pixels came back after Move");
+
+    Document untouched(23,17);
+    const QImage before = untouched.flatten();
+    const QString unknown = directory.path()+"/unknown.psd";
+    { QFile f(unknown); f.open(QIODevice::WriteOnly); f.write("8BPS\0\x07garbage"); }
+    CHECK(!untouched.load(unknown), "reject a damaged or unknown-version PSD");
+    CHECK(untouched.size() == QSize(23,17) && untouched.flatten() == before,
+          "a file that cannot be read does not replace the live document");
 }
 
 static void retainedMergeRegression() {
@@ -911,7 +810,7 @@ int main(int argc, char **argv) {
     retainedResizeRegression();
     resizeStampCharacterization();
     ordinaryMoveAuthorityRegression();
-    nativeRetentionCompatibility();
+    savedRetentionCompatibility();
     retainedMergeRegression();
     pdnImportRegression();
     compositorRegression();
@@ -2348,9 +2247,10 @@ int main(int argc, char **argv) {
         CHECK(c.isValid() && c.alpha() >= 0 && c.alpha() <= 255, "produces a valid pixel (no NaN cast)");
     }
 
-    SECTION("Native .psw format preserves layers, opacity and blend mode");
+    SECTION("Photoshop .psd preserves layers, opacity and blend mode");
     {
-        const QString path = QDir::tempPath() + "/pwm_roundtrip.psw";
+        QTemporaryDir psdDir;
+        const QString path = psdDir.path() + "/pwm_roundtrip.psd";
         {
             Document doc(48, 32);
             doc.activeLayer()->clear(QColor(10, 20, 30));
@@ -2360,11 +2260,11 @@ int main(int argc, char **argv) {
             doc.layerAt(top)->setOpacity(0.5f);
             doc.layerAt(top)->setBlendMode(BlendMode::Multiply);
             doc.layerAt(top)->setVisible(false);
-            CHECK(doc.saveNative(path), "saveNative succeeds");
+            CHECK(doc.save(path), "saving a .psd succeeds");
         }
         {
             Document doc(1, 1);
-            CHECK(doc.loadNative(path), "loadNative succeeds");
+            CHECK(doc.load(path), "opening the .psd succeeds");
             CHECK(doc.width() == 48 && doc.height() == 32, "dimensions restored");
             CHECK(doc.layerCount() == 2, "both layers restored");
             CHECK(doc.layerAt(0)->name() == "Fond", "layer 0 name restored");
