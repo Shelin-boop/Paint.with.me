@@ -27,7 +27,11 @@ Claude sessions and milestones, not in hours of human work.
   through wet paint) and a blur brush. Paint.NET has neither. A perspective
   tool exists since 2026-11-05.
 - Owner's pen display: XPPen Artist 15.6 Pro V2 on Kubuntu; pen pressure
-  reaches the app (confirmed by the owner 2026-11-05).
+  reaches the app (confirmed by the owner 2026-11-05, under XWayland).
+- Window system: XWayland by default in a Wayland session; native Wayland is
+  opt-in (Settings > User Interface > Window System, setting
+  `display/nativeWayland`, applies at the next start). `QT_QPA_PLATFORM` or
+  `-platform` always win.
 - Clean up code that is badly structured, as part of the work.
 - Default panel layout (owner's choice, 2026-11-05): Tools above Colors on the
   left, History above Layers on the right. The Tools panel widens to 3 or 4
@@ -37,16 +41,18 @@ Claude sessions and milestones, not in hours of human work.
 
 1. Rebrand and English-only UI. Done 2026-11-05.
 2. AppImage for Kubuntu: start-menu entry on first launch, current Qt,
-   release on GitHub. Done 2026-11-05. Native Wayland waits for step 6.
+   release on GitHub. Done 2026-11-05.
 3. Speed with large images (owner's test case: 5000 x 5000 px, 16 layers,
    600 dpi) and panels docked inside the main window. Done 2026-11-05.
 4. File formats: remove `.psw`; layered PSD read and write; autosave keeps
    layers. Done 2026-11-05.
 5. Undo rework: memory budget instead of 100 steps. Done 2026-11-05. Also
    done on the owner's request: PDF export and a perspective tool.
-6. Code cleanup, especially `src/mainwindow.cpp` and a tool registry. Then
-   ship Qt's Wayland plugin in the AppImage, test on Plasma and drop the
-   XWayland preference in `src/main.cpp`.
+6. Code cleanup and native Wayland. Done 2026-11-05: tool registry,
+   `mainwindow.cpp` split by job, Qt's Wayland plugins in the AppImage, native
+   Wayland as an opt-in setting. Open: the owner tries native Wayland on
+   Plasma; if it works (pen pressure, floating panels, dialogs), make it the
+   default in `DisplayServer::platformFor` (`src/displayserver.cpp`).
 7. Smudge tool and blur brush.
 
 ## Rules
@@ -117,7 +123,14 @@ PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_panel_tests
 |---|---|
 | App names, IDs, version macro | `src/appinfo.h` |
 | AppImage menu entry (install, update, remove) | `src/desktopintegration.cpp` |
-| Main window, menus, tool registration, shortcuts | `src/mainwindow.cpp` (about 3,800 lines) |
+| X11 / XWayland / native Wayland choice at startup | `src/displayserver.cpp`, called from `src/main.cpp` |
+| Main window: construction, settings, tool switching, title, events | `src/mainwindow.cpp` |
+| Main window: docks, Tools panel, default layout, floating panels, status bar | `src/mainwindow_panels.cpp` |
+| Main window: menus, shortcuts, toolbar, perspective commands | `src/mainwindow_menus.cpp` |
+| Main window: open, save, PDF export, autosave, recovery, drag and drop | `src/mainwindow_files.cpp` |
+| Main window: edit, image and layer commands | `src/mainwindow_edit.cpp` |
+| Main window: effects and adjustments (one numeric `switch`) | `src/mainwindow_effects.cpp` |
+| Every tool's key, name, shortcut, panel slot, tooltip, hint; creating tools | `src/tools/toolregistry.cpp` |
 | Document, layers, selection, undo history | `src/core/` |
 | Undo memory budget (steps report their images; shared pixels count once) | `HistoryManager::memoryUsed`, `trim` in `src/core/history.cpp` |
 | PDF export (own writer) and its dialog | `src/core/pdfexport.cpp`, `src/dialogs/pdfexportdialog.cpp` |
@@ -141,17 +154,18 @@ PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_panel_tests
 | Plugin C ABI (kept compatible with paint.software) | `src/plugins/plugin_api.h` |
 | Tests (custom harness, not QTest) | `tests/` |
 
-### Adding a tool touches all of these (until the cleanup adds a registry)
+### Adding a tool
 
 1. `ToolType` enum in `src/tools/tool.h`.
 2. New `src/tools/<name>tool.{h,cpp}`, listed in `TOOLS_SOURCES` in CMakeLists.txt.
-3. `src/mainwindow.cpp`: `m_tools.push_back(...)`, `addToolShortcut(...)`, the
-   status-bar hint, the tool-grid entry (list in `createToolsPanel`) and the
-   per-tool `switch` statements.
-4. `src/tools/tool.cpp`: a stable name in `kToolKeys` (used by brush presets).
-5. `src/toolicons.cpp`: draw the icon.
-6. `src/panels/tooloptionspanel.cpp`: name list and which options are shown.
-7. A test in `tests/`.
+3. `src/tools/toolregistry.cpp`: an entry in `toolInfos()` (stable key for
+   settings and presets, never changed later; name; shortcut key; slot in the
+   Tools panel; tooltip; status-bar hint) and a line in `createTool()`. The main
+   window, the Tools panel, the tool list, shortcuts and presets read from it.
+4. `src/toolicons.cpp`: draw the icon (`forTool`).
+5. `src/panels/tooloptionspanel.cpp`: which options are shown (`updateFromTool`).
+6. If strokes should follow perspective guides: `CanvasWidget::startsPerspectiveSnap`.
+7. A test in `tests/` (`tests/test_toolspanel.cpp` checks the registry is complete).
 
 A tool that changes pixels while the mouse moves reports the changed document
 area with `canvas.updateCanvasRegion(rect)` and returns `true` from
@@ -193,6 +207,23 @@ mouse move. `tests/test_brush.cpp` compares such tools against a full redraw.
   of step must implement it, or its memory is invisible to the budget.
 - The budget is enforced when a step is pushed and when it is changed in
   Settings; the latest step is always kept.
+
+### Wayland
+
+- The AppImage ships Qt's Wayland plugins (`EXTRA_PLATFORM_PLUGINS` from the
+  Qt in use, plus `waylandcompositor` in `EXTRA_QT_MODULES` for the plugin
+  folders). Its smoke test starts it in a headless Weston with
+  `QT_QPA_PLATFORM=wayland`; CI runs seven suites natively there too.
+- On Wayland the app cannot place its own windows: "Keep floating panels
+  attached" is disabled, and `repositionFloatingUtilityWindows` does nothing.
+- Testing natively in the sandbox: `weston --backend=headless-backend.so
+  --socket=wl-test`, then `WAYLAND_DISPLAY=$XDG_RUNTIME_DIR/wl-test
+  QT_QPA_PLATFORM=wayland build/<test>`. Closer to Plasma: KWin 5.27
+  (`apt-get install kwin-wayland`), copied out of `/usr/bin` under the name
+  `kwin_wayland` (the original has file capabilities the sandbox refuses), run
+  as `dbus-run-session -- ./kwin_wayland --virtual --socket kwin-test`. The
+  paste suite (keyboard focus in dialogs that were never activated) and the
+  panel suites (window placement) are expected to fail there.
 
 ### Settings
 
