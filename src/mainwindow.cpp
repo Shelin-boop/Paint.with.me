@@ -11,6 +11,8 @@
 #include "panels/historypanel.h"
 #include "panels/tooloptionspanel.h"
 #include "panels/imagelistbar.h"
+#include "panels/toolspanel.h"
+#include "tools/brushpreset.h"
 #include "dialogs/newdocumentdialog.h"
 #include "dialogs/resizedialog.h"
 #include "dialogs/canvassizedialog.h"
@@ -91,6 +93,8 @@
 #include <QMenuBar>
 #include <QToolBar>
 #include <QDockWidget>
+#include <QInputDialog>
+#include <QLineEdit>
 #include <QFileDialog>
 #include <QMessageBox>
 #include <QCloseEvent>
@@ -176,6 +180,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     createToolsPanel();
     createDockPanels();
     createMenus();
+    // Every menu command can be pinned to the Tools panel.
+    m_toolsPanel->setCommands(ToolsPanel::commandsFromMenuBar(menuBar(), {m_recentFilesMenu}));
     createToolBar();
     createStatusBar();
     createKeyboardShortcuts();
@@ -698,18 +704,6 @@ void MainWindow::runPluginEffect(PluginEffect *effect) {
         [effect](const QImage &image) { return effect->apply(image); }, effect->name());
 }
 
-void MainWindow::rebuildToolsPaletteTooltips() {
-    for (QToolButton *btn : m_toolButtons) {
-        if (!btn) continue;
-        QString tip = "<b>" + (btn->property("toolName").toString()) + "</b>";
-        const QString key = btn->property("toolKey").toString();
-        if (!key.isEmpty()) tip += " (" + key + ")";
-        const QString desc = toolDescription(static_cast<ToolType>(btn->property("toolTypeInt").toInt()));
-        if (!desc.isEmpty()) tip += "<br>" + (desc);
-        btn->setToolTip(tip);
-    }
-}
-
 void MainWindow::showShortcutsHelp() {
     const QString html = QString(
         "<h3>%1</h3>"
@@ -760,6 +754,7 @@ void MainWindow::applyTheme() {
     // The reset/swap icons are painted pixmaps, so a stylesheet can't recolour
     // them: redraw them for the new scheme.
     if (m_colorsPanel) m_colorsPanel->refreshIcons();
+    if (m_toolsPanel) m_toolsPanel->refreshIcons();
 }
 
 void MainWindow::showSettingsDialog() {
@@ -909,25 +904,24 @@ void MainWindow::addAppMenuEntryAction(QMenu *helpMenu) {
 
 void MainWindow::resetUtilityWindow(QDockWidget *dock) {
     // Put one panel back where it is by default: docked in the main window,
-    // Tools on the left, History/Layers/Colors in that order on the right.
+    // Tools above Colors on the left, History above Layers on the right.
     if (!dock) return;
     QScopedValueRollback<bool> guard(m_restoringState, true);
     dock->show();
     if (dock->isFloating()) dock->setFloating(false);
-    if (dock == m_toolsDock) {
-        layoutToolsPalette(false);
-        addDockWidget(Qt::LeftDockWidgetArea, dock);
-        return;
-    }
-    // Rebuild the right column in the default order, from the panels already
+    if (dock == m_toolsDock) layoutToolsPalette(false);
+    const bool left = (dock == m_toolsDock || dock == m_colorsDock);
+    const Qt::DockWidgetArea area = left ? Qt::LeftDockWidgetArea : Qt::RightDockWidgetArea;
+    const QList<QDockWidget *> order = left ? QList<QDockWidget *>{m_toolsDock, m_colorsDock}
+                                            : QList<QDockWidget *>{m_historyDock, m_layersDock};
+    // Rebuild that column in the default order, from the panels already
     // docked there plus this one.
     QList<QDockWidget *> column;
-    for (QDockWidget *d : {m_historyDock, m_layersDock, m_colorsDock}) {
-        if (d == dock || (d && d->isVisible() && !d->isFloating()
-                          && dockWidgetArea(d) == Qt::RightDockWidgetArea))
+    for (QDockWidget *d : order) {
+        if (d == dock || (d && d->isVisible() && !d->isFloating() && dockWidgetArea(d) == area))
             column.append(d);
     }
-    addDockWidget(Qt::RightDockWidgetArea, column.first());
+    addDockWidget(area, column.first());
     for (int i = 1; i < column.size(); ++i)
         splitDockWidget(column.at(i - 1), column.at(i), Qt::Vertical);
 }
@@ -1271,11 +1265,15 @@ void MainWindow::populateFixedToolbar() {
     }
 }
 
-// Default width of the right panel column (History, Layers, Colors).
+// Default panel columns, as the owner arranged them (2026-11-05): Tools above
+// Colors on the left, History above Layers on the right. Widths in px; the
+// heights are proportions within each column.
+static constexpr int kLeftPanelWidth = 204;
 static constexpr int kRightPanelWidth = 262;
+static constexpr int kToolsHeight = 340, kColorsHeight = 530;
+static constexpr int kHistoryHeight = 310, kLayersHeight = 550;
 
 // One-line explanation of what each tool does, shown in its tooltip.
-// (Forward-declared near the top so rebuildToolsPaletteTooltips can use it.)
 QString toolDescription(ToolType t) {
     switch (t) {
     case ToolType::RectSelection:   return "Selects a rectangular area to edit.";
@@ -1302,19 +1300,8 @@ QString toolDescription(ToolType t) {
 }
 
 void MainWindow::createToolsPanel() {
-    // Tools panel: 2 columns like paint.net
-    // Col 0 (left):  RectSel, Lasso, EllipseSel, MagicWand, Fill, Brush, Pencil, CloneStamp, Text, Shape
-    // Col 1 (right): Move, MoveSelection, Zoom, Pan, Gradient, Eraser, ColorPicker, Recolor, Line
     m_toolActionGroup = new QActionGroup(this);
     m_toolActionGroup->setExclusive(true);
-
-    struct ToolDef {
-        QString name;
-        QString shortcut;
-        ToolType type;
-        int row;
-        int col;
-    };
 
     // paint.net's Tools window, 2 columns x 10 rows — positions taken from the
     // official Tools window (paint.net/doc/latest/images/tools/toolswindow.png):
@@ -1323,103 +1310,92 @@ void MainWindow::createToolsPanel() {
     // the remaining groups sit in pairs on rows 4-9.
     // The list order below is paint.net's documented tool order (1..19) — it is what
     // the single-row horizontal palette follows.
-    const QVector<ToolDef> toolDefs = {
+    QVector<ToolsPanel::ToolEntry> tools = {
         // Selection tools -> left column
-        {"Rectangle Select",              "S",  ToolType::RectSelection,    0, 0},
-        {"Lasso Select",               "S",  ToolType::LassoSelection,   1, 0},
-        {"Ellipse Select",                "S",  ToolType::EllipseSelection, 2, 0},
-        {"Magic Wand",                 "S",  ToolType::MagicWand,        3, 0},
+        {"Rectangle Select",     "S", ToolType::RectSelection,    0, 0, {}},
+        {"Lasso Select",         "S", ToolType::LassoSelection,   1, 0, {}},
+        {"Ellipse Select",       "S", ToolType::EllipseSelection, 2, 0, {}},
+        {"Magic Wand",           "S", ToolType::MagicWand,        3, 0, {}},
         // Move + view tools -> right column
-        {"Move Selected Pixels", "M",  ToolType::Move,             0, 1},
-        {"Move Selection",            "M",  ToolType::MoveSelection,    1, 1},
-        {"Zoom",                     "Z",  ToolType::Zoom,             2, 1},
-        {"Pan",         "H",  ToolType::Pan,              3, 1},
+        {"Move Selected Pixels", "M", ToolType::Move,             0, 1, {}},
+        {"Move Selection",       "M", ToolType::MoveSelection,    1, 1, {}},
+        {"Zoom",                 "Z", ToolType::Zoom,             2, 1, {}},
+        {"Pan",                  "H", ToolType::Pan,              3, 1, {}},
         // Fill tools
-        {"Paint Bucket",                  "F",  ToolType::Fill,             4, 0},
-        {"Gradient",                          "G",  ToolType::Gradient,         4, 1},
+        {"Paint Bucket",         "F", ToolType::Fill,             4, 0, {}},
+        {"Gradient",             "G", ToolType::Gradient,         4, 1, {}},
         // Drawing tools
-        {"Paintbrush",                          "B",  ToolType::Brush,            5, 0},
-        {"Eraser",                            "E",  ToolType::Eraser,           5, 1},
-        {"Pencil",                           "P",  ToolType::Pencil,           6, 0},
+        {"Paintbrush",           "B", ToolType::Brush,            5, 0, {}},
+        {"Eraser",               "E", ToolType::Eraser,           5, 1, {}},
+        {"Pencil",               "P", ToolType::Pencil,           6, 0, {}},
         // Photo tools
-        {"Color Picker",             "K",  ToolType::ColorPicker,      6, 1},
-        {"Clone Stamp",                "L",  ToolType::CloneStamp,       7, 0},
-        {"Recolor",                      "R",  ToolType::Recolor,          7, 1},
+        {"Color Picker",         "K", ToolType::ColorPicker,      6, 1, {}},
+        {"Clone Stamp",          "L", ToolType::CloneStamp,       7, 0, {}},
+        {"Recolor",              "R", ToolType::Recolor,          7, 1, {}},
         // Text and shape tools
-        {"Text",                            "T",  ToolType::Text,             8, 0},
-        {"Line / Curve",                   "O",  ToolType::Line,             8, 1},
-        {"Shapes",                           "O",  ToolType::Shape,            9, 0},
+        {"Text",                 "T", ToolType::Text,             8, 0, {}},
+        {"Line / Curve",         "O", ToolType::Line,             8, 1, {}},
+        {"Shapes",               "O", ToolType::Shape,            9, 0, {}},
     };
+    for (auto &t : tools) t.description = toolDescription(t.type);
 
-    auto *toolsWidget = new QWidget;
-    toolsWidget->setObjectName("ToolsPalette");
-    auto *grid = new QGridLayout(toolsWidget);
-    grid->setSpacing(0);
-    grid->setContentsMargins(1, 2, 1, 2);
-
-    for (const auto &td : toolDefs) {
-        auto *btn = new QToolButton;
-        btn->setIcon(ToolIcons::forTool(td.type));
-        btn->setIconSize(QSize(20, 20));
-        // Fill the column width so the two columns cover the whole dock (the
-        // title bar makes the dock a little wider than 2x28 — letting the
-        // buttons expand removes the empty strip on the right).
-        btn->setFixedHeight(28);
-        btn->setMinimumWidth(28);
-        btn->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
-        btn->setCheckable(true);
-        // Rich tooltip: bold name + shortcut, then a one-line description.
-        QString tip = "<b>" + (td.name) + "</b>";
-        if (!td.shortcut.isEmpty()) tip += " (" + td.shortcut + ")";
-        const QString desc = toolDescription(td.type);
-        if (!desc.isEmpty()) tip += "<br>" + (desc);
-        btn->setToolTip(tip);
-        // Remember the untranslated name + key so tooltips can be rebuilt on a
-        // language change.
-        btn->setProperty("toolName", td.name);
-        btn->setProperty("toolKey", td.shortcut);
-        btn->setProperty("toolTypeInt", static_cast<int>(td.type));
-        // paint.net's grid slot, used by the vertical (2-column) palette layout.
-        btn->setProperty("pdnRow", td.row);
-        btn->setProperty("pdnCol", td.col);
-        m_toolButtons.append(btn);
-        // NB: no btn->setShortcut() here — the single-key shortcuts are owned by
-        // the global actions in createKeyboardShortcuts(); binding them twice
+    m_toolsPanel = new ToolsPanel(tools);
+    for (const auto &t : tools) {
+        QToolButton *btn = m_toolsPanel->toolButton(t.type);
+        // NB: no btn->setShortcut() — the single-key shortcuts are owned by the
+        // global actions in createKeyboardShortcuts(); binding them twice
         // caused "Ambiguous shortcut overload" and neither would fire.
-
-        ToolType type = td.type;
-        connect(btn, &QToolButton::clicked, this, [this, type]() {
-            selectTool(type);
-        });
-
-        auto *action = new QAction(td.name, this);
+        auto *action = new QAction(t.name, this);
         action->setCheckable(true);
         m_toolActionGroup->addAction(action);
-        m_toolActions.insert(type, action);
+        m_toolActions.insert(t.type, action);
         connect(action, &QAction::toggled, btn, &QToolButton::setChecked);
         connect(btn, &QToolButton::clicked, action, [action]() { action->setChecked(true); });
-
-        grid->addWidget(btn, td.row, td.col);
     }
-    m_toolsGrid = grid;
-    m_toolsPaletteWidget = toolsWidget;
-    layoutToolsPalette(false);   // vertical (2 columns) by default
+    connect(m_toolsPanel, &ToolsPanel::toolClicked, this, &MainWindow::selectTool);
+
+    // Brush presets: the panel keeps them, the main window knows the tools.
+    connect(m_toolsPanel, &ToolsPanel::presetActivated, this, [this](const BrushPreset &preset) {
+        selectTool(preset.tool);
+        if (!m_currentTool || m_currentTool->type() != preset.tool) return;
+        preset.applyTo(*m_currentTool);
+        if (m_toolOptionsPanel) m_toolOptionsPanel->setTool(m_currentTool);   // show the values
+        if (m_canvas) m_canvas->update();
+        statusBar()->showMessage(QStringLiteral("Brush preset: %1").arg(preset.name), 4000);
+    });
+    connect(m_toolsPanel, &ToolsPanel::savePresetRequested, this, [this]() {
+        if (!m_currentTool || !BrushPreset::supports(m_currentTool->type())) return;
+        bool ok = false;
+        const QString name = QInputDialog::getText(
+            this, QStringLiteral("Save Brush Preset"), QStringLiteral("Name:"), QLineEdit::Normal,
+            BrushPreset::defaultName(*m_currentTool), &ok).trimmed();
+        if (!ok || name.isEmpty()) return;
+        m_toolsPanel->addPreset(BrushPreset::capture(*m_currentTool, name));
+    });
+    connect(m_toolsPanel, &ToolsPanel::updatePresetRequested, this, [this](const QString &id) {
+        const BrushPreset *old = m_toolsPanel->preset(id);
+        if (!old || !m_currentTool || !BrushPreset::supports(m_currentTool->type())) return;
+        BrushPreset updated = BrushPreset::capture(*m_currentTool, old->name);
+        updated.id = id;
+        m_toolsPanel->updatePreset(updated);
+    });
 
     m_toolsDock = new QDockWidget(QStringLiteral("Tools"), this);
     m_toolsDock->setObjectName("ToolsDock");
-    m_toolsDock->setWidget(toolsWidget);
+    m_toolsDock->setWidget(m_toolsPanel);
     m_toolsDock->setAllowedAreas(Qt::AllDockWidgetAreas);
     m_toolsDock->setFeatures(QDockWidget::DockWidgetClosable | QDockWidget::DockWidgetMovable | QDockWidget::DockWidgetFloatable);
     addDockWidget(Qt::LeftDockWidgetArea, m_toolsDock);
-    // When docked to the top or bottom, lay the tools out horizontally (2 rows,
-    // left-to-right); otherwise keep the vertical 2-column palette.
+    layoutToolsPalette(false);   // vertical by default
+    // When docked to the top or bottom, lay the tools out in one row;
+    // otherwise keep the vertical columns.
     connect(m_toolsDock, &QDockWidget::dockLocationChanged, this, [this](Qt::DockWidgetArea area) {
         const bool horizontal = (area == Qt::TopDockWidgetArea || area == Qt::BottomDockWidgetArea);
         layoutToolsPalette(horizontal);
         // Setting the widget's max height isn't enough — force the dock itself to
         // collapse to the single-row height so there's no empty band above/below.
         if (horizontal)
-            resizeDocks({m_toolsDock}, {30}, Qt::Vertical);
+            resizeDocks({m_toolsDock}, {ToolsPanel::kButtonHeight + 2}, Qt::Vertical);
         normalizeDockLayout(m_toolsDock);
     });
     connect(m_toolsDock, &QDockWidget::topLevelChanged, this, [this](bool floating) {
@@ -1437,63 +1413,13 @@ int MainWindow::toolsColumnWidth() const {
 }
 
 void MainWindow::layoutToolsPalette(bool horizontal) {
-    if (!m_toolsGrid || !m_toolsPaletteWidget) return;
-
-    // Detach all buttons from the grid.
-    for (QToolButton *btn : m_toolButtons)
-        if (btn) m_toolsGrid->removeWidget(btn);
-    // Clear old stretches.
-    for (int i = 0; i < 20; ++i) {
-        m_toolsGrid->setRowStretch(i, 0);
-        m_toolsGrid->setColumnStretch(i, 0);
-    }
-
-    const int n = m_toolButtons.size();
-    int maxRow = 0;
-    for (int i = 0; i < n; ++i) {
-        int row, col;
-        if (horizontal) {
-            row = 0; col = i;                 // single row, left-to-right
-        } else {
-            // Exact paint.net slot for this tool (selection tools down the left
-            // column, move/view down the right), not a plain row-by-row fill.
-            row = m_toolButtons[i]->property("pdnRow").toInt();
-            col = m_toolButtons[i]->property("pdnCol").toInt();
-            maxRow = qMax(maxRow, row);
-        }
-        m_toolsGrid->addWidget(m_toolButtons[i], row, col);
-    }
-
-    if (horizontal) {
-        // One row hugging the top: kill the vertical margins and pin the height to
-        // the icon row so the dock has no empty band above/below.
-        m_toolsGrid->setContentsMargins(1, 0, 1, 0);
-        const int rowH = 28;   // button height
-        m_toolsPaletteWidget->setMinimumWidth(0);
-        m_toolsPaletteWidget->setMaximumWidth(QWIDGETSIZE_MAX);
-        m_toolsPaletteWidget->setMinimumHeight(rowH);
-        m_toolsPaletteWidget->setMaximumHeight(rowH);   // exact height, no slack
-        // Clear the sticky tall minimum normalizeDockLayout imposes for the vertical
-        // palette — otherwise the dock can't shrink to the single row.
-        if (m_toolsDock) m_toolsDock->setMinimumSize(0, 0);
-        for (int c = 0; c < n; ++c) m_toolsGrid->setColumnStretch(c, 0);
-        m_toolsGrid->setColumnStretch(n, 1);   // trailing column takes the slack
-        m_toolsGrid->setRowStretch(0, 0);
-    } else {
-        // Two columns; absorb slack at the bottom.
-        m_toolsGrid->setContentsMargins(1, 2, 1, 2);
-        m_toolsPaletteWidget->setMinimumHeight(0);
-        m_toolsPaletteWidget->setMaximumHeight(QWIDGETSIZE_MAX);
-        m_toolsPaletteWidget->setMinimumWidth(28 * 2 + 2);
-        m_toolsPaletteWidget->setMaximumWidth(200);
-        if (m_toolsDock) {
-            m_toolsDock->setMinimumSize(0, 0);
-            m_toolsDock->setMinimumWidth(toolsColumnWidth());
-        }
-        m_toolsGrid->setColumnStretch(0, 1);
-        m_toolsGrid->setColumnStretch(1, 1);
-        m_toolsGrid->setRowStretch(maxRow + 1, 1);   // slack below the last tool row
-    }
+    if (!m_toolsPanel) return;
+    m_toolsPanel->setHorizontal(horizontal);
+    if (!m_toolsDock) return;
+    // Clear the sticky tall minimum normalizeDockLayout imposes for the
+    // vertical palette — otherwise the dock can't shrink to the single row.
+    m_toolsDock->setMinimumSize(0, 0);
+    if (!horizontal) m_toolsDock->setMinimumWidth(toolsColumnWidth());
 }
 
 void MainWindow::createDockPanels() {
@@ -1553,8 +1479,8 @@ void MainWindow::createDockPanels() {
         normalizeDockLayout(m_layersDock);
     });
 
-    // The panels live inside the main window by default (Tools on the left;
-    // History, Layers and Colors stacked on the right). Each can still be
+    // The panels live inside the main window by default (Tools above Colors on
+    // the left, History above Layers on the right). Each can still be
     // dragged to another side, tabbed with another panel, resized, hidden
     // (F5-F8) or torn off as a floating window; Ctrl+Shift+F5-F8 or
     // View > Reset Panel Layout puts them back.
@@ -1570,11 +1496,12 @@ void MainWindow::applyDefaultPanelLayout() {
     }
     layoutToolsPalette(false);
     addDockWidget(Qt::LeftDockWidgetArea, m_toolsDock);
+    splitDockWidget(m_toolsDock, m_colorsDock, Qt::Vertical);
     addDockWidget(Qt::RightDockWidgetArea, m_historyDock);
     splitDockWidget(m_historyDock, m_layersDock, Qt::Vertical);
-    splitDockWidget(m_layersDock, m_colorsDock, Qt::Vertical);
-    resizeDocks({m_historyDock}, {kRightPanelWidth}, Qt::Horizontal);
-    resizeDocks({m_historyDock, m_layersDock, m_colorsDock}, {190, 300, 330}, Qt::Vertical);
+    resizeDocks({m_toolsDock, m_historyDock}, {kLeftPanelWidth, kRightPanelWidth}, Qt::Horizontal);
+    resizeDocks({m_toolsDock, m_colorsDock}, {kToolsHeight, kColorsHeight}, Qt::Vertical);
+    resizeDocks({m_historyDock, m_layersDock}, {kHistoryHeight, kLayersHeight}, Qt::Vertical);
 }
 
 void MainWindow::createStatusBar() {
@@ -2668,6 +2595,7 @@ void MainWindow::selectTool(ToolType type) {
             // a keyboard shortcut or tool-group cycling (not just a button click).
             if (auto *action = m_toolActions.value(type, nullptr))
                 action->setChecked(true);
+            if (m_toolsPanel) m_toolsPanel->setCurrentTool(type);
 
             // Update help text based on tool type
             if (m_helpTextLabel) {

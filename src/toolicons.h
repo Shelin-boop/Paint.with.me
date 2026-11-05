@@ -25,4 +25,10 @@ namespace ToolIcons {
     QIcon colorsWindow();
     QIcon settings();
     QIcon help();
+    // Tools panel shortcuts: a pinned menu command (initials on a tile coloured
+    // by its menu), a brush preset (tool icon plus its width) and the "+" slot.
+    QString commandInitials(const QString &label);
+    QIcon command(const QString &label, const QString &category);
+    QIcon brushPreset(ToolType type, double size);
+    QIcon addSlot();
 }

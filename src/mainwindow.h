@@ -177,9 +177,9 @@ private:
     void positionUtilityWindow(QDockWidget *dock, bool resetSize = false);
     void scheduleUtilityWindowFollow();
     void populateFixedToolbar();
-    void rebuildToolsPaletteTooltips();
     // Help menu item that adds or removes the AppImage's application menu entry.
     void addAppMenuEntryAction(QMenu *helpMenu);
+    // Tools in one row (docked top or bottom) or in columns.
     void layoutToolsPalette(bool horizontal);
     // Applies the current colour scheme (light / dark / follow-OS) everywhere.
     void applyTheme();
@@ -218,9 +218,7 @@ private:
     Tool *m_currentTool = nullptr;
     QActionGroup *m_toolActionGroup = nullptr;
     QMap<ToolType, QAction*> m_toolActions;
-    QVector<class QToolButton*> m_toolButtons;
-    class QGridLayout *m_toolsGrid = nullptr;
-    QWidget *m_toolsPaletteWidget = nullptr;
+    class ToolsPanel *m_toolsPanel = nullptr;   // the Tools dock's contents
 
     // Panels
     LayersPanel *m_layersPanel = nullptr;
