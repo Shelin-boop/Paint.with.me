@@ -1,46 +1,75 @@
 name: AppImage
 
-# Builds a portable AppImage that runs on any Linux distribution — download,
-# chmod +x, run. Uploaded as a workflow artifact (releases come in a later step).
+# Builds a portable AppImage: download, make executable, run. On its first
+# start it adds itself to the application menu.
+#
+#   - Version tag (v*): creates a GitHub Release with the AppImage.
+#   - Manual run (Actions tab, "Run workflow"): replaces the rolling
+#     "continuous" pre-release, so there is always one current download.
 on:
-  # Manual for now; automatic builds on every push come with the AppImage rework.
+  push:
+    tags: ['v*']
   workflow_dispatch:
+    inputs:
+      qt_version:
+        description: 'Qt version (empty = newest Qt 6 that aqtinstall offers)'
+        required: false
+        default: ''
 
 permissions:
-  contents: read
+  contents: write   # create the release and upload the AppImage
+
+concurrency:
+  group: appimage-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  APP_ID: io.github.shelin_boop.PaintWithMe
+  # Run the build tools (themselves AppImages) without needing FUSE.
+  APPIMAGE_EXTRACT_AND_RUN: 1
 
 jobs:
   appimage:
-    # Oldest still-supported Ubuntu LTS, so the resulting AppImage doesn't
-    # link against a glibc newer than what most users' distros ship
-    # (see AppImage/appimage.github.io#6449 — glibc 2.38 from ubuntu-latest
-    # made the AppImage refuse to start on older systems).
+    # Oldest Ubuntu LTS runner still offered, so the AppImage does not need a
+    # newer C library (glibc) than most users' distributions have.
     runs-on: ubuntu-22.04
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
-          fetch-depth: 0   # full history so the version (commit count) is real
+          fetch-depth: 0   # full history, so the version (commit count) is real
 
       - name: Install build dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
-            build-essential cmake ninja-build libgl1-mesa-dev zlib1g-dev \
-            libfuse2 file wget desktop-file-utils python3-pip \
-            libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
-            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-render0 \
-            libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 \
-            libxcb-xinerama0 libxcb-xkb1 libxcb-util1
+            build-essential ninja-build libgl1-mesa-dev zlib1g-dev \
+            file wget desktop-file-utils python3-pip xvfb \
+            libfontconfig1 libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 \
+            libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
+            libxcb-render-util0 libxcb-render0 libxcb-shape0 libxcb-shm0 \
+            libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libxcb-util1
           pip install aqtinstall
+          cmake --version
 
-      - name: Install Qt 6 (aqtinstall — ubuntu-22.04's own Qt6 package is too old)
+      - name: Install Qt
         env:
-          QT_VERSION: 6.5.3
+          QT_VERSION: ${{ inputs.qt_version }}
         run: |
-          aqt install-qt linux desktop "$QT_VERSION" gcc_64 -m qtimageformats -O "$GITHUB_WORKSPACE/Qt"
-          echo "$GITHUB_WORKSPACE/Qt/$QT_VERSION/gcc_64/bin" >> "$GITHUB_PATH"
-          echo "QT_ROOT=$GITHUB_WORKSPACE/Qt/$QT_VERSION/gcc_64" >> "$GITHUB_ENV"
+          if [ -z "$QT_VERSION" ]; then
+            QT_VERSION=$(aqt list-qt linux desktop | tr ' ' '\n' \
+              | grep -E '^6\.[0-9]+\.[0-9]+$' | sort -V | tail -1)
+          fi
+          ARCH=$(aqt list-qt linux desktop --arch "$QT_VERSION" | tr ' ' '\n' \
+            | grep -E '^(linux_gcc_64|gcc_64)$' | head -1)
+          echo "Qt $QT_VERSION, arch $ARCH"
+          aqt install-qt linux desktop "$QT_VERSION" "$ARCH" -m qtimageformats -O "$GITHUB_WORKSPACE/Qt"
+          QMAKE=$(find "$GITHUB_WORKSPACE/Qt/$QT_VERSION" -type f \( -name qmake6 -o -name qmake \) -path '*/bin/*' | head -1)
+          QT_ROOT=$(dirname "$(dirname "$QMAKE")")
+          echo "QT_VERSION=$QT_VERSION" >> "$GITHUB_ENV"
+          echo "QT_ROOT=$QT_ROOT" >> "$GITHUB_ENV"
+          echo "QMAKE=$QMAKE" >> "$GITHUB_ENV"
+          echo "$QT_ROOT/bin" >> "$GITHUB_PATH"
 
       - name: Build and install into an AppDir
         run: |
@@ -53,27 +82,105 @@ jobs:
           cmake --build build -j
           DESTDIR="$PWD/AppDir" cmake --install build
 
-      - name: Fetch linuxdeploy + Qt plugin
+      - name: Run tests against this Qt
+        env:
+          QT_QPA_PLATFORM: offscreen
+        run: |
+          cmake --build build -j --target pwm_tests pwm_integration_tests
+          export LD_LIBRARY_PATH="$QT_ROOT/lib:$LD_LIBRARY_PATH"
+          ./build/pwm_integration_tests
+          ./build/pwm_tests
+
+      - name: Bundle Qt into the AppDir
+        env:
+          EXTRA_QT_MODULES: printsupport
         run: |
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
           chmod +x linuxdeploy*.AppImage
-
-      - name: Build the AppImage
-        env:
-          QMAKE: ${{ env.QT_ROOT }}/bin/qmake6
-          EXTRA_QT_MODULES: printsupport
-          OUTPUT: Paint.with.me-${{ env.VER }}-x86_64.AppImage
-        run: |
           export LD_LIBRARY_PATH="$QT_ROOT/lib:$LD_LIBRARY_PATH"
           ./linuxdeploy-x86_64.AppImage --appdir AppDir \
-            --desktop-file AppDir/usr/share/applications/io.github.shelin_boop.PaintWithMe.desktop \
-            --icon-file AppDir/usr/share/icons/hicolor/256x256/apps/io.github.shelin_boop.PaintWithMe.png \
-            --plugin qt --output appimage
-          ls -1 *.AppImage
+            --desktop-file "AppDir/usr/share/applications/$APP_ID.desktop" \
+            --icon-file "AppDir/usr/share/icons/hicolor/256x256/apps/$APP_ID.png" \
+            --plugin qt
 
-      - name: Upload as a workflow artifact too
+      - name: Pack the AppImage (static runtime, no libfuse2 needed)
+        run: |
+          wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool-x86_64.AppImage
+          FILE="Paint.with.me-${VER}-x86_64.AppImage"
+          ./appimagetool-x86_64.AppImage AppDir "$FILE"
+          sha256sum "$FILE" > "$FILE.sha256"
+          echo "FILE=$FILE" >> "$GITHUB_ENV"
+
+      - name: Smoke test the AppImage
+        run: |
+          ./"$FILE" --appimage-extract-and-run --version
+          # Start it headless with an empty home and check that the menu entry appears.
+          export HOME="$RUNNER_TEMP/smoke-home" XDG_DATA_HOME="$RUNNER_TEMP/smoke-home/share"
+          mkdir -p "$HOME"
+          # A virtual X display: the AppImage ships the X11 display plugin, like users get it.
+          xvfb-run -a timeout 15 ./"$FILE" --appimage-extract-and-run || code=$?
+          # timeout's exit code 124 means it was still running: good.
+          [ "${code:-0}" = 124 ] || { echo "AppImage exited early with code ${code:-0}"; exit 1; }
+          test -f "$XDG_DATA_HOME/applications/$APP_ID.desktop"
+          grep -q "X-PaintWithMe-AppImage=true" "$XDG_DATA_HOME/applications/$APP_ID.desktop"
+          desktop-file-validate "$XDG_DATA_HOME/applications/$APP_ID.desktop"
+          test -f "$XDG_DATA_HOME/icons/hicolor/256x256/apps/$APP_ID.png"
+
+      - name: Summary
+        run: |
+          RUNTIME=$(head -c 2000000 "$FILE" > runtime.bin; file runtime.bin)
+          GLIBC=$(find AppDir -type f \( -name '*.so*' -o -perm -u+x \) -exec objdump -T {} + 2>/dev/null \
+            | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -Vu | tail -1)
+          {
+            echo "### $FILE"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Qt | $QT_VERSION |"
+            echo "| Needs glibc | ${GLIBC#GLIBC_} or newer |"
+            echo "| Size | $(du -h "$FILE" | cut -f1) |"
+            echo "| SHA-256 | \`$(cut -d' ' -f1 "$FILE.sha256")\` |"
+            echo "| Runtime | ${RUNTIME#runtime.bin: } |"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "GLIBC_MIN=${GLIBC#GLIBC_}" >> "$GITHUB_ENV"
+
+      - name: Upload as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: appimage
-          path: Paint.with.me-*-x86_64.AppImage
+          path: |
+            Paint.with.me-*-x86_64.AppImage
+            Paint.with.me-*-x86_64.AppImage.sha256
+
+      - name: Publish the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<EOF
+          **Paint.with.me $VER**, built from \`${GITHUB_SHA:0:7}\` with Qt $QT_VERSION.
+
+          How to use it:
+          1. Download \`$FILE\`.
+          2. Make it executable: right-click, Properties, Permissions, "Is executable",
+             or \`chmod +x $FILE\` in a terminal.
+          3. Start it. On the first start it adds itself to your application menu
+             (Help > Remove from application menu takes it out again).
+
+          Needs a 64-bit Linux with glibc $GLIBC_MIN or newer, for example
+          Ubuntu/Kubuntu 22.04 or newer. No other installation is needed.
+
+          Check the download: \`sha256sum -c $FILE.sha256\`
+          EOF
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            TAG="${GITHUB_REF#refs/tags/}"
+            gh release create "$TAG" "$FILE" "$FILE.sha256" \
+              --title "Paint.with.me $TAG" --notes-file notes.md --verify-tag
+          else
+            # Rolling pre-release: replace it, moving its tag to this commit.
+            gh release delete continuous --yes --cleanup-tag || true
+            gh release create continuous "$FILE" "$FILE.sha256" \
+              --prerelease --target "$GITHUB_SHA" \
+              --title "Latest build ($VER)" --notes-file notes.md
+          fi

@@ -17,7 +17,7 @@ helps a lot.
    ```bash
    cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
    cmake --build build
-   cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests
+   cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_integration_tests
    QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
    ```
 

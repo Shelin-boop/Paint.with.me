@@ -24,6 +24,19 @@ upstream repository. It only reads from it.
 
 ## What differs from upstream
 
+### 2026-11-05: AppImage with start-menu entry
+
+- When started from an AppImage, the app adds a menu entry and icons to
+  `~/.local/share` (src/desktopintegration.*), keeps it pointing at the
+  AppImage's current location, and offers Help > Add to / Remove from
+  application menu.
+- On Wayland it prefers XWayland (src/main.cpp), because its floating panels
+  need to position themselves. `QT_QPA_PLATFORM` overrides this.
+- `--version` prints the version and exits.
+- The AppImage workflow builds with the newest Qt 6 from aqtinstall, runs the
+  tests against it, packs with appimagetool's static runtime (no libfuse2),
+  smoke-tests the result and publishes a GitHub release.
+
 ### 2026-11-05: rebrand and English-only interface
 
 - New name, icon and IDs:
