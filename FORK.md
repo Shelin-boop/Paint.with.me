@@ -6,13 +6,13 @@
 |---|---|
 | Upstream project | [paint.software](https://github.com/Univers4craft/paint.software) by Univers4craft |
 | Fork point | upstream commit `db9691f`, 2026-10-31 (merge of PR #31, ".pdn import") |
-| Upstream licence | MIT |
+| Upstream license | MIT |
 | This fork | Paint.with.me, MIT |
 
 The full upstream history (108 commits) was merged into this repository on
 2026-11-05, so every upstream author stays visible in `git log`.
 
-## Licence obligations
+## License obligations
 
 - `LICENSE` keeps the upstream copyright line next to this fork's. Do not remove it.
 - Code copied from upstream stays under MIT with its original notice.
@@ -34,7 +34,7 @@ The application code is unchanged.
 
 - Executable name `paintdotnet` and test targets `paintdotnet_*` (CMakeLists.txt).
 - CMake project `PaintDali`, version macro `PAINTSW_VERSION`, QSettings
-  organisation `PaintDali` and application name `paint.software` (src/main.cpp).
+  organization `PaintDali` and application name `paint.software` (src/main.cpp).
 - App ID `io.github.univers4craft.PaintSoftware`, desktop file, AppStream
   metainfo, Flatpak manifests, AUR files, APT pages (packaging/).
 - Logo `src/resources/paintdali-logo.png`.

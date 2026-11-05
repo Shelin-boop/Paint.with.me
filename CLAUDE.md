@@ -13,12 +13,12 @@ Claude sessions and milestones, not in hours of human work.
 ## Decisions so far
 
 - Stack: C++17, Qt 6 Widgets, CMake. Keep it; do not port to another toolkit.
-- Distribution: public and meant for other people too, so licence and branding
+- Distribution: public and meant for other people too, so license and branding
   must be clean.
 - Delivery: an AppImage that adds a start-menu entry on first launch.
 - Target desktop of the owner: Kubuntu, KDE Plasma, Wayland session.
 - v1 must-haves: .pdn import, layers, brushes, basic tools including selection,
-  colour adjustments (brightness/contrast and similar), and a smudge tool
+  color adjustments (brightness/contrast and similar), and a smudge tool
   (German "verwischen"), which Paint.NET does not have. Confirm with the owner
   that "smudge" is what they mean before building it.
 - Name: Paint.with.me. The rebrand away from "paint.software" is still open
@@ -37,6 +37,8 @@ Claude sessions and milestones, not in hours of human work.
 - Keep `tests/data/pdn/LICENSE-pypdn` with the pypdn test files.
 - Publishing workflows are manual-only until the rebrand. Do not re-enable
   their push triggers without the owner's go-ahead.
+- Write documentation and English UI text in American English. Dates as
+  yyyy-mm-dd, times in 24-hour format, SI units.
 
 ## Build and test
 
@@ -63,7 +65,7 @@ zlib1g-dev cmake ninja-build`. Qt 6.4 is the minimum.
 | Tools (one class per tool, base `Tool`) | `src/tools/` |
 | Adjustments (base `Adjustment::apply(QImage)`) | `src/adjustments/` |
 | Effects (base `Effect::apply(QImage)`) | `src/effects/` |
-| Panels: layers, colours, history, tool options | `src/panels/` |
+| Panels: layers, colors, history, tool options | `src/panels/` |
 | Tool icons, drawn in code (no image files) | `src/toolicons.cpp` |
 | UI translations | `src/i18n.cpp` |
 | Plugin C ABI | `src/plugins/plugin_api.h` |
