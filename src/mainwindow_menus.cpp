@@ -47,7 +47,7 @@ void MainWindow::createMenus() {
         action->setShortcuts(QList<QKeySequence>(shortcuts));
     };
 
-    // Menu Fichier
+    // File menu
     auto *fileMenu = menuBar()->addMenu(QStringLiteral("&File"));
     fileMenu->addAction(QStringLiteral("&New..."), QKeySequence::New, this, &MainWindow::newDocument);
     fileMenu->addAction(QStringLiteral("&Open..."), QKeySequence::Open, this, &MainWindow::openDocument);
@@ -64,7 +64,7 @@ void MainWindow::createMenus() {
     fileMenu->addAction(QStringLiteral("&Close image"), QKeySequence("Ctrl+W"), this, &MainWindow::closeCurrentDocument);
     fileMenu->addAction(QStringLiteral("E&xit"), QKeySequence::Quit, this, &QMainWindow::close);
 
-    // Menu Édition
+    // Edit menu
     auto *editMenu = menuBar()->addMenu(QStringLiteral("&Edit"));
     m_undoAction = editMenu->addAction(QStringLiteral("&Undo"), QKeySequence::Undo, this, &MainWindow::undo);
     m_redoAction = editMenu->addAction(QStringLiteral("&Redo"), this, &MainWindow::redo);
@@ -98,7 +98,7 @@ void MainWindow::createMenus() {
     setShortcuts(deselectAction, {QKeySequence("Ctrl+D")});
     setShortcuts(invertSelectionAction, {QKeySequence("Ctrl+I")});
 
-    // Menu Affichage (3rd, as in paint.net: File, Edit, View, Image, Layers, Adjustments, Effects)
+    // View menu (3rd, as in paint.net: File, Edit, View, Image, Layers, Adjustments, Effects)
     auto *viewMenu = menuBar()->addMenu(QStringLiteral("&View"));
     viewMenu->addAction(QStringLiteral("Zoom &In"), QKeySequence::ZoomIn, this, &MainWindow::zoomIn);
     viewMenu->addAction(QStringLiteral("Zoom &Out"), QKeySequence::ZoomOut, this, &MainWindow::zoomOut);
@@ -145,7 +145,7 @@ void MainWindow::createMenus() {
     setShortcuts(zoomFitAction, {QKeySequence("Ctrl+B")});
     setShortcuts(actualSizeAction, {QKeySequence("Ctrl+0"), QKeySequence("Ctrl+1")});
 
-    // Menu Image
+    // Image menu
     auto *imageMenu = menuBar()->addMenu(QStringLiteral("&Image"));
     imageMenu->addAction(QStringLiteral("&Resize..."), QKeySequence("Ctrl+R"), this, &MainWindow::resizeImage);
     imageMenu->addAction(QStringLiteral("&Canvas Size..."), QKeySequence("Ctrl+Shift+R"), this, &MainWindow::canvasSize);
@@ -164,7 +164,7 @@ void MainWindow::createMenus() {
     setShortcuts(cropAction, {QKeySequence("Ctrl+Shift+X")});
     setShortcuts(flattenAction, {QKeySequence("Ctrl+Shift+F")});
 
-    // Menu Calques
+    // Layers menu
     auto *layersMenu = menuBar()->addMenu(QStringLiteral("&Layers"));
     layersMenu->addAction(QStringLiteral("Add New Layer"), QKeySequence("Ctrl+Shift+N"), this, [this]() { m_document->addLayer(); });
     auto *deleteLayerAction = layersMenu->addAction(QStringLiteral("Delete Layer"), this, [this]() { m_document->removeLayer(m_document->activeLayerIndex()); });
@@ -185,7 +185,7 @@ void MainWindow::createMenus() {
     setShortcuts(layerPropertiesAction, {QKeySequence("F4")});
     setShortcuts(toggleLayerVisibilityAction, {QKeySequence("Ctrl+,")});
 
-    // Menu Ajustements
+    // Adjustments menu
     auto *adjMenu = menuBar()->addMenu(QStringLiteral("&Adjustments"));
     auto *autoLevelAction = adjMenu->addAction(QStringLiteral("Auto-Level"), this, [this]() { applyAdjustment(9); });
     adjMenu->addSeparator();
@@ -215,7 +215,7 @@ void MainWindow::createMenus() {
     setShortcuts(posterizeAction, {QKeySequence("Ctrl+Shift+P")});
     setShortcuts(blackWhiteAction, {QKeySequence("Ctrl+Shift+G")});
 
-    // Menu Effets
+    // Effects menu
     auto *fxMenu = menuBar()->addMenu(QStringLiteral("Effe&cts"));
 
     m_repeatEffectAction = fxMenu->addAction(QStringLiteral("Repeat last effect"), this, [this]() {
@@ -278,7 +278,7 @@ void MainWindow::createMenus() {
     stylizeMenu->addAction(QStringLiteral("Outline..."), this, [this]() { applyEffect(34); });
     stylizeMenu->addAction(QStringLiteral("Relief..."), this, [this]() { applyEffect(33); });
 
-    // External effect plugins (Effets ▸ Plugins). Entirely additive — the submenu is
+    // External effect plugins (Effects > Plugins). Entirely additive — the submenu is
     // always present so the feature is discoverable, and lists whatever loaded.
     fxMenu->addSeparator();
     auto *pluginsMenu = fxMenu->addMenu(QStringLiteral("Plugins"));

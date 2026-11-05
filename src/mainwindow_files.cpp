@@ -576,7 +576,7 @@ void MainWindow::dropEvent(QDropEvent *event)
                         layerImage = resizedImage;
                     }
                     
-                    // Ajouter l'image comme nouveau calque
+                    // Add the image as a new layer
                     m_document->addLayer(layerImage, layerName);
                     m_canvas->update();
                     m_layersPanel->updateLayerList();
