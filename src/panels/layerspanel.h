@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QTimer>
 #include <QIcon>
+#include <QHash>
 #include <QListWidget>
 #include <QComboBox>
 #include <QSlider>
@@ -47,6 +48,7 @@ private slots:
 private:
     Document *m_document = nullptr;
     class QTimer *m_thumbRefreshTimer = nullptr;
+    mutable QHash<qint64, QIcon> m_iconCache;   // QImage::cacheKey() -> thumbnail
     QListWidget *m_layerList;
     QSlider *m_opacitySlider;
     QLabel *m_opacityLabel;

@@ -6,6 +6,10 @@
 #include "core/document.h"
 #include "canvas/canvaswidget.h"
 #include "tools/brushtool.h"
+#include "tools/erasertool.h"
+#include "tools/penciltool.h"
+#include "tools/recolortool.h"
+#include "tools/clonestamptool.h"
 #include "referencebrush.h"
 
 static int failures = 0;
@@ -164,11 +168,68 @@ static void largeDifferential() {
     printf("fresh 4K versus v1.1.75 oracle comparisons complete\n");
 }
 
+
+// Eraser, pencil, recolor and clone stamp redraw only the area they changed.
+// The canvas they update area by area must match one that combines the whole
+// image again, at full size and zoomed out (reduced rendering).
+static void regionalToolsDifferential() {
+    for (double zoom : {1.0, 0.3, 0.12}) {
+        Document doc(900, 600);
+        doc.activeLayer()->clear(QColor(30, 60, 90, 200));
+        QImage top(900, 600, QImage::Format_ARGB32_Premultiplied);
+        for (int y = 0; y < 600; ++y) for (int x = 0; x < 900; ++x)
+            top.setPixel(x, y, qPremultiply(qRgba(x % 256, y % 256, (x + y) % 256, (x * 3 + y) % 256)));
+        doc.addLayer(top);
+        doc.activeLayer()->setOffset({7, -4});
+        doc.activeLayer()->setBlendMode(BlendMode::Multiply);
+        doc.activeLayer()->setOpacity(.8f);
+        doc.setPrimaryColor(QColor(200, 30, 60));
+        EraserTool eraser; eraser.setBrushSize(41); eraser.setHardness(30); eraser.setOpacity(70);
+        PencilTool pencil;
+        RecolorTool recolor; recolor.setBrushSize(35);
+        CloneStampTool clone; clone.setBrushSize(25);
+        for (Tool *tool : {static_cast<Tool *>(&eraser), static_cast<Tool *>(&pencil),
+                           static_cast<Tool *>(&recolor), static_cast<Tool *>(&clone)}) {
+            CHECK(tool->updatesCanvasRegion());
+            CanvasWidget actual, forced;
+            for (CanvasWidget *c : {&actual, &forced}) {
+                c->resize(500, 360); c->setDocument(&doc); c->setCurrentTool(tool);
+                c->setShowRulers(false); c->setZoom(zoom); c->setPan({0, 0});
+            }
+            QImage a(actual.size(), QImage::Format_ARGB32_Premultiplied), b = a.copy();
+            actual.render(&a); forced.render(&b);
+            auto compare = [&]() {
+                actual.render(&a); forced.updateCanvas(); forced.render(&b); CHECK(a == b);
+            };
+            if (tool == &clone) {   // Ctrl+click sets the clone source
+                QMouseEvent e(QEvent::MouseButtonPress, QPointF(40, 40), QPointF(40, 40),
+                              Qt::LeftButton, Qt::LeftButton, Qt::ControlModifier);
+                clone.mousePressEvent(actual.widgetToCanvas(QPointF(40, 40)), &e, actual);
+                QMouseEvent r(QEvent::MouseButtonRelease, QPointF(40, 40), QPointF(40, 40),
+                              Qt::LeftButton, Qt::NoButton, Qt::ControlModifier);
+                clone.mouseReleaseEvent(actual.widgetToCanvas(QPointF(40, 40)), &r, actual);
+            }
+            send(*tool, actual, QEvent::MouseButtonPress, {90, 80}, Qt::LeftButton, Qt::LeftButton, true);
+            compare();
+            for (int i = 0; i < 9; ++i) {
+                send(*tool, actual, QEvent::MouseMove, {90.0 + i * 17.3, 80.0 + i * 9.1}, Qt::NoButton, Qt::LeftButton, true);
+                if (i % 3 == 2) compare();
+            }
+            send(*tool, actual, QEvent::MouseButtonRelease, {240, 160}, Qt::LeftButton, Qt::NoButton, true);
+            compare();
+            doc.history().undo(); compare();
+            doc.history().redo(); compare();
+        }
+    }
+    printf("eraser/pencil/recolor/clone regional comparisons complete\n");
+}
+
 int main(int argc,char **argv) {
     QApplication app(argc,argv);
     differential();
     renderDifferential();
     largeDifferential();
+    regionalToolsDifferential();
     for (int mode : {0,14}) for (bool paint : {false,true}) {
         const double small = benchmark(512,512,mode,paint);
         const double large = benchmark(3840,2160,mode,paint);

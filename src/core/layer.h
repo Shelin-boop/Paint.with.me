@@ -69,10 +69,40 @@ public:
     void clear(const QColor &color = Qt::transparent);
     QImage composited(const QImage &below) const;
 
+    // Blends this layer onto `dest` in place. `dest` shows the document area
+    // starting at document pixel `destOrigin` (a whole image: (0, 0); a tile:
+    // its top-left corner). Only pixels this layer covers are touched, and the
+    // result equals composited() for them. Safe to call from several threads at
+    // once for different `dest` images.
+    void compositeInto(QImage &dest, const QPoint &destOrigin = QPoint()) const;
+    // Same, with a painter already open on `dest` (cheaper when many layers go
+    // onto the same image), touching only `limit` (in `dest` pixels).
+    //
+    // With `shift` > 0, `dest` is a reduced view of the document: one `dest`
+    // pixel covers 2^shift x 2^shift document pixels, and `destOrigin` is in
+    // those reduced pixels. Used for the zoomed-out canvas, where combining at
+    // full size would only be thrown away when shrinking for the screen.
+    void compositeInto(QPainter &painter, QImage &dest, const QPoint &destOrigin,
+                       const QRect &limit, int shift = 0) const;
+
+    // The area of `rect` (document pixels) in a view reduced by 2^shift,
+    // grown by one pixel for smooth sampling when shift > 0.
+    static QRect reducedRect(const QRect &rect, int shift);
+
+    // The smallest rectangle (in layer pixels) holding every pixel that is not
+    // fully transparent; empty for an empty layer. Remembered until the pixels
+    // change, so asking again is free. Call from the main thread only.
+    QRect contentBounds() const;
+
     static QString blendModeName(BlendMode mode);
     static QList<BlendMode> allBlendModes();
 
 private:
+    void compositeReduced(QPainter &painter, QImage &dest, const QPoint &destOrigin,
+                          const QRect &limit, int shift) const;
+    void blendPerPixel(QPainter &painter, const QImage &dest, const QRect &target,
+                       const QImage &top) const;
+
     QImage m_image;
     QString m_name;
     float m_opacity = 1.0f;
@@ -81,4 +111,6 @@ private:
     BlendMode m_blendMode = BlendMode::Normal;
     QPoint m_offset{0, 0};
     bool m_retainsOffCanvasPixels = false;
+    mutable qint64 m_boundsKey = 0;   // QImage::cacheKey() m_bounds belongs to
+    mutable QRect m_bounds;
 };

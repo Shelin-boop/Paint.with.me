@@ -17,6 +17,9 @@ private:
     // colour onto the destination via the shared blend-mode mapping.
     void plot(QImage &img, int x, int y, const QColor &color);
 
+public:
+    bool updatesCanvasRegion() const override { return true; }
+private:
     bool m_drawing = false;
     QPoint m_lastPos;
     QImage m_beforeImage;

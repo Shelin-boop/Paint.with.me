@@ -17,10 +17,10 @@ void EraserTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, C
     m_lastPos = canvasPos;
     m_currentPos = canvasPos;
     m_beforeImage = layer->image().copy();
-    m_strokeBuffer = QImage(layer->image().size(), QImage::Format_ARGB32_Premultiplied);
-    m_strokeBuffer.fill(Qt::transparent);
+    m_strokeBuffer = transparentImage(layer->image().size());
+    m_dirtyRect = QRect();
     eraseDab(canvasPos);
-    compositeErase(doc, layer);
+    compositeErase(doc, layer, canvas);
 }
 
 void EraserTool::mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *, CanvasWidget &canvas) {
@@ -31,7 +31,7 @@ void EraserTool::mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *, CanvasW
     if (!layer) return;
     eraseStroke(m_lastPos, canvasPos);
     m_lastPos = canvasPos;
-    compositeErase(doc, layer);
+    compositeErase(doc, layer, canvas);
 }
 
 void EraserTool::mouseReleaseEvent(const QPointF &, QMouseEvent *event, CanvasWidget &canvas) {
@@ -42,6 +42,7 @@ void EraserTool::mouseReleaseEvent(const QPointF &, QMouseEvent *event, CanvasWi
     if (layer && layer->image() != m_beforeImage)   // skip no-op strokes (no empty undo step)
         canvas.document()->pushImageEdit(canvas.document()->activeLayerIndex(), m_beforeImage, "Eraser");
     m_strokeBuffer = QImage();
+    m_beforeImage = QImage();
 }
 
 void EraserTool::eraseStroke(const QPointF &from, const QPointF &to) {
@@ -65,6 +66,9 @@ void EraserTool::eraseDab(const QPointF &pos) {
     const double radius = (m_brushSize / 2.0) * p;
     if (radius < 0.4) return;   // effectively no pressure = no mark
 
+    m_dirtyRect = m_dirtyRect.united(QRectF(pos.x() - radius - 2, pos.y() - radius - 2,
+                                            2 * radius + 4, 2 * radius + 4).toAlignedRect()
+                                         .intersected(m_strokeBuffer.rect()));
     QPainter painter(&m_strokeBuffer);
     if (m_antialiased) painter.setRenderHint(QPainter::Antialiasing);
     painter.setPen(Qt::NoPen);
@@ -84,9 +88,20 @@ void EraserTool::eraseDab(const QPointF &pos) {
     painter.drawEllipse(pos, radius, radius);
 }
 
-void EraserTool::compositeErase(Document *doc, Layer *layer) {
-    QImage result = m_beforeImage.copy();
-    QPainter painter(&result);
+void EraserTool::compositeErase(Document *doc, Layer *layer, CanvasWidget &canvas) {
+    // Only the dabs added since the last call: restore that area from the
+    // stroke's start and erase the accumulated coverage there. (Redoing the
+    // whole layer on every mouse move made big images unusable.) The stroke
+    // buffer is in document pixels, like the dab positions.
+    const QRect dirty = m_dirtyRect;
+    m_dirtyRect = QRect();
+    if (dirty.isEmpty()) return;
+    const QRect layerArea = dirty.translated(-layer->offset()).intersected(layer->image().rect());
+    QPainter painter(&layer->image());
+    if (!layerArea.isEmpty()) {
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        painter.drawImage(layerArea, m_beforeImage, layerArea);
+    }
     clipToSelection(painter, doc);
     // Both buttons erase to transparency; the right button scales the erase by
     // the secondary colour's alpha, matching Paint.NET (left uses the primary
@@ -97,9 +112,9 @@ void EraserTool::compositeErase(Document *doc, Layer *layer) {
     painter.setOpacity(strength);
     // DestinationOut subtracts (strokeCoverage * strength) of alpha.
     painter.setCompositionMode(QPainter::CompositionMode_DestinationOut);
-    painter.drawImage(0, 0, m_strokeBuffer);
+    painter.drawImage(dirty, m_strokeBuffer, dirty);
     painter.end();
-    layer->setImage(result);
+    canvas.updateCanvasRegion(dirty);
 }
 
 void EraserTool::drawOverlay(QPainter &painter, const CanvasWidget &canvas) {

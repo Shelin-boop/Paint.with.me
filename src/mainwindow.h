@@ -13,6 +13,7 @@
 #include <QStringList>
 #include <QMap>
 #include <QVector>
+#include <QFuture>
 #include <functional>
 #include <memory>
 #include <vector>
@@ -188,6 +189,7 @@ private:
 
     // Autosave / crash recovery.
     void performAutosave();
+    QFuture<bool> m_autosaveJob;   // combines and writes in the background
     void clearAutosave();
     void checkForRecovery();
     QString autosaveDir() const;

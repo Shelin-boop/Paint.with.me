@@ -31,6 +31,7 @@ set(CORE_SOURCES
     src/core/selection.cpp
     src/core/history.cpp
     src/core/hatchpatterns.cpp
+    src/core/thumbnails.cpp
 )
 
 set(CANVAS_SOURCES

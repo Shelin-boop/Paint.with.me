@@ -93,4 +93,6 @@ void RecolorTool::recolorAt(const QPointF &pos, CanvasWidget &canvas) {
             }
         }
     }
+    canvas.updateCanvasRegion(QRect(center - QPoint(radius, radius), QSize(2 * radius + 1, 2 * radius + 1))
+                                  .translated(doc->activeLayer()->offset()));
 }

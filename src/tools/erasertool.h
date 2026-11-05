@@ -15,7 +15,10 @@ public:
 private:
     void eraseStroke(const QPointF &from, const QPointF &to);
     void eraseDab(const QPointF &pos);
-    void compositeErase(class Document *doc, class Layer *layer);
+    void compositeErase(class Document *doc, class Layer *layer, CanvasWidget &canvas);
+public:
+    bool updatesCanvasRegion() const override { return true; }
+private:
 
     bool m_drawing = false;
     bool m_toSecondary = false;   // right-click paints the secondary colour instead of erasing
@@ -23,4 +26,5 @@ private:
     QPointF m_currentPos;
     QImage m_beforeImage;
     QImage m_strokeBuffer;
+    QRect m_dirtyRect;   // dabs added since the last composite (document pixels)
 };

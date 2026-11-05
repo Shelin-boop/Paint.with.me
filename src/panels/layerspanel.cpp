@@ -2,6 +2,7 @@
 #include "core/document.h"
 #include "theme.h"
 #include "core/layer.h"
+#include "core/thumbnails.h"
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QToolButton>
@@ -16,6 +17,9 @@
 #include <QApplication>
 
 namespace {
+// Item data: content version (QImage::cacheKey) the row's thumbnail shows.
+constexpr int kThumbKeyRole = Qt::UserRole + 1;
+
 // Neutral "ink" colour and layer-fill colour that adapt to the active theme so
 // the icons stay visible on both light and dark panels.
 static QColor inkColor()    { return Theme::isDark() ? QColor(210, 210, 210) : QColor(60, 60, 60); }
@@ -255,7 +259,10 @@ void LayersPanel::setDocument(Document *doc) {
 }
 
 QIcon LayersPanel::makeThumbnail(const QImage &image) const {
-    QImage thumb = image.scaled(40, 30, Qt::KeepAspectRatio, Qt::SmoothTransformation);
+    // Remembered per content version: unchanged layers cost nothing.
+    auto it = m_iconCache.constFind(image.cacheKey());
+    if (it != m_iconCache.constEnd()) return it.value();
+    const QImage thumb = Thumbnails::cached(image, QSize(40, 30));
     QPixmap pm(40, 30);
     pm.fill(Qt::white);
     QPainter tp(&pm);
@@ -265,7 +272,11 @@ QIcon LayersPanel::makeThumbnail(const QImage &image) const {
             tp.fillRect(x2, y2, 5, 5, ((x2/5 + y2/5) % 2 == 0) ? QColor(204,204,204) : Qt::white);
     tp.drawImage((40 - thumb.width()) / 2, (30 - thumb.height()) / 2, thumb);
     tp.end();
-    return QIcon(pm);
+    const QIcon icon(pm);
+    if (m_iconCache.size() > 4 * std::max(16, m_document ? m_document->layerCount() : 0))
+        m_iconCache.clear();
+    m_iconCache.insert(image.cacheKey(), icon);
+    return icon;
 }
 
 void LayersPanel::updateLayerList() {
@@ -281,6 +292,7 @@ void LayersPanel::updateLayerList() {
         item->setData(Qt::UserRole, i);  // remember which layer this row shows
         item->setCheckState(layer->isVisible() ? Qt::Checked : Qt::Unchecked);
         item->setIcon(makeThumbnail(layer->image()));
+        item->setData(kThumbKeyRole, layer->image().cacheKey());
         if (!layer->isVisible())
             item->setForeground(Qt::gray);
         m_layerList->addItem(item);
@@ -301,8 +313,12 @@ void LayersPanel::refreshThumbnails() {
     for (int row = 0; row < n; ++row) {
         auto *item = m_layerList->item(row);
         const int idx = item->data(Qt::UserRole).toInt();
-        if (auto *layer = m_document->layerAt(idx))
-            item->setIcon(makeThumbnail(layer->image()));
+        auto *layer = m_document->layerAt(idx);
+        if (!layer) continue;
+        const qint64 key = layer->image().cacheKey();
+        if (item->data(kThumbKeyRole).toLongLong() == key) continue;   // unchanged
+        item->setIcon(makeThumbnail(layer->image()));
+        item->setData(kThumbKeyRole, key);
     }
 }
 

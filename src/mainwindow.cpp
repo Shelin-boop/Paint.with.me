@@ -3,6 +3,7 @@
 #include "toolicons.h"
 #include "theme.h"
 #include "core/document.h"
+#include "core/thumbnails.h"
 #include "core/adjustmentpreview.h"
 #include "canvas/canvaswidget.h"
 #include "panels/layerspanel.h"
@@ -127,6 +128,8 @@
 #include <QDateTime>
 #include <QDir>
 #include <QStandardPaths>
+#include <QFutureWatcher>
+#include <QtConcurrent/QtConcurrentRun>
 #include "appinfo.h"
 #include "desktopintegration.h"
 
@@ -1802,17 +1805,42 @@ QString MainWindow::autosaveDir() const {
 
 void MainWindow::performAutosave() {
     if (!m_document || !m_document->isModified()) return;
+    if (m_autosaveJob.isRunning()) return;   // the previous one is still writing
     QDir().mkpath(autosaveDir());
-    // Flattened recovery snapshot (layered .pdn isn't implemented yet) + a
-    // sidecar recording the original path so we can label it on recovery.
+    // Flattened recovery snapshot + a sidecar recording the original path so we
+    // can label it on recovery. The layer copies share their pixels with the
+    // document (nothing is copied here); combining the layers and writing the
+    // PNG run in the background, because for a big image they take seconds
+    // and used to freeze the window every minute.
+    std::vector<Layer> layers;
+    layers.reserve(m_document->layerCount());
+    for (int i = 0; i < m_document->layerCount(); ++i)
+        layers.push_back(*m_document->layerAt(i));
+    const QSize size = m_document->size();
     const QString png = autosaveDir() + "/autosave.png";
-    QImage flat = m_document->flatten();
-    if (flat.save(png, "PNG")) {
+    const QString origPath = m_document->filePath();
+    m_autosaveJob = QtConcurrent::run([layers = std::move(layers), size, png]() {
+        const QImage flat = Document::compositeLayers(layers, size);
+        const QString part = png + ".part";
+        // Light compression: several times faster to write, still lossless.
+        if (!flat.save(part, "PNG", 80)) {
+            QFile::remove(part);
+            return false;
+        }
+        QFile::remove(png);
+        return QFile::rename(part, png);
+    });
+    auto *watcher = new QFutureWatcher<bool>(this);
+    connect(watcher, &QFutureWatcher<bool>::finished, this, [watcher, png, origPath]() {
+        watcher->deleteLater();
+        // Not if the snapshot was discarded meanwhile (clean exit, recovery).
+        if (!watcher->result() || !QFile::exists(png)) return;
         QSettings s(AppInfo::kId, AppInfo::kId);
         s.setValue("recovery/pending", true);
-        s.setValue("recovery/origPath", m_document->filePath());
+        s.setValue("recovery/origPath", origPath);
         s.setValue("recovery/when", QDateTime::currentDateTime().toString(Qt::ISODate));
-    }
+    });
+    watcher->setFuture(m_autosaveJob);
 }
 
 void MainWindow::clearAutosave() {
@@ -3613,15 +3641,14 @@ void MainWindow::updateTitle() {
 
 void MainWindow::updateImageThumbnail() {
     if (!m_imageThumbnail || !m_document) return;
-    QImage composite(m_document->width(), m_document->height(), QImage::Format_ARGB32);
+    // Honours each layer's opacity and blend mode; built from small layer copies.
+    const QImage small = Thumbnails::document(*m_document, QSize(60, 45));
+    QImage composite(small.size(), QImage::Format_ARGB32);
     composite.fill(Qt::white);
     QPainter p(&composite);
-    // flattenVisible() honours each layer's opacity and blend mode (a plain
-    // per-layer drawImage ignored both).
-    p.drawImage(0, 0, m_document->flattenVisible());
+    p.drawImage(0, 0, small);
     p.end();
-    QPixmap thumb = QPixmap::fromImage(composite.scaled(60, 45, Qt::KeepAspectRatio, Qt::SmoothTransformation));
-    m_imageThumbnail->setPixmap(thumb);
+    m_imageThumbnail->setPixmap(QPixmap::fromImage(composite));
 }
 
 void MainWindow::updateStatusBar(const QPoint &pos) {
@@ -3635,6 +3662,7 @@ void MainWindow::onZoomChanged(double zoom) {
 void MainWindow::closeEvent(QCloseEvent *event) {
     if (maybeSave()) {
         saveUiState();
+        m_autosaveJob.waitForFinished();   // let a running autosave finish first
         clearAutosave();   // clean exit -> discard the recovery snapshot
         event->accept();
     } else {

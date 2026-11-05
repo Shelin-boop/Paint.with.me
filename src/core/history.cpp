@@ -2,6 +2,8 @@
 #include "document.h"
 #include "layer.h"
 #include <algorithm>
+#include <cstring>
+#include <QPainter>
 
 MultiImageEditCommand::MultiImageEditCommand(Document *doc, std::vector<ImageEditState> edits, QString description)
     : m_doc(doc), m_edits(std::move(edits)), m_description(std::move(description)) {}
@@ -15,21 +17,66 @@ void MultiImageEditCommand::redo() { apply(true); }
 
 // ImageEditCommand
 ImageEditCommand::ImageEditCommand(Document *doc, int layerIndex, const QImage &before, const QImage &after, const QString &desc)
-    : m_doc(doc), m_layerIndex(layerIndex), m_before(before), m_after(after), m_description(desc) {}
-
-void ImageEditCommand::undo() {
-    if (m_layerIndex >= 0 && m_layerIndex < m_doc->layerCount()) {
-        m_doc->layerAt(m_layerIndex)->setImage(m_before);
-        m_doc->notifyContentChanged();
+    : m_doc(doc), m_layerIndex(layerIndex), m_description(desc) {
+    if (!before.isNull() && before.size() == after.size() && before.format() == after.format()
+        && before.depth() == 32) {
+        m_partial = true;
+        m_layerSize = after.size();
+        m_rect = differingRect(before, after);
+        if (!m_rect.isEmpty()) {
+            m_before = before.copy(m_rect);
+            m_after = after.copy(m_rect);
+        }
+    } else {
+        m_before = before;
+        m_after = after;
+        m_rect = after.rect();
     }
 }
 
-void ImageEditCommand::redo() {
-    if (m_layerIndex >= 0 && m_layerIndex < m_doc->layerCount()) {
-        m_doc->layerAt(m_layerIndex)->setImage(m_after);
-        m_doc->notifyContentChanged();
+QRect ImageEditCommand::differingRect(const QImage &a, const QImage &b) {
+    if (a.size() != b.size() || a.format() != b.format() || a.depth() != 32) return a.rect();
+    const int w = a.width(), h = a.height();
+    const size_t rowBytes = size_t(w) * 4;
+    auto same = [&](int y) { return std::memcmp(a.constScanLine(y), b.constScanLine(y), rowBytes) == 0; };
+    int top = 0;
+    while (top < h && same(top)) ++top;
+    if (top == h) return QRect();
+    int bottom = h - 1;
+    while (bottom > top && same(bottom)) --bottom;
+    int left = w, right = -1;
+    for (int y = top; y <= bottom; ++y) {
+        const quint32 *la = reinterpret_cast<const quint32 *>(a.constScanLine(y));
+        const quint32 *lb = reinterpret_cast<const quint32 *>(b.constScanLine(y));
+        int x = 0;
+        while (x < left && la[x] == lb[x]) ++x;
+        left = std::min(left, x);
+        int r = w - 1;
+        while (r > right && la[r] == lb[r]) --r;
+        right = std::max(right, r);
     }
+    return QRect(QPoint(left, top), QPoint(right, bottom));
 }
+
+void ImageEditCommand::apply(const QImage &pixels) {
+    if (m_layerIndex < 0 || m_layerIndex >= m_doc->layerCount()) return;
+    Layer *layer = m_doc->layerAt(m_layerIndex);
+    if (!m_partial) {
+        layer->setImage(pixels);
+        m_doc->notifyContentChanged();
+        return;
+    }
+    if (m_rect.isEmpty()) return;
+    if (layer->image().size() != m_layerSize) return;   // history out of step; leave it
+    QPainter painter(&layer->image());
+    painter.setCompositionMode(QPainter::CompositionMode_Source);
+    painter.drawImage(m_rect.topLeft(), pixels);
+    painter.end();
+    m_doc->notifyRegionChanged(m_rect.translated(layer->offset()));
+}
+
+void ImageEditCommand::undo() { apply(m_before); }
+void ImageEditCommand::redo() { apply(m_after); }
 
 LayerOffsetCommand::LayerOffsetCommand(Document *doc, int index, QPoint before, QPoint after)
     : m_doc(doc), m_index(index), m_before(before), m_after(after) {}

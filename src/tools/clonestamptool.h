@@ -14,10 +14,14 @@ public:
 
 private:
     void cloneDab(const QPointF &pos, QImage &target, const QImage &source);
+    void reportDab(CanvasWidget &canvas, const QPointF &from, const QPointF &to);
 
     bool m_sourceSet = false;
     QPointF m_sourcePos;
     QPointF m_offset;
+public:
+    bool updatesCanvasRegion() const override { return true; }
+private:
     bool m_drawing = false;
     QPointF m_lastPos;
     QPointF m_currentPos;

@@ -19,6 +19,9 @@ public:
 
 private:
     void recolorAt(const QPointF &pos, CanvasWidget &canvas);
+public:
+    bool updatesCanvasRegion() const override { return true; }
+private:
     bool m_drawing = false;
     bool m_sampleSecondary = false;   // target = secondary colour instead of clicked pixel
     QImage m_beforeImage;

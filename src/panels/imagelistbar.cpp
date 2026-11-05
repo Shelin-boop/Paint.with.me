@@ -1,5 +1,6 @@
 #include "imagelistbar.h"
 #include "core/document.h"
+#include "core/thumbnails.h"
 
 #include <QHBoxLayout>
 #include <QToolButton>
@@ -51,8 +52,9 @@ void ImageListBar::rebuild() {
                 for (int x = 0; x < kImage; x += 6)
                     p.fillRect(x, y, 6, 6,
                                ((x / 6 + y / 6) % 2 == 0) ? QColor(255, 255, 255) : QColor(205, 205, 205));
-            QImage thumb = doc->flatten().scaled(kImage, kImage, Qt::KeepAspectRatio,
-                                                 Qt::SmoothTransformation);
+            // Built from small copies of the layers, so a big image costs no
+            // more than a small one here.
+            const QImage thumb = Thumbnails::document(*doc, QSize(kImage, kImage));
             p.drawImage((kImage - thumb.width()) / 2, (kImage - thumb.height()) / 2, thumb);
             p.setPen(QPen(QColor(120, 120, 120), 1));
             p.drawRect(0, 0, kImage - 1, kImage - 1);

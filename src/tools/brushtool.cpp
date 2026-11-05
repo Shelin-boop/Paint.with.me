@@ -30,8 +30,7 @@ void BrushTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, Ca
     // The stroke is accumulated at full opacity in its own buffer, then
     // composited onto the layer once at the tool opacity. This keeps the whole
     // stroke at a uniform opacity instead of darkening where dabs overlap.
-    m_strokeBuffer = QImage(layer->image().size(), QImage::Format_ARGB32_Premultiplied);
-    m_strokeBuffer.fill(Qt::transparent);
+    m_strokeBuffer = transparentImage(layer->image().size());
 
     m_dirtyRect = QRect();
     m_segmentBounds = QRect();
@@ -83,8 +82,10 @@ void BrushTool::mouseReleaseEvent(const QPointF &, QMouseEvent *event, CanvasWid
     m_drawing = false;
     if (layer && layer->image() != m_beforeImage)   // skip no-op strokes (no empty undo step)
         doc->pushImageEdit(doc->activeLayerIndex(), m_beforeImage, "Paintbrush");
+    // Free the stroke's working copies (each the size of the layer).
     m_strokeBuffer = QImage();
     m_baseImage = QImage();
+    m_beforeImage = QImage();
 }
 
 void BrushTool::drawBrushStroke(const QPointF &from, const QPointF &to, const QColor &color) {
