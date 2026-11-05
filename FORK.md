@@ -24,6 +24,17 @@ upstream repository. It only reads from it.
 
 ## What differs from upstream
 
+### 2026-11-05: Tools panel columns and shortcuts, new default layout
+
+- Default panel layout: Tools above Colors on the left, History above Layers
+  on the right (the owner's arrangement). Saved layouts are kept.
+- The Tools panel (`src/panels/toolspanel.cpp`, moved out of the main window)
+  shows 3 or 4 columns when it is wide enough, or a fixed count chosen by
+  right-click. The extra columns hold pinned menu commands and brush presets
+  (`src/tools/brushpreset.cpp`); "+" and the right-click menu add them, drag
+  moves them. Stored in the settings under `toolsPanel/`.
+- New test suite `tools_panel` (`tests/test_toolspanel.cpp`).
+
 ### 2026-11-05: speed with large images, docked panels
 
 Measured with `tests/bench_large.cpp` (5000 x 5000 px, 16 layers, 2 CPU

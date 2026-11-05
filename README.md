@@ -39,11 +39,18 @@ libfuse2.
 On a Wayland desktop (KDE Plasma, GNOME) it currently runs through XWayland.
 To try native Wayland anyway, start it with `QT_QPA_PLATFORM=wayland`.
 
-The Tools, History, Layers and Colors panels sit at the sides of the main
-window. Drag a panel by its title to another side or onto another panel (to
-make tabs), drag the gaps between panels to resize them, or double-click a
-title to make the panel float. F5 to F8 show and hide them; **View > Reset Panel
-Layout** puts everything back.
+The panels sit at the sides of the main window: Tools above Colors on the left,
+History above Layers on the right. Drag a panel by its title to another side or
+onto another panel (to make tabs), drag the gaps between panels to resize them,
+or double-click a title to make the panel float. F5 to F8 show and hide them;
+**View > Reset Panel Layout** puts everything back.
+
+The Tools panel grows a third and a fourth column when it is wide enough. Put
+your own shortcuts there with the **+** button or a right-click: any menu
+command (an adjustment, an effect, an image or layer command) or the current
+brush saved as a preset (tool, width, hardness, opacity ...). Drag a shortcut
+to move it; right-click it to remove it, or to rename or update a preset.
+Right-click > Columns fixes the number of columns.
 
 ## Roadmap
 
