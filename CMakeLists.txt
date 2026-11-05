@@ -157,6 +157,11 @@ set(RESOURCES
 # programs (they used to compile the whole app again, three times over).
 set(APP_SOURCES
     src/mainwindow.cpp
+    src/mainwindow_panels.cpp
+    src/mainwindow_menus.cpp
+    src/mainwindow_files.cpp
+    src/mainwindow_edit.cpp
+    src/mainwindow_effects.cpp
     src/desktopintegration.cpp
     src/toolicons.cpp
     src/theme.cpp
