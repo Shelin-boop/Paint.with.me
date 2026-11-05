@@ -128,6 +128,8 @@
 #include <QDateTime>
 #include <QDir>
 #include <QStandardPaths>
+#include <QStyle>
+#include <QFontMetrics>
 #include <QFutureWatcher>
 #include <QtConcurrent/QtConcurrentRun>
 #include "appinfo.h"
@@ -221,22 +223,18 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
 
     // Select brush tool by default
     selectTool(ToolType::Brush);
-    // Place the four utility windows where paint.net puts them (Tools left,
-    // History/Layers/Colors stacked right). resetUtilityWindow anchors them to
-    // the app frame, so re-running it at every startup gives the same arrangement
-    // whatever the window size is — coordinates saved by a differently sized
-    // session would otherwise put them anywhere, even off-screen. Panels the user
-    // docked or closed are left as they are.
-    // Deferred so the docks are real top-level windows and the window manager has
-    // finalised the main window's geometry (otherwise frameGeometry() is still
-    // (0,0), the docks land outside the frame and move() is ignored).
+    // Panels the user made floating get their usual spot next to the app frame
+    // at every startup (coordinates saved by a differently sized session could
+    // be anywhere, even off-screen). Docked and closed panels stay as they are.
+    // Deferred so floating panels are real top-level windows and the window
+    // manager has finalised the main window's geometry.
     QTimer::singleShot(250, this, [this]() {
         for (QDockWidget *dock : {m_toolsDock, m_historyDock, m_layersDock, m_colorsDock}) {
             // window() != this, not isFloating(): a panel Qt has wrapped in a
             // QDockWidgetGroupWindow is its own window but reports isFloating()
             // false, and would keep whatever size the saved state gave it.
             if (dock && !dock->isHidden() && dock->window() != this)
-                resetUtilityWindow(dock);
+                positionUtilityWindow(dock, true);
         }
         m_canvas->resetToDefaultView();   // re-centre once sizes are final
     });
@@ -276,17 +274,18 @@ void MainWindow::loadUiState() {
     }
 
     // Versioned layout persistence; any older saved state is intentionally
-    // ignored. V7 exists because a V6 state was written while GroupedDragging
+    // ignored. V8 (2026-11-05): panels became docked by default, so the old
+    // floating arrangements are dropped once. V7 existed because a V6 state was written while GroupedDragging
     // was on and can carry a QDockWidgetGroupWindow back in — restoring one
     // re-creates the blank title-less window, and tearing it down again crashes
     // (issue #10). Dropping those layouts once is the cheap, safe cure.
-    const QString stateB64 = settings.value("ui/mainWindowStateV7").toString();
+    const QString stateB64 = settings.value("ui/mainWindowStateV8").toString();
     if (!stateB64.isEmpty()) {
         const QByteArray savedState = QByteArray::fromBase64(stateB64.toLatin1());
         // Block normalizeDockLayout while restoreState repositions docks.
         QScopedValueRollback<bool> restoreGuard(m_restoringState, true);
-        if (!restoreState(savedState, 7)) {
-            settings.remove("ui/mainWindowStateV7");
+        if (!restoreState(savedState, 8)) {
+            settings.remove("ui/mainWindowStateV8");
             settings.remove("ui/mainWindowGeometry");
         }
     }
@@ -318,7 +317,8 @@ void MainWindow::saveUiState() {
 
     // Store as base64 strings to avoid Qt INI format corrupting binary QByteArray data.
     settings.setValue("ui/mainWindowGeometry", QString(saveGeometry().toBase64()));
-    settings.setValue("ui/mainWindowStateV7", QString(saveState(7).toBase64()));
+    settings.setValue("ui/mainWindowStateV8", QString(saveState(8).toBase64()));
+    settings.remove("ui/mainWindowStateV7");
 
     if (m_toolsDock) settings.setValue("ui/toolsVisible", m_toolsDock->isVisible());
     if (m_historyDock) settings.setValue("ui/historyVisible", m_historyDock->isVisible());
@@ -369,7 +369,7 @@ void MainWindow::normalizeDockLayout(QDockWidget *changedDock) {
     if (m_toolsDock) {
         const Qt::DockWidgetArea ta = dockWidgetArea(m_toolsDock);
         const bool toolsHorizontal = (ta == Qt::TopDockWidgetArea || ta == Qt::BottomDockWidgetArea);
-        m_toolsDock->setMinimumSize(toolsHorizontal ? QSize(120, 30) : QSize(62, 240));
+        m_toolsDock->setMinimumSize(toolsHorizontal ? QSize(120, 30) : QSize(toolsColumnWidth(), 240));
     }
     if (m_historyDock) m_historyDock->setMinimumSize(190, 130);
     if (m_layersDock) m_layersDock->setMinimumSize(190, 150);
@@ -493,6 +493,8 @@ void MainWindow::createMenus() {
     addUnit(QStringLiteral("Centimeters"), CanvasWidget::Unit::Centimeters, false);
     m_rulersAction->setCheckable(true);
     m_rulersAction->setChecked(true);
+    viewMenu->addSeparator();
+    viewMenu->addAction(QStringLiteral("Reset &Panel Layout"), this, &MainWindow::applyDefaultPanelLayout);
     setShortcuts(zoomFitAction, {QKeySequence("Ctrl+B")});
     setShortcuts(actualSizeAction, {QKeySequence("Ctrl+0"), QKeySequence("Ctrl+1")});
 
@@ -906,17 +908,28 @@ void MainWindow::addAppMenuEntryAction(QMenu *helpMenu) {
 }
 
 void MainWindow::resetUtilityWindow(QDockWidget *dock) {
-    // Restore a utility window to its default floating position, anchored to the
-    // canvas area: Tools hug the left edge, History/Layers/Colors stack down the
-    // right edge — the paint.net default arrangement.
-    if (!dock || !m_canvas) return;
-    dock->setVisible(true);
-    // Only float it if it is currently docked into the main window. When Qt has
-    // wrapped it in a QDockWidgetGroupWindow it is already its own window, and
-    // calling setFloating() would tear it out — leaving the emptied group window
-    // behind as a blank top-level window. Position the wrapper instead.
-    if (dock->window() == this) dock->setFloating(true);
-    positionUtilityWindow(dock, true);
+    // Put one panel back where it is by default: docked in the main window,
+    // Tools on the left, History/Layers/Colors in that order on the right.
+    if (!dock) return;
+    QScopedValueRollback<bool> guard(m_restoringState, true);
+    dock->show();
+    if (dock->isFloating()) dock->setFloating(false);
+    if (dock == m_toolsDock) {
+        layoutToolsPalette(false);
+        addDockWidget(Qt::LeftDockWidgetArea, dock);
+        return;
+    }
+    // Rebuild the right column in the default order, from the panels already
+    // docked there plus this one.
+    QList<QDockWidget *> column;
+    for (QDockWidget *d : {m_historyDock, m_layersDock, m_colorsDock}) {
+        if (d == dock || (d && d->isVisible() && !d->isFloating()
+                          && dockWidgetArea(d) == Qt::RightDockWidgetArea))
+            column.append(d);
+    }
+    addDockWidget(Qt::RightDockWidgetArea, column.first());
+    for (int i = 1; i < column.size(); ++i)
+        splitDockWidget(column.at(i - 1), column.at(i), Qt::Vertical);
 }
 
 void MainWindow::positionUtilityWindow(QDockWidget *dock, bool resetSize) {
@@ -1258,6 +1271,9 @@ void MainWindow::populateFixedToolbar() {
     }
 }
 
+// Default width of the right panel column (History, Layers, Colors).
+static constexpr int kRightPanelWidth = 262;
+
 // One-line explanation of what each tool does, shown in its tooltip.
 // (Forward-declared near the top so rebuildToolsPaletteTooltips can use it.)
 QString toolDescription(ToolType t) {
@@ -1411,6 +1427,15 @@ void MainWindow::createToolsPanel() {
     });
 }
 
+int MainWindow::toolsColumnWidth() const {
+    // The title bar shows "Tools" plus a float and a close button; narrower
+    // than that, Qt shortens the title to "...".
+    const QFontMetrics fm(m_toolsDock ? m_toolsDock->font() : font());
+    const QString title = m_toolsDock ? m_toolsDock->windowTitle() : QStringLiteral("Tools");
+    const int buttons = 2 * (style()->pixelMetric(QStyle::PM_SmallIconSize) + 8);
+    return std::max(28 * 2 + 6, fm.horizontalAdvance(title) + buttons + 16);
+}
+
 void MainWindow::layoutToolsPalette(bool horizontal) {
     if (!m_toolsGrid || !m_toolsPaletteWidget) return;
 
@@ -1461,7 +1486,10 @@ void MainWindow::layoutToolsPalette(bool horizontal) {
         m_toolsPaletteWidget->setMaximumHeight(QWIDGETSIZE_MAX);
         m_toolsPaletteWidget->setMinimumWidth(28 * 2 + 2);
         m_toolsPaletteWidget->setMaximumWidth(200);
-        if (m_toolsDock) m_toolsDock->setMinimumSize(0, 0);
+        if (m_toolsDock) {
+            m_toolsDock->setMinimumSize(0, 0);
+            m_toolsDock->setMinimumWidth(toolsColumnWidth());
+        }
         m_toolsGrid->setColumnStretch(0, 1);
         m_toolsGrid->setColumnStretch(1, 1);
         m_toolsGrid->setRowStretch(maxRow + 1, 1);   // slack below the last tool row
@@ -1525,33 +1553,28 @@ void MainWindow::createDockPanels() {
         normalizeDockLayout(m_layersDock);
     });
 
-    m_toolsDock->setFloating(true);
-    m_historyDock->setFloating(true);
-    m_layersDock->setFloating(true);
-    m_colorsDock->setFloating(true);
+    // The panels live inside the main window by default (Tools on the left;
+    // History, Layers and Colors stacked on the right). Each can still be
+    // dragged to another side, tabbed with another panel, resized, hidden
+    // (F5-F8) or torn off as a floating window; Ctrl+Shift+F5-F8 or
+    // View > Reset Panel Layout puts them back.
+    applyDefaultPanelLayout();
+}
 
-    m_toolsDock->resize(62, 520);
-    m_historyDock->resize(260, 200);
-    m_layersDock->resize(260, 220);
-    m_colorsDock->resize(220, 320);
-
-    QTimer::singleShot(0, this, [this]() {
-        QSettings settings(AppInfo::kId, AppInfo::kId);
-        if (settings.contains("ui/mainWindowStateV2")) {
-            // A saved layout exists; do not overwrite it with default startup positions.
-            return;
-        }
-
-        const QRect g = geometry();
-        m_toolsDock->move(g.left() + 6, g.top() + 115);
-        m_historyDock->move(g.right() - m_historyDock->width() - 10, g.top() + 115);
-        m_layersDock->move(g.right() - m_layersDock->width() - 10, g.bottom() - m_layersDock->height() - 40);
-        m_colorsDock->move(g.left() + 6, g.bottom() - m_colorsDock->height() - 40);
-        normalizeDockLayout(m_toolsDock);
-        normalizeDockLayout(m_historyDock);
-        normalizeDockLayout(m_layersDock);
-        normalizeDockLayout(m_colorsDock);
-    });
+void MainWindow::applyDefaultPanelLayout() {
+    if (!m_toolsDock || !m_historyDock || !m_layersDock || !m_colorsDock) return;
+    QScopedValueRollback<bool> guard(m_restoringState, true);   // no normalizing meanwhile
+    for (QDockWidget *dock : {m_toolsDock, m_historyDock, m_layersDock, m_colorsDock}) {
+        if (dock->isFloating()) dock->setFloating(false);
+        dock->show();
+    }
+    layoutToolsPalette(false);
+    addDockWidget(Qt::LeftDockWidgetArea, m_toolsDock);
+    addDockWidget(Qt::RightDockWidgetArea, m_historyDock);
+    splitDockWidget(m_historyDock, m_layersDock, Qt::Vertical);
+    splitDockWidget(m_layersDock, m_colorsDock, Qt::Vertical);
+    resizeDocks({m_historyDock}, {kRightPanelWidth}, Qt::Horizontal);
+    resizeDocks({m_historyDock, m_layersDock, m_colorsDock}, {190, 300, 330}, Qt::Vertical);
 }
 
 void MainWindow::createStatusBar() {
