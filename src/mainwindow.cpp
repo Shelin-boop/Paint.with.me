@@ -12,6 +12,7 @@
 #include "panels/tooloptionspanel.h"
 #include "panels/imagelistbar.h"
 #include "panels/toolspanel.h"
+#include "core/psdformat.h"
 #include "tools/brushpreset.h"
 #include "dialogs/newdocumentdialog.h"
 #include "dialogs/resizedialog.h"
@@ -1731,6 +1732,7 @@ void MainWindow::newDocument() {
     NewDocumentDialog dlg(this);
     if (dlg.exec() == QDialog::Accepted) {
         auto *newDoc = new Document(dlg.imageWidth(), dlg.imageHeight(), this);
+        newDoc->setDpi(dlg.resolution());
         newDoc->activeLayer()->clear(dlg.backgroundColor());
         newDoc->setModified(false);
         addDocument(newDoc);   // opens alongside the existing images
@@ -1739,10 +1741,10 @@ void MainWindow::newDocument() {
 
 void MainWindow::openDocument() {
     QStringList files = QFileDialog::getOpenFileNames(this, QStringLiteral("Open an image"),
-        QString(), "All supported formats (*.psw *.pdn *.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;"
-                   "Paint.with.me layers (*.psw);;"
+        QString(), "All supported formats (*.psd *.psb *.pdn *.png *.jpg *.jpeg *.bmp *.gif *.tif *.tiff *.webp);;"
+                   "Photoshop (*.psd *.psb);;"
                    "Paint.NET (*.pdn);;"
-                   "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp);;All Files (*)");
+                   "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tif *.tiff *.webp);;All Files (*)");
     for (const QString &f : files)
         loadDocumentInto(f);
 }
@@ -1757,34 +1759,42 @@ void MainWindow::performAutosave() {
     if (!m_document || !m_document->isModified()) return;
     if (m_autosaveJob.isRunning()) return;   // the previous one is still writing
     QDir().mkpath(autosaveDir());
-    // Flattened recovery snapshot + a sidecar recording the original path so we
-    // can label it on recovery. The layer copies share their pixels with the
-    // document (nothing is copied here); combining the layers and writing the
-    // PNG run in the background, because for a big image they take seconds
-    // and used to freeze the window every minute.
+    // A layered .psd recovery snapshot, plus settings recording the original
+    // path so it can be labelled and saved there again on recovery. The layer
+    // copies share their pixels with the document (nothing is copied here);
+    // writing the file runs in the background, because for a big image it
+    // takes seconds and used to freeze the window every minute.
     std::vector<Layer> layers;
     layers.reserve(m_document->layerCount());
     for (int i = 0; i < m_document->layerCount(); ++i)
         layers.push_back(*m_document->layerAt(i));
     const QSize size = m_document->size();
-    const QString png = autosaveDir() + "/autosave.png";
+    const QString psd = autosaveDir() + "/autosave.psd";
     const QString origPath = m_document->filePath();
-    m_autosaveJob = QtConcurrent::run([layers = std::move(layers), size, png]() {
-        const QImage flat = Document::compositeLayers(layers, size);
-        const QString part = png + ".part";
-        // Light compression: several times faster to write, still lossless.
-        if (!flat.save(part, "PNG", 80)) {
-            QFile::remove(part);
-            return false;
+    Psd::WriteOptions options;
+    options.dpi = m_document->dpi();
+    options.activeLayer = m_document->activeLayerIndex();
+    m_discardAutosave = false;
+    m_autosaveDocument = m_document;
+    m_autosaveJob = QtConcurrent::run([layers = std::move(layers), size, psd, options]() {
+        // Larger than a .psd allows: keep the flattened picture instead.
+        if (size.width() > Psd::kMaxSide || size.height() > Psd::kMaxSide) {
+            const QImage flat = Document::compositeLayers(layers, size);
+            return flat.save(psd + ".png", "PNG", 80);
         }
-        QFile::remove(png);
-        return QFile::rename(part, png);
+        return Psd::write(psd, layers, size, options);
     });
     auto *watcher = new QFutureWatcher<bool>(this);
-    connect(watcher, &QFutureWatcher<bool>::finished, this, [watcher, png, origPath]() {
+    connect(watcher, &QFutureWatcher<bool>::finished, this, [this, watcher, origPath]() {
         watcher->deleteLater();
+        // The image was saved while this was being written: not needed.
+        if (m_discardAutosave) {
+            m_discardAutosave = false;
+            clearAutosave();
+            return;
+        }
         // Not if the snapshot was discarded meanwhile (clean exit, recovery).
-        if (!watcher->result() || !QFile::exists(png)) return;
+        if (!watcher->result() || recoveryFile().isEmpty()) return;
         QSettings s(AppInfo::kId, AppInfo::kId);
         s.setValue("recovery/pending", true);
         s.setValue("recovery/origPath", origPath);
@@ -1793,8 +1803,19 @@ void MainWindow::performAutosave() {
     watcher->setFuture(m_autosaveJob);
 }
 
+QString MainWindow::recoveryFile() const {
+    // autosave.psd keeps the layers; the .png forms are flattened (an image
+    // too large for .psd, or an autosave from before layered autosave).
+    for (const char *name : {"/autosave.psd", "/autosave.psd.png", "/autosave.png"}) {
+        const QString path = autosaveDir() + QLatin1String(name);
+        if (QFile::exists(path)) return path;
+    }
+    return QString();
+}
+
 void MainWindow::clearAutosave() {
-    QFile::remove(autosaveDir() + "/autosave.png");
+    for (const char *name : {"/autosave.psd", "/autosave.psd.png", "/autosave.png"})
+        QFile::remove(autosaveDir() + QLatin1String(name));
     QSettings s(AppInfo::kId, AppInfo::kId);
     s.remove("recovery/pending");
     s.remove("recovery/origPath");
@@ -1804,8 +1825,8 @@ void MainWindow::clearAutosave() {
 void MainWindow::checkForRecovery() {
     QSettings s(AppInfo::kId, AppInfo::kId);
     if (!s.value("recovery/pending", false).toBool()) return;
-    const QString png = autosaveDir() + "/autosave.png";
-    if (!QFile::exists(png)) { clearAutosave(); return; }
+    const QString file = recoveryFile();
+    if (file.isEmpty()) { clearAutosave(); return; }
 
     const QString orig = s.value("recovery/origPath").toString();
     const QString when = s.value("recovery/when").toString();
@@ -1814,15 +1835,22 @@ void MainWindow::checkForRecovery() {
     auto r = QMessageBox::question(this, QStringLiteral("Recovery"),
         QStringLiteral("An autosave was found (%1, %2).\nDo you want to recover it?").arg(what, when),
         QMessageBox::Yes | QMessageBox::No);
-    if (r == QMessageBox::Yes) {
-        loadDocumentInto(png);
-        if (m_document) {
-            m_document->setModified(true);   // force a re-save so it isn't lost again
-            updateTitle();
-        }
-    } else {
+    if (r != QMessageBox::Yes) {
         clearAutosave();
+        return;
     }
+    auto *doc = new Document(1, 1, this);
+    if (!doc->load(file)) {
+        delete doc;
+        QMessageBox::warning(this, QStringLiteral("Recovery"), QStringLiteral("The autosave could not be opened."));
+        return;
+    }
+    // Saving goes to the original file again (or asks, for an untitled one).
+    doc->setFilePath(orig);
+    doc->setModified(true);   // force a re-save so it isn't lost again
+    addDocument(doc);
+    m_autosaveDocument = doc;   // saving it makes the snapshot unnecessary
+    updateTitle();
 }
 
 void MainWindow::openFile(const QString &filePath) {
@@ -1849,12 +1877,27 @@ void MainWindow::loadDocumentInto(const QString &filePath) {
         }
     }
     auto *newDoc = new Document(1, 1, this);
-    if (newDoc->load(filePath)) {
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool loaded = newDoc->load(filePath);
+    QApplication::restoreOverrideCursor();
+    if (loaded) {
         addDocument(newDoc);
         addRecentFile(filePath);
+        const QStringList notes = newDoc->loadNotes();
+        if (!notes.isEmpty()) {
+            // Not blocking: the image is open and usable behind it.
+            auto *box = new QMessageBox(QMessageBox::Information, QFileInfo(filePath).fileName(),
+                QStringLiteral("The file is open. Some parts could not be kept as they were:"),
+                QMessageBox::Ok, this);
+            box->setInformativeText(QStringLiteral("\u2022 ") + notes.join(QStringLiteral("\n\u2022 ")));
+            box->setAttribute(Qt::WA_DeleteOnClose);
+            box->open();
+        }
     } else {
+        const QString why = newDoc->lastError();
         delete newDoc;
-        QMessageBox::warning(this, QStringLiteral("Error"), QStringLiteral("Could not open the image file."));
+        QMessageBox::warning(this, QStringLiteral("Error"),
+            QStringLiteral("Could not open the image file.") + (why.isEmpty() ? QString() : QStringLiteral("\n\n") + why));
     }
 }
 
@@ -1911,48 +1954,50 @@ void MainWindow::updateRecentFilesMenu() {
 }
 
 bool MainWindow::saveDocument() {
-    // .pdn is opened but not written back: ask where to save instead.
+    // .pdn and .psb are opened but not written back: ask where to save instead.
     if (m_document->filePath().isEmpty() || Document::isOpenOnlyFormat(m_document->filePath()))
         return saveDocumentAs();
-    if (!m_document->save(m_document->filePath())) {
-        QMessageBox::warning(this, QStringLiteral("Error"), QStringLiteral("Could not save the file."));
-        return false;
-    }
-    addRecentFile(m_document->filePath());
-    updateTitle();
-    return true;
+    return writeDocument(m_document->filePath(), -1);
 }
 
 bool MainWindow::saveDocumentAs() {
+    // Layers are kept in Photoshop's .psd, so it comes first. Coming from a
+    // .pdn or .psb, suggest the same name as .psd.
     QString selectedFilter;
-    // Coming from a .pdn, suggest the same name as a layered .psw.
     QString suggested;
     const QString current = m_document->filePath();
     if (Document::isOpenOnlyFormat(current)) {
         const QFileInfo info(current);
-        suggested = info.dir().filePath(info.completeBaseName() + ".psw");
+        suggested = info.dir().filePath(info.completeBaseName() + ".psd");
+    } else if (!current.isEmpty()) {
+        suggested = current;
     }
     QString filePath = QFileDialog::getSaveFileName(this, QStringLiteral("Save image"),
-        suggested, "Paint.with.me layers (*.psw);;PNG (*.png);;JPEG (*.jpg *.jpeg);;"
-                   "BMP (*.bmp);;TIFF (*.tiff);;WebP (*.webp);;All Files (*)",
+        suggested, "Photoshop, keeps layers (*.psd);;PNG (*.png);;JPEG (*.jpg *.jpeg);;"
+                   "BMP (*.bmp);;TIFF (*.tif *.tiff);;WebP (*.webp);;All Files (*)",
         &selectedFilter);
     if (filePath.isEmpty()) return false;
 
     // Ensure the file has an extension; infer it from the chosen filter.
     if (QFileInfo(filePath).suffix().isEmpty()) {
-        QString ext = "png";
-        if (selectedFilter.contains("psw")) ext = "psw";
-        else if (selectedFilter.contains("jpg")) ext = "jpg";
-        else if (selectedFilter.contains("bmp")) ext = "bmp";
-        else if (selectedFilter.contains("tiff")) ext = "tiff";
-        else if (selectedFilter.contains("webp")) ext = "webp";
+        QString ext = "psd";
+        if (selectedFilter.startsWith("PNG")) ext = "png";
+        else if (selectedFilter.startsWith("JPEG")) ext = "jpg";
+        else if (selectedFilter.startsWith("BMP")) ext = "bmp";
+        else if (selectedFilter.startsWith("TIFF")) ext = "tiff";
+        else if (selectedFilter.startsWith("WebP")) ext = "webp";
         filePath += "." + ext;
+    }
+    if (Document::isOpenOnlyFormat(filePath)) {
+        QMessageBox::warning(this, QStringLiteral("Save image"),
+            QStringLiteral("Paint.with.me can open this format but not save it. Choose Photoshop (.psd) to keep the layers."));
+        return false;
     }
 
     // Warn when a multi-layer document is saved to a flat image format.
-    if (!Document::isNativeFormat(filePath) && m_document->layerCount() > 1) {
+    if (!Document::isLayeredFormat(filePath) && m_document->layerCount() > 1) {
         auto res = QMessageBox::question(this, QStringLiteral("Flatten layers?"),
-            QStringLiteral("This format does not keep layers: the image will be flattened.\nUse the .psw format to keep your layers.\n\nContinue?"),
+            QStringLiteral("This format does not keep layers: the image will be flattened.\nUse Photoshop (.psd) to keep your layers.\n\nContinue?"),
             QMessageBox::Save | QMessageBox::Cancel, QMessageBox::Save);
         if (res == QMessageBox::Cancel) return false;
     }
@@ -1966,13 +2011,42 @@ bool MainWindow::saveDocumentAs() {
         if (dlg.exec() != QDialog::Accepted) return false;
         quality = dlg.quality();
     }
+    return writeDocument(filePath, quality);
+}
 
-    if (!m_document->save(filePath, quality)) {
-        QMessageBox::warning(this, QStringLiteral("Error"), QStringLiteral("Could not save the file."));
+bool MainWindow::writeDocument(const QString &filePath, int quality) {
+    if (Document::isLayeredFormat(filePath)) {
+        // Photoshop has no Glow, Negation, Reflect, Xor or Overwrite mode.
+        // Asked once per image, not at every Ctrl+S.
+        std::vector<Layer> layers;
+        for (int i = 0; i < m_document->layerCount(); ++i) layers.push_back(*m_document->layerAt(i));
+        const QStringList lost = Psd::layersWithoutPsdBlendMode(layers);
+        if (!lost.isEmpty() && !m_document->property("psdBlendModesConfirmed").toBool()) {
+            const auto res = QMessageBox::question(this, QStringLiteral("Blend modes"),
+                QStringLiteral("Photoshop files have no equivalent for these blend modes, so these layers "
+                               "will be saved as Normal:\n\n%1\n\nThey stay as they are in the open image.")
+                    .arg(lost.join('\n')),
+                QMessageBox::Save | QMessageBox::Cancel, QMessageBox::Save);
+            if (res != QMessageBox::Save) return false;
+            m_document->setProperty("psdBlendModesConfirmed", true);
+        }
+    }
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool saved = m_document->save(filePath, quality);
+    QApplication::restoreOverrideCursor();
+    if (!saved) {
+        const QString why = m_document->lastError();
+        QMessageBox::warning(this, QStringLiteral("Error"),
+            QStringLiteral("Could not save the file.") + (why.isEmpty() ? QString() : QStringLiteral("\n\n") + why));
         return false;
     }
     addRecentFile(filePath);
     updateTitle();
+    // Saved, so the crash-recovery snapshot of this image is not needed.
+    if (m_autosaveDocument == m_document) {
+        if (m_autosaveJob.isRunning()) m_discardAutosave = true;
+        else clearAutosave();
+    }
     return true;
 }
 
@@ -2146,9 +2220,14 @@ void MainWindow::moveActiveLayerDown() {
 void MainWindow::importLayerFromFile() {
     if (!m_document) return;
     const QString file = QFileDialog::getOpenFileName(this, QStringLiteral("Import Layer from File"),
-        QString(), QStringLiteral("Images (*.png *.jpg *.jpeg *.bmp *.gif *.tiff *.webp)"));
+        QString(), QStringLiteral("Images (*.psd *.psb *.pdn *.png *.jpg *.jpeg *.bmp *.gif *.tif *.tiff *.webp)"));
     if (file.isEmpty()) return;
     QImage img(file);
+    if (img.isNull()) {
+        // Layered files come in as one layer, as they look.
+        Document layered(1, 1);
+        if (layered.load(file)) img = layered.flatten();
+    }
     if (img.isNull()) {
         QMessageBox::warning(this, QStringLiteral("Error"), QStringLiteral("Could not load the image file."));
         return;
@@ -2278,8 +2357,12 @@ void MainWindow::featherSelection() {
 // ---- Image operations ----
 
 void MainWindow::resizeImage() {
-    ResizeDialog dlg(m_document->width(), m_document->height(), 96, this);
+    ResizeDialog dlg(m_document->width(), m_document->height(), qRound(m_document->dpi()), this);
     if (dlg.exec() == QDialog::Accepted) {
+        if (dlg.resolution() != qRound(m_document->dpi())) {
+            m_document->setDpi(dlg.resolution());
+            m_document->setModified(true);
+        }
         m_document->resize(dlg.newWidth(), dlg.newHeight());
         m_sizeLabel->setText(QString("%1 × %2").arg(m_document->width()).arg(m_document->height()));
         m_canvas->updateCanvas();

@@ -120,7 +120,7 @@ QString desktopFileContent(const Environment &env) {
     s += QStringLiteral("Icon=") + QString::fromLatin1(AppInfo::kDesktopId) + QLatin1Char('\n');
     s += QStringLiteral("Terminal=false\n");
     s += QStringLiteral("Categories=Graphics;2DGraphics;RasterGraphics;\n");
-    s += QStringLiteral("MimeType=image/png;image/jpeg;image/bmp;image/gif;image/tiff;image/webp;\n");
+    s += QStringLiteral("MimeType=image/vnd.adobe.photoshop;image/png;image/jpeg;image/bmp;image/gif;image/tiff;image/webp;\n");
     s += QStringLiteral("Keywords=paint;image;editor;photo;draw;pdn;\n");
     s += kMarkerKey + QStringLiteral("=true\n");
     s += QStringLiteral("X-PaintWithMe-Version=") + escapeValue(env.version) + QLatin1Char('\n');
