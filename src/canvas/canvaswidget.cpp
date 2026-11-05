@@ -1,5 +1,7 @@
 #include "canvaswidget.h"
 #include "core/document.h"
+#include "core/perspective.h"
+#include <QLineF>
 #include "tools/tool.h"
 #include <QPainter>
 #include <QMouseEvent>
@@ -313,6 +315,19 @@ void CanvasWidget::paintEvent(QPaintEvent *) {
         drawSelectionMarching(painter);
     }
 
+    // Perspective guides (over the image, under the tool's own marks).
+    const QVector<QPointF> &vanishing = m_document->vanishingPoints();
+    if (!vanishing.isEmpty()
+        && (Perspective::settings().visible
+            || (m_currentTool && m_currentTool->type() == ToolType::Perspective))) {
+        QTransform toWidget;
+        toWidget.translate(m_pan.x() + rs, m_pan.y() + rs);
+        toWidget.scale(m_zoom, m_zoom);
+        Perspective::drawGuides(painter, vanishing, Perspective::settings().rays,
+                                QRectF(0, 0, m_document->width(), m_document->height()),
+                                toWidget, 1.0, 110);
+    }
+
     // Tool overlay
     if (m_currentTool) {
         m_currentTool->drawOverlay(painter, *this);
@@ -548,10 +563,46 @@ void CanvasWidget::mousePressEvent(QMouseEvent *event) {
             m_currentTool->setPressure(1.0);
         }
         QPointF canvasPos = widgetToCanvas(event->position());
+        m_snapActive = startsPerspectiveSnap(event);
+        if (m_snapActive) {
+            m_snapStart = canvasPos;
+            m_snapDirection = QPointF();
+        }
         m_currentTool->mousePressEvent(canvasPos, event, *this);
         if (!m_currentTool->updatesCanvasRegion()) m_cacheValid = false;
         update();
     }
+}
+
+bool CanvasWidget::startsPerspectiveSnap(const QMouseEvent *event) const {
+    if (!m_document || !m_currentTool || m_document->vanishingPoints().isEmpty()) return false;
+    if (!Perspective::settings().snap) return false;
+    if (event->button() != Qt::LeftButton && event->button() != Qt::RightButton) return false;
+    if (event->modifiers() & Qt::ControlModifier) return false;   // Clone Stamp: set the source
+    switch (m_currentTool->type()) {
+    case ToolType::Brush:
+    case ToolType::Pencil:
+    case ToolType::Eraser:
+    case ToolType::Line:
+    case ToolType::CloneStamp:
+    case ToolType::Recolor:
+        return true;
+    default:
+        return false;
+    }
+}
+
+QPointF CanvasWidget::perspectiveSnapped(const QPointF &canvasPos) {
+    if (!m_snapActive || !m_document) return canvasPos;
+    if (m_snapDirection.isNull()) {
+        // Decide the direction once the stroke has moved 4 screen pixels;
+        // until then it stays at its start.
+        if (QLineF(m_snapStart, canvasPos).length() * m_zoom < 4.0) return m_snapStart;
+        m_snapDirection = Perspective::snapDirection(m_document->vanishingPoints(),
+                                                     Perspective::settings().straight,
+                                                     m_snapStart, canvasPos);
+    }
+    return Perspective::project(m_snapStart, m_snapDirection, canvasPos);
 }
 
 void CanvasWidget::mouseMoveEvent(QMouseEvent *event) {
@@ -575,6 +626,8 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent *event) {
         return;
 
     if (m_currentTool && m_document) {
+        if (m_snapActive && (event->buttons() & (Qt::LeftButton | Qt::RightButton)))
+            canvasPos = perspectiveSnapped(canvasPos);
         m_currentTool->mouseMoveEvent(canvasPos, event, *this);
         if (!m_currentTool->updatesCanvasRegion()) m_cacheValid = false;
         update();
@@ -589,7 +642,12 @@ void CanvasWidget::mouseReleaseEvent(QMouseEvent *event) {
     }
 
     if (m_currentTool && m_document) {
-        m_currentTool->mouseReleaseEvent(widgetToCanvas(event->position()), event, *this);
+        QPointF canvasPos = widgetToCanvas(event->position());
+        if (m_snapActive) {
+            canvasPos = perspectiveSnapped(canvasPos);
+            m_snapActive = false;
+        }
+        m_currentTool->mouseReleaseEvent(canvasPos, event, *this);
         if (!m_currentTool->updatesCanvasRegion()) m_cacheValid = false;
         update();
         emit canvasModified();

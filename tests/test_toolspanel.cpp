@@ -94,7 +94,7 @@ static int rowOf(QWidget *w) {
 static void toolKeys() {
     std::printf("== Tool type keys ==\n");
     QStringList seen;
-    for (int i = 0; i <= static_cast<int>(ToolType::CloneStamp); ++i) {
+    for (int i = 0; i <= static_cast<int>(ToolType::Perspective); ++i) {
         const auto type = static_cast<ToolType>(i);
         const QString key = toolTypeKey(type);
         CHECK(!key.isEmpty());

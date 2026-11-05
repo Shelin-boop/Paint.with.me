@@ -64,6 +64,10 @@ private slots:
     bool saveDocument();
     bool saveDocumentAs();
     void exportPdf();
+    // Perspective guides: settings changed (tool options or View menu), and
+    // the guide lines drawn into a new layer.
+    void perspectiveSettingsChanged();
+    void perspectiveGuidesToLayer();
     void printDocument();
     void closeCurrentDocument();
     void showSettingsDialog();
@@ -265,6 +269,8 @@ private:
     QAction *m_undoAction = nullptr;
     QAction *m_redoAction = nullptr;
     QAction *m_rulersAction = nullptr;
+    QAction *m_perspectiveGuidesAction = nullptr;
+    QAction *m_perspectiveSnapAction = nullptr;
 
     bool m_normalizingDockLayout = false;
     bool m_restoringState = false;

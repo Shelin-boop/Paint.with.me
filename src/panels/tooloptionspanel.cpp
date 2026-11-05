@@ -1,4 +1,8 @@
 #include "tooloptionspanel.h"
+#include "core/perspective.h"
+#include <QSpinBox>
+#include <QSignalBlocker>
+#include <QPushButton>
 #include "tools/tool.h"
 #include "tools/shapetool.h"
 #include "tools/gradienttool.h"
@@ -40,6 +44,7 @@ const ToolEntry kToolEntries[] = {
     {"Text",                            ToolType::Text},
     {"Line / Curve",                   ToolType::Line},
     {"Shapes",                           ToolType::Shape},
+    {"Perspective",                      ToolType::Perspective},
 };
 }
 
@@ -362,6 +367,61 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
     connect(m_selectionHSpin, QOverload<int>::of(&QSpinBox::valueChanged),
             this, &ToolOptionsPanel::onSelectionSizeChanged);
 
+    // --- Perspective tool: guide lines, snapping, a layer of guides ---
+    m_perspectiveGroup = new QWidget;
+    {
+        auto *row = new QHBoxLayout(m_perspectiveGroup);
+        row->setContentsMargins(0, 0, 0, 0);
+        row->setSpacing(6);
+        auto *raysLabel = new QLabel(QStringLiteral("Lines:"));
+        raysLabel->setStyleSheet("font-size: 11px;");
+        row->addWidget(raysLabel);
+        m_perspectiveRays = new QSpinBox;
+        m_perspectiveRays->setObjectName("perspectiveRays");
+        m_perspectiveRays->setRange(4, 360);
+        m_perspectiveRays->setSingleStep(4);
+        m_perspectiveRays->setFixedHeight(20);
+        m_perspectiveRays->setToolTip(QStringLiteral("Guide lines per vanishing point, around the full circle."));
+        row->addWidget(m_perspectiveRays);
+        m_perspectiveShow = new QCheckBox(QStringLiteral("Show guides"));
+        m_perspectiveSnap = new QCheckBox(QStringLiteral("Snap strokes"));
+        m_perspectiveSnap->setToolTip(QStringLiteral(
+            "Paintbrush, pencil, eraser, line, clone stamp and recolor strokes follow the guide line "
+            "they start along."));
+        m_perspectiveStraight = new QCheckBox(QStringLiteral("Also horizontal and vertical"));
+        for (QCheckBox *c : {m_perspectiveShow, m_perspectiveSnap, m_perspectiveStraight}) {
+            c->setStyleSheet("font-size: 11px;");
+            row->addWidget(c);
+        }
+        auto *toLayer = new QPushButton(QStringLiteral("Guides to New Layer"));
+        toLayer->setToolTip(QStringLiteral("Draws the guide lines into a new layer of the image."));
+        auto *clear = new QPushButton(QStringLiteral("Remove Points"));
+        for (QPushButton *b : {toLayer, clear}) {
+            b->setFixedHeight(20);
+            b->setStyleSheet("font-size: 11px; padding: 0 6px;");
+            row->addWidget(b);
+        }
+        auto *hint = new QLabel(QStringLiteral("Click: add a point (up to 3), drag: move, right-click: remove"));
+        hint->setStyleSheet("font-size: 11px; color: palette(mid);");
+        row->addWidget(hint);
+        syncPerspectiveControls();
+        auto changed = [this]() {
+            Perspective::Settings &ps = Perspective::settings();
+            ps.rays = m_perspectiveRays->value();
+            ps.visible = m_perspectiveShow->isChecked();
+            ps.snap = m_perspectiveSnap->isChecked();
+            ps.straight = m_perspectiveStraight->isChecked();
+            Perspective::saveSettings();
+            emit perspectiveSettingsChanged();
+        };
+        connect(m_perspectiveRays, QOverload<int>::of(&QSpinBox::valueChanged), this, changed);
+        for (QCheckBox *c : {m_perspectiveShow, m_perspectiveSnap, m_perspectiveStraight})
+            connect(c, &QCheckBox::toggled, this, changed);
+        connect(toLayer, &QPushButton::clicked, this, &ToolOptionsPanel::perspectiveToLayerRequested);
+        connect(clear, &QPushButton::clicked, this, &ToolOptionsPanel::perspectiveClearRequested);
+    }
+    layout->addWidget(m_perspectiveGroup);
+
     layout->addStretch();
 }
 
@@ -400,6 +460,16 @@ QWidget *ToolOptionsPanel::makeSliderGroup(const QString &labelText, QLabel *&la
     });
 
     return group;
+}
+
+void ToolOptionsPanel::syncPerspectiveControls() {
+    const Perspective::Settings &ps = Perspective::settings();
+    const QSignalBlocker b1(m_perspectiveRays), b2(m_perspectiveShow), b3(m_perspectiveSnap),
+        b4(m_perspectiveStraight);
+    m_perspectiveRays->setValue(ps.rays);
+    m_perspectiveShow->setChecked(ps.visible);
+    m_perspectiveSnap->setChecked(ps.snap);
+    m_perspectiveStraight->setChecked(ps.straight);
 }
 
 QWidget *ToolOptionsPanel::createSep() {
@@ -611,6 +681,9 @@ void ToolOptionsPanel::updateFromTool() {
     const bool hasRecolorTarget = (t == ToolType::Recolor);
     m_recolorTargetLabel->setVisible(hasRecolorTarget);
     m_recolorTargetCombo->setVisible(hasRecolorTarget);
+
+    m_perspectiveGroup->setVisible(t == ToolType::Perspective);
+    if (t == ToolType::Perspective) syncPerspectiveControls();
 
     const bool hasText = (t == ToolType::Text);
     m_fontCombo->setVisible(hasText);

@@ -27,10 +27,16 @@ public:
     // Reveals the Pressure toggle once a graphics tablet has been detected, as
     // Paint.NET does (the control is hidden until then).
     void setTabletPresent(bool present);
+    // Shows the current perspective settings (changed elsewhere, e.g. View menu).
+    void syncPerspectiveControls();
 
 signals:
     void toolOptionsChanged();
     void toolChangeRequested(ToolType type);
+    // Perspective tool controls.
+    void perspectiveSettingsChanged();
+    void perspectiveToLayerRequested();
+    void perspectiveClearRequested();
 
 private slots:
     void onBrushSizeChanged();
@@ -119,6 +125,12 @@ private:
     QLabel *m_gradientRepeatLabel;
     QComboBox *m_gradientRepeatCombo;
     QCheckBox *m_gradientTransparencyCheck;
+
+    QWidget *m_perspectiveGroup = nullptr;
+    QSpinBox *m_perspectiveRays = nullptr;
+    QCheckBox *m_perspectiveShow = nullptr;
+    QCheckBox *m_perspectiveSnap = nullptr;
+    QCheckBox *m_perspectiveStraight = nullptr;
 
     QLabel *m_blendModeLabel;
     QComboBox *m_blendModeCombo;

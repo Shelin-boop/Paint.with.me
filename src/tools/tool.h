@@ -37,7 +37,8 @@ enum class ToolType {
     Shape,
     Line,
     Gradient,
-    CloneStamp
+    CloneStamp,
+    Perspective
 };
 
 // Stable text names for tool types ("paintbrush", "clone-stamp", ...), used
