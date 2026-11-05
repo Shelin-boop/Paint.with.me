@@ -1,3 +1,7 @@
+#include <QFile>
+#include <QSet>
+#include <QSettings>
+#include "appinfo.h"
 #include "history.h"
 #include "document.h"
 #include "layer.h"
@@ -99,6 +103,10 @@ void LayerAddCommand::undo() {
     m_doc->removeLayerDirect(m_index);
 }
 
+void LayerAddCommand::forEachImage(const std::function<void(const QImage &)> &visit) const {
+    if (m_savedLayer) visit(m_savedLayer->image());
+}
+
 void LayerAddCommand::redo() {
     if (m_savedLayer)
         m_doc->insertLayerDirect(m_index, std::make_shared<Layer>(*m_savedLayer));
@@ -108,6 +116,10 @@ void LayerAddCommand::redo() {
 LayerRemoveCommand::LayerRemoveCommand(Document *doc, int index, const QString &desc)
     : m_doc(doc), m_index(index), m_description(desc) {
     m_savedLayer = std::make_shared<Layer>(*m_doc->layerAt(index));
+}
+
+void LayerRemoveCommand::forEachImage(const std::function<void(const QImage &)> &visit) const {
+    if (m_savedLayer) visit(m_savedLayer->image());
 }
 
 void LayerRemoveCommand::undo() {
@@ -161,6 +173,14 @@ void DocumentSnapshotCommand::restore(Document *doc, const State &state) {
     emit doc->selectionChanged();
 }
 
+void DocumentSnapshotCommand::forEachImage(const std::function<void(const QImage &)> &visit) const {
+    for (const State *state : {&m_before, &m_after}) {
+        for (const auto &l : state->layers)
+            if (l) visit(l->image());
+        visit(state->selection.mask());
+    }
+}
+
 void DocumentSnapshotCommand::undo() {
     restore(m_doc, m_before);
 }
@@ -207,13 +227,75 @@ HistoryManager::HistoryManager(QObject *parent) : QObject(parent) {}
 void HistoryManager::push(std::unique_ptr<HistoryCommand> cmd) {
     m_redoStack.clear();
     m_undoStack.push_back(std::move(cmd));
-    // Cap the undo depth to keep memory bounded (each image edit stores full
-    // before/after frames).
-    const size_t kMaxUndo = 100;
-    if (m_undoStack.size() > kMaxUndo)
-        m_undoStack.erase(m_undoStack.begin(),
-                          m_undoStack.begin() + (m_undoStack.size() - kMaxUndo));
+    trim();
     emit historyChanged();
+}
+
+void HistoryManager::setLiveImages(std::function<void(const ImageVisitor &)> liveImages) {
+    m_liveImages = std::move(liveImages);
+}
+
+void HistoryManager::setMemoryBudget(qint64 bytes) {
+    m_budget = qMax<qint64>(0, bytes);
+    const size_t before = m_undoStack.size() + m_redoStack.size();
+    trim();
+    if (m_undoStack.size() + m_redoStack.size() != before) emit historyChanged();
+}
+
+qint64 HistoryManager::memoryUsed() const {
+    QSet<qint64> live;
+    if (m_liveImages)
+        m_liveImages([&live](const QImage &img) { if (!img.isNull()) live.insert(img.cacheKey()); });
+    QSet<qint64> seen;
+    qint64 total = 0;
+    // Copies of an image share its pixels until one is changed, and keep the
+    // same cacheKey(); count each block of pixels once.
+    const ImageVisitor add = [&](const QImage &img) {
+        if (img.isNull()) return;
+        const qint64 key = img.cacheKey();
+        if (live.contains(key) || seen.contains(key)) return;
+        seen.insert(key);
+        total += img.sizeInBytes();
+    };
+    for (const auto &c : m_undoStack) c->forEachImage(add);
+    for (const auto &c : m_redoStack) c->forEachImage(add);
+    return total;
+}
+
+void HistoryManager::trim() {
+    auto steps = [this]() { return m_undoStack.size() + m_redoStack.size(); };
+    auto over = [this]() { return m_budget > 0 && memoryUsed() > m_budget; };
+    // Oldest done steps first; the latest done step always stays.
+    while (m_undoStack.size() > 1 && (steps() > size_t(kMaxSteps) || over())) {
+        m_undoStack.erase(m_undoStack.begin());
+        ++m_dropped;
+    }
+    // Still too much (the budget was lowered): the furthest redo steps go.
+    while (!m_redoStack.empty() && (steps() > size_t(kMaxSteps) || over())) {
+        m_redoStack.erase(m_redoStack.begin());
+        ++m_dropped;
+    }
+}
+
+qint64 HistoryManager::defaultMemoryBudget() {
+    constexpr qint64 MB = 1024 * 1024;
+    qint64 total = 0;
+    QFile meminfo(QStringLiteral("/proc/meminfo"));
+    if (meminfo.open(QIODevice::ReadOnly)) {
+        for (const QByteArray &line : meminfo.readAll().split('\n')) {
+            if (line.startsWith("MemTotal:")) {
+                total = line.mid(9).trimmed().split(' ').value(0).toLongLong() * 1024;
+                break;
+            }
+        }
+    }
+    if (total <= 0) return 1024 * MB;
+    return qBound<qint64>(512 * MB, total / 8, 2048 * MB);
+}
+
+qint64 HistoryManager::configuredMemoryBudget() {
+    const int mb = QSettings(AppInfo::kId, AppInfo::kId).value(QStringLiteral("history/memoryLimitMB"), 0).toInt();
+    return mb > 0 ? qint64(mb) * 1024 * 1024 : defaultMemoryBudget();
 }
 
 void HistoryManager::undo() {
@@ -270,6 +352,7 @@ QStringList HistoryManager::fullHistoryList() const {
 }
 
 void HistoryManager::clear() {
+    m_dropped = 0;
     m_undoStack.clear();
     m_redoStack.clear();
     emit historyChanged();

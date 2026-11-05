@@ -18,12 +18,23 @@ Document::Document(int width, int height, QObject *parent)
     auto layer = std::make_shared<Layer>(width, height, "Background");
     layer->clear(Qt::white);
     m_layers.push_back(layer);
+    setUpHistory();
 }
 
 Document::Document(const QString &filePath, QObject *parent)
     : QObject(parent)
 {
+    setUpHistory();
     load(filePath);
+}
+
+void Document::setUpHistory() {
+    // Pixels an undo step shares with the open image cost the history nothing.
+    m_history.setLiveImages([this](const HistoryManager::ImageVisitor &visit) {
+        for (const auto &layer : m_layers) visit(layer->image());
+        visit(m_selection.mask());
+    });
+    m_history.setMemoryBudget(HistoryManager::configuredMemoryBudget());
 }
 
 void Document::resize(int width, int height) {

@@ -13,6 +13,9 @@
 #include <QPushButton>
 #include <QSettings>
 #include "appinfo.h"
+#include "core/history.h"
+#include <QSignalBlocker>
+#include <QSpinBox>
 
 SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     setWindowTitle(QStringLiteral("Settings"));
@@ -26,6 +29,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_categories->setFixedWidth(160);
     m_categories->addItem(QStringLiteral("User Interface"));
     m_categories->addItem(QStringLiteral("Canvas"));
+    m_categories->addItem(QStringLiteral("Undo History"));
     m_categories->addItem(QStringLiteral("Tools"));
     m_categories->addItem(QStringLiteral("Help"));
     body->addWidget(m_categories);
@@ -34,6 +38,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_pages = new QStackedWidget;
     m_pages->addWidget(buildUserInterfacePage());
     m_pages->addWidget(buildCanvasPage());
+    m_pages->addWidget(buildHistoryPage());
     m_pages->addWidget(buildPlaceholderPage(
         QStringLiteral("Brush width ( [ and ] to adjust )")));
     m_pages->addWidget(buildPlaceholderPage(
@@ -127,6 +132,61 @@ QWidget *SettingsDialog::buildCanvasPage() {
 
     layout->addStretch();
     return page;
+}
+
+QWidget *SettingsDialog::buildHistoryPage() {
+    auto *page = new QWidget;
+    auto *layout = new QVBoxLayout(page);
+    constexpr qint64 MB = 1024 * 1024;
+
+    auto *row = new QHBoxLayout;
+    row->addWidget(new QLabel(QStringLiteral("Memory for undo steps:")));
+    m_historyLimit = new QSpinBox;
+    m_historyLimit->setObjectName("historyMemoryLimit");
+    m_historyLimit->setRange(128, 65536);
+    m_historyLimit->setSingleStep(128);
+    m_historyLimit->setSuffix(QStringLiteral(" MB"));
+    m_historyLimit->setValue(int(HistoryManager::configuredMemoryBudget() / MB));
+    row->addWidget(m_historyLimit);
+    auto *useDefault = new QPushButton(QStringLiteral("Use Default"));
+    row->addWidget(useDefault);
+    row->addStretch();
+    layout->addLayout(row);
+
+    auto *note = new QLabel(QStringLiteral(
+        "Each image keeps its undo steps within this amount. When they need more, the oldest "
+        "steps are dropped; the latest step is always kept. Default for this computer: %1 MB "
+        "(one eighth of its memory, between 512 MB and 2048 MB).")
+        .arg(HistoryManager::defaultMemoryBudget() / MB));
+    note->setWordWrap(true);
+    layout->addWidget(note);
+
+    m_historyUsage = new QLabel;
+    m_historyUsage->setObjectName("historyUsage");
+    m_historyUsage->setWordWrap(true);
+    layout->addWidget(m_historyUsage);
+
+    connect(m_historyLimit, QOverload<int>::of(&QSpinBox::valueChanged), this, [this](int mb) {
+        QSettings(AppInfo::kId, AppInfo::kId).setValue(QStringLiteral("history/memoryLimitMB"), mb);
+        emit historySettingsChanged();
+    });
+    connect(useDefault, &QPushButton::clicked, this, [this]() {
+        {
+            const QSignalBlocker block(m_historyLimit);
+            m_historyLimit->setValue(int(HistoryManager::defaultMemoryBudget() / (1024 * 1024)));
+        }
+        QSettings(AppInfo::kId, AppInfo::kId).remove(QStringLiteral("history/memoryLimitMB"));
+        emit historySettingsChanged();
+    });
+
+    layout->addStretch();
+    return page;
+}
+
+void SettingsDialog::setHistoryUsage(qint64 bytes, int steps) {
+    if (!m_historyUsage) return;
+    m_historyUsage->setText(QStringLiteral("The current image's %1 undo step(s) use %2 MB.")
+                                .arg(steps).arg(double(bytes) / (1024.0 * 1024.0), 0, 'f', 1));
 }
 
 QWidget *SettingsDialog::buildPlaceholderPage(const QString &text) {

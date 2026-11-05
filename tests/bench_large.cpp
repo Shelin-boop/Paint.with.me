@@ -366,6 +366,8 @@ int main(int argc, char **argv) {
     const double rssAfter = rssMb();
     row("after 5 brush strokes", rssAfter, "MB");
     row("  growth per brush stroke (mostly undo history)", (rssAfter - rssBeforeStrokes) / 5.0, "MB");
+    row("  held by the undo steps", doc->history().memoryUsed() / 1048576.0, "MB");
+    row("  undo memory limit (1/8 of this computer's memory)", doc->history().memoryBudget() / 1048576.0, "MB");
     row("peak", peakMb(), "MB");
 
     // ---- Autosave ----
