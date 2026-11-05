@@ -31,12 +31,14 @@ Claude sessions and milestones, not in hours of human work.
 ## Roadmap (owner may reorder)
 
 1. Rebrand and English-only UI. Done 2026-11-05.
-2. AppImage for Kubuntu: start-menu entry on first launch, Wayland platform
-   plugin, current Qt, release on GitHub.
+2. AppImage for Kubuntu: start-menu entry on first launch, current Qt,
+   release on GitHub. Done 2026-11-05. Native Wayland waits for step 5.
 3. File formats: remove `.psw`; layered PSD read and write; autosave keeps
    layers.
 4. Undo rework.
-5. Code cleanup, especially `src/mainwindow.cpp` and a tool registry.
+5. Code cleanup, especially `src/mainwindow.cpp` and a tool registry. Move
+   the floating panels inside the main window, then drop the XWayland
+   preference in `src/main.cpp` so the app runs natively on Wayland.
 6. Smudge tool and blur brush.
 
 ## Rules
@@ -54,14 +56,14 @@ Claude sessions and milestones, not in hours of human work.
 - Keep `tests/data/pdn/LICENSE-pypdn` with the pypdn test files.
 - Write documentation and UI text in American English. Dates as yyyy-mm-dd,
   times in 24-hour format, SI units. Menus use "..." (three dots), not "…".
-- Every change keeps all four test suites passing; new behavior gets a test.
+- Every change keeps all five test suites passing; new behavior gets a test.
 
 ## Build and test
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests
+cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_integration_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
@@ -70,11 +72,22 @@ zlib1g-dev cmake ninja-build`. Qt 6.4 is the minimum. On a 2-core machine the
 test targets take about 15 minutes to build, because three of them compile
 `mainwindow.cpp` again.
 
+## Releases
+
+- `.github/workflows/appimage.yml`, started by hand (Actions tab, or
+  `gh api repos/Shelin-boop/Paint.with.me/actions/workflows/appimage.yml/dispatches -f ref=main`),
+  replaces the rolling `continuous` pre-release ("Latest build").
+- Pushing a tag `vX.Y.Z` creates a normal release.
+- Version shown to users: `<project major.minor>.<commit count>`, for example 0.1.115.
+- The CI workflow (`ci.yml`) runs on every push; the AppImage workflow does not,
+  to save build minutes on the private repository.
+
 ## Code map
 
 | Area | Where |
 |---|---|
 | App names, IDs, version macro | `src/appinfo.h` |
+| AppImage menu entry (install, update, remove) | `src/desktopintegration.cpp` |
 | Main window, menus, tool registration, shortcuts | `src/mainwindow.cpp` (about 3,800 lines) |
 | Document, layers, selection, undo history | `src/core/` |
 | `.pdn` reader (own MS-NRBF parser, read-only) | `src/core/pdnformat.cpp` |

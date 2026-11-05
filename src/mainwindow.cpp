@@ -128,6 +128,7 @@
 #include <QDir>
 #include <QStandardPaths>
 #include "appinfo.h"
+#include "desktopintegration.h"
 
 // One-line tool description used in tooltips (defined further down).
 QString toolDescription(ToolType t);
@@ -848,6 +849,7 @@ void MainWindow::createMenuBarCornerIcons() {
     helpBtn->setPopupMode(QToolButton::InstantPopup);
     auto *helpMenu = new QMenu(helpBtn);
     helpMenu->addAction(QStringLiteral("Keyboard shortcuts"), this, &MainWindow::showShortcutsHelp);
+    addAppMenuEntryAction(helpMenu);
     helpMenu->addSeparator();
     helpMenu->addAction(QStringLiteral("&About Paint.with.me"), this, [this]() {
         QMessageBox::about(this, QStringLiteral("About Paint.with.me"),
@@ -864,6 +866,40 @@ void MainWindow::createMenuBarCornerIcons() {
     cornerLayout->addWidget(helpBtn);
 
     menuBar()->setCornerWidget(corner, Qt::TopRightCorner);
+}
+
+void MainWindow::addAppMenuEntryAction(QMenu *helpMenu) {
+    // Only an AppImage manages its own menu entry; a .deb has a system one.
+    if (!DesktopIntegration::Environment::fromSystem().isAppImage()) return;
+    auto *action = helpMenu->addAction(QString());
+    auto refresh = [action]() {
+        const auto st = DesktopIntegration::state(DesktopIntegration::Environment::fromSystem());
+        const bool present = st == DesktopIntegration::State::Current
+                             || st == DesktopIntegration::State::Outdated;
+        action->setText(present ? QStringLiteral("Remove from application menu")
+                                : QStringLiteral("Add to application menu"));
+        action->setEnabled(st != DesktopIntegration::State::Foreign);
+    };
+    refresh();
+    connect(helpMenu, &QMenu::aboutToShow, action, refresh);
+    connect(action, &QAction::triggered, this, [this]() {
+        const auto env = DesktopIntegration::Environment::fromSystem();
+        const auto st = DesktopIntegration::state(env);
+        QString error;
+        if (st == DesktopIntegration::State::Current || st == DesktopIntegration::State::Outdated) {
+            if (DesktopIntegration::uninstall(env, &error)) {
+                DesktopIntegration::setUserRemovedEntry(true);
+                statusBar()->showMessage(QStringLiteral("Removed from the application menu."), 8000);
+            } else {
+                QMessageBox::warning(this, AppInfo::kDisplayName, error);
+            }
+        } else if (DesktopIntegration::install(env, &error)) {
+            DesktopIntegration::setUserRemovedEntry(false);
+            statusBar()->showMessage(QStringLiteral("Added to the application menu."), 8000);
+        } else {
+            QMessageBox::warning(this, AppInfo::kDisplayName, error);
+        }
+    });
 }
 
 void MainWindow::resetUtilityWindow(QDockWidget *dock) {

@@ -143,6 +143,7 @@ set(PLUGINS_SOURCES
 set(MAIN_SOURCES
     src/main.cpp
     src/mainwindow.cpp
+    src/desktopintegration.cpp
     src/toolicons.cpp
     src/theme.cpp
     src/dockdropoverlay.cpp
@@ -196,6 +197,7 @@ set(NONMAIN_SOURCES
     ${PLUGINS_SOURCES}
     src/toolicons.cpp
     src/theme.cpp
+    src/desktopintegration.cpp
     ${RESOURCES}
 )
 
@@ -231,6 +233,14 @@ target_link_libraries(pwm_preview_tests PRIVATE Qt6::Widgets Qt6::PrintSupport Q
 add_test(NAME adjustment_preview COMMAND pwm_preview_tests)
 set_tests_properties(adjustment_preview PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+
+# AppImage application-menu entry; small and fast, Qt Core only.
+add_executable(pwm_integration_tests EXCLUDE_FROM_ALL
+    tests/test_desktopintegration.cpp src/desktopintegration.cpp ${RESOURCES})
+target_include_directories(pwm_integration_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(pwm_integration_tests PRIVATE Qt6::Core)
+target_compile_definitions(pwm_integration_tests PRIVATE PWM_VERSION_STR="${PWM_VERSION_STR}")
+add_test(NAME desktop_integration COMMAND pwm_integration_tests)
 
 # ---- Sample plugin (demonstrates the C ABI; built into build/plugins) ----
 # A MODULE library is a shared object meant to be dlopen'd, never linked against.

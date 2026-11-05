@@ -19,10 +19,31 @@ built natively in C++17 and Qt 6. No Wine, no .NET runtime.
 - A portable AppImage that adds itself to the start menu.
 - New tools Paint.NET does not have: a smudge tool and a blur brush.
 
+## Install
+
+1. Download the newest `Paint.with.me-*-x86_64.AppImage` from the
+   [Releases](https://github.com/Shelin-boop/Paint.with.me/releases) page
+   ("Latest build" is always the most recent one).
+2. Make it executable: right-click it, Properties, Permissions, "Is executable",
+   or run `chmod +x Paint.with.me-*-x86_64.AppImage`.
+3. Start it. On the first start it adds itself to your application menu.
+   **Help > Remove from application menu** takes it out again.
+
+Moving the file or replacing it with a newer version is fine: the menu entry is
+updated the next time you start it from its new place.
+
+It needs a 64-bit Linux, such as Ubuntu or Kubuntu 22.04 or newer; the release
+notes name the exact glibc version. No other installation is needed, not even
+libfuse2.
+
+On a Wayland desktop (KDE Plasma, GNOME) it currently runs through XWayland, so
+its floating panels can be placed next to the main window. To try native
+Wayland anyway, start it with `QT_QPA_PLATFORM=wayland`.
+
 ## Roadmap
 
 1. Rebrand and English-only interface (done)
-2. AppImage for Kubuntu and other distributions, with a start-menu entry
+2. AppImage for Kubuntu and other distributions, with a start-menu entry (done)
 3. File formats: layered PSD instead of the inherited `.psw` format
 4. A memory-efficient undo history
 5. Code cleanup
@@ -47,11 +68,10 @@ Run the headless test suite:
 
 ```bash
 cmake --build build --target pwm_tests pwm_brush_tests \
-  pwm_paste_tests pwm_preview_tests
+  pwm_paste_tests pwm_preview_tests pwm_integration_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
-No release packages are published from this repository yet.
 
 ## Credits
 

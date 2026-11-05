@@ -173,6 +173,8 @@ private:
     void scheduleUtilityWindowFollow();
     void populateFixedToolbar();
     void rebuildToolsPaletteTooltips();
+    // Help menu item that adds or removes the AppImage's application menu entry.
+    void addAppMenuEntryAction(QMenu *helpMenu);
     void layoutToolsPalette(bool horizontal);
     // Applies the current colour scheme (light / dark / follow-OS) everywhere.
     void applyTheme();
