@@ -36,18 +36,24 @@ It needs a 64-bit Linux, such as Ubuntu or Kubuntu 22.04 or newer; the release
 notes name the exact glibc version. No other installation is needed, not even
 libfuse2.
 
-On a Wayland desktop (KDE Plasma, GNOME) it currently runs through XWayland, so
-its floating panels can be placed next to the main window. To try native
-Wayland anyway, start it with `QT_QPA_PLATFORM=wayland`.
+On a Wayland desktop (KDE Plasma, GNOME) it currently runs through XWayland.
+To try native Wayland anyway, start it with `QT_QPA_PLATFORM=wayland`.
+
+The Tools, History, Layers and Colors panels sit at the sides of the main
+window. Drag a panel by its title to another side or onto another panel (to
+make tabs), drag the gaps between panels to resize them, or double-click a
+title to make the panel float. F5 to F8 show and hide them; **View > Reset Panel
+Layout** puts everything back.
 
 ## Roadmap
 
 1. Rebrand and English-only interface (done)
 2. AppImage for Kubuntu and other distributions, with a start-menu entry (done)
-3. File formats: layered PSD instead of the inherited `.psw` format
-4. A memory-efficient undo history
-5. Code cleanup
-6. Smudge tool and blur brush
+3. Speed with large images, panels docked in the main window (done)
+4. File formats: layered PSD instead of the inherited `.psw` format
+5. A memory-efficient undo history
+6. Code cleanup, native Wayland
+7. Smudge tool and blur brush
 
 ## Build from source
 

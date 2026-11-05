@@ -32,14 +32,17 @@ Claude sessions and milestones, not in hours of human work.
 
 1. Rebrand and English-only UI. Done 2026-11-05.
 2. AppImage for Kubuntu: start-menu entry on first launch, current Qt,
-   release on GitHub. Done 2026-11-05. Native Wayland waits for step 5.
-3. File formats: remove `.psw`; layered PSD read and write; autosave keeps
+   release on GitHub. Done 2026-11-05. Native Wayland waits for step 6.
+3. Speed with large images (owner's test case: 5000 x 5000 px, 16 layers,
+   600 dpi) and panels docked inside the main window. Done 2026-11-05.
+4. File formats: remove `.psw`; layered PSD read and write; autosave keeps
    layers.
-4. Undo rework.
-5. Code cleanup, especially `src/mainwindow.cpp` and a tool registry. Move
-   the floating panels inside the main window, then drop the XWayland
-   preference in `src/main.cpp` so the app runs natively on Wayland.
-6. Smudge tool and blur brush.
+5. Undo rework: memory budget instead of 100 steps. (Image edits already
+   store only the changed rectangle.)
+6. Code cleanup, especially `src/mainwindow.cpp` and a tool registry. Then
+   ship Qt's Wayland plugin in the AppImage, test on Plasma and drop the
+   XWayland preference in `src/main.cpp`.
+7. Smudge tool and blur brush.
 
 ## Rules
 
@@ -68,9 +71,21 @@ QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
 Ubuntu 24.04 packages: `qt6-base-dev qt6-image-formats-plugins libgl1-mesa-dev
-zlib1g-dev cmake ninja-build`. Qt 6.4 is the minimum. On a 2-core machine the
-test targets take about 15 minutes to build, because three of them compile
-`mainwindow.cpp` again.
+zlib1g-dev cmake ninja-build`. Qt 6.4 is the minimum. Everything except
+`main.cpp` is compiled once into the object library `pwm_app`, which the app and
+all test programs link; a clean build of everything takes about 2 minutes on
+2 cores.
+
+Speed benchmark (not in ctest; needs about 3 GB of memory):
+
+```bash
+cmake --build build --target pwm_bench
+QT_QPA_PLATFORM=offscreen build/pwm_bench          # 5000 x 5000 px, 16 layers
+QT_QPA_PLATFORM=offscreen build/pwm_bench --quick  # 2000 x 2000 px, 8 layers
+```
+
+Run it before and after any change to compositing, the canvas, painting tools,
+panels that react to document changes, undo or autosave.
 
 ## Releases
 
@@ -94,7 +109,9 @@ test targets take about 15 minutes to build, because three of them compile
 | Document, layers, selection, undo history | `src/core/` |
 | `.pdn` reader (own MS-NRBF parser, read-only) | `src/core/pdnformat.cpp` |
 | Inherited `.psw` format (to be removed) | `Document::saveNative` in `src/core/document.cpp` |
-| Canvas widget, zoom, rendering | `src/canvas/canvaswidget.cpp` |
+| Combining layers (strips on all cores, reduced size) | `Document::compositeInto`, `Layer::compositeInto` |
+| Canvas widget, zoom, rendering cache | `src/canvas/canvaswidget.cpp` |
+| Thumbnails (Layers panel, image list), cached | `src/core/thumbnails.cpp` |
 | Tools (one class per tool, base `Tool`) | `src/tools/` |
 | Adjustments (base `Adjustment::apply(QImage)`) | `src/adjustments/` |
 | Effects (base `Effect::apply(QImage)`) | `src/effects/` |
@@ -113,6 +130,24 @@ test targets take about 15 minutes to build, because three of them compile
 4. `src/toolicons.cpp`: draw the icon.
 5. `src/panels/tooloptionspanel.cpp`: name list and which options are shown.
 6. A test in `tests/`.
+
+A tool that changes pixels while the mouse moves reports the changed document
+area with `canvas.updateCanvasRegion(rect)` and returns `true` from
+`updatesCanvasRegion()`; otherwise the whole image is combined again on every
+mouse move. `tests/test_brush.cpp` compares such tools against a full redraw.
+
+### Speed rules (large images)
+
+- Nothing may combine, copy or scale whole layers on the UI thread for every
+  event. Caches are keyed by `QImage::cacheKey()`, which changes whenever the
+  pixels can have changed.
+- The canvas keeps a combined image; it is redone only when
+  `renderSignature()` (content version, visibility, opacity, blend mode and
+  position of every layer) changes, or area by area through
+  `updateCanvasRegion()`. Zoomed out below 50 %, it combines at half, quarter,
+  ... size (exact integer averaging, so areas and the whole always agree).
+- Image-edit undo steps keep only the changed rectangle (`ImageEditCommand`).
+- Autosave combines and writes the PNG in a background thread.
 
 ### Settings
 
