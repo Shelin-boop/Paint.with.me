@@ -24,13 +24,36 @@ upstream repository. It only reads from it.
 
 ## What differs from upstream
 
+### 2026-11-05: speed with large images, docked panels
+
+Measured with `tests/bench_large.cpp` (5000 x 5000 px, 16 layers, 2 CPU
+cores): switching a layer on or off went from 4.4 s to 0.09 s, painting with a
+1500 px brush from 8 to 41 frames per second, the end of a stroke from 4.1 s to
+0.08 s, undo from 4.8 s to 0.05 s, and undo memory per stroke from 172 MB to
+42 MB; autosave no longer freezes the window.
+
+- Layers are combined in place, in strips spread over all CPU cores, skipping
+  the empty margins of each layer (was: a full copy of the image per layer).
+- Zoomed out, the canvas combines the layers at a reduced size.
+- The canvas no longer recombines the whole image after a brush stroke or its
+  undo; eraser, pencil, recolor and clone stamp now update only the area they
+  touch, like the brush already did.
+- Layers panel and image list thumbnails are cached and made from small copies.
+- Undo steps for painting keep only the changed rectangle.
+- Autosave runs in a background thread.
+- Tools, History, Layers and Colors are docked inside the main window by
+  default (saved layout version 8; older floating layouts are reset once). They
+  can still be moved, tabbed, resized, hidden or torn off; View > Reset Panel
+  Layout and Ctrl+Shift+F5 to F8 put them back.
+- Build: one shared object library for the app and the tests.
+
 ### 2026-11-05: AppImage with start-menu entry
 
 - When started from an AppImage, the app adds a menu entry and icons to
   `~/.local/share` (src/desktopintegration.*), keeps it pointing at the
   AppImage's current location, and offers Help > Add to / Remove from
   application menu.
-- On Wayland it prefers XWayland (src/main.cpp), because its floating panels
+- On Wayland it prefers XWayland (src/main.cpp), because floating panels
   need to position themselves. `QT_QPA_PLATFORM` overrides this.
 - `--version` prints the version and exits.
 - The AppImage workflow builds with the newest Qt 6 from aqtinstall, runs the
