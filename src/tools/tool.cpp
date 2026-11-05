@@ -5,6 +5,47 @@
 #include <QImage>
 #include <cstdlib>
 
+namespace {
+struct ToolKey { ToolType type; const char *key; };
+const ToolKey kToolKeys[] = {
+    {ToolType::Brush, "paintbrush"},
+    {ToolType::Eraser, "eraser"},
+    {ToolType::Pencil, "pencil"},
+    {ToolType::Fill, "paint-bucket"},
+    {ToolType::ColorPicker, "color-picker"},
+    {ToolType::Recolor, "recolor"},
+    {ToolType::RectSelection, "rectangle-select"},
+    {ToolType::EllipseSelection, "ellipse-select"},
+    {ToolType::LassoSelection, "lasso-select"},
+    {ToolType::MagicWand, "magic-wand"},
+    {ToolType::Move, "move-selected-pixels"},
+    {ToolType::MoveSelection, "move-selection"},
+    {ToolType::Zoom, "zoom"},
+    {ToolType::Pan, "pan"},
+    {ToolType::Text, "text"},
+    {ToolType::Shape, "shapes"},
+    {ToolType::Line, "line-curve"},
+    {ToolType::Gradient, "gradient"},
+    {ToolType::CloneStamp, "clone-stamp"},
+};
+} // namespace
+
+QString toolTypeKey(ToolType type) {
+    for (const ToolKey &k : kToolKeys)
+        if (k.type == type) return QString::fromLatin1(k.key);
+    return QString();
+}
+
+bool toolTypeFromKey(const QString &key, ToolType *type) {
+    for (const ToolKey &k : kToolKeys) {
+        if (key == QLatin1String(k.key)) {
+            if (type) *type = k.type;
+            return true;
+        }
+    }
+    return false;
+}
+
 QImage Tool::transparentImage(const QSize &size) {
     if (size.isEmpty()) return QImage();
     const qsizetype bpl = qsizetype(size.width()) * 4;

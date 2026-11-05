@@ -40,6 +40,12 @@ enum class ToolType {
     CloneStamp
 };
 
+// Stable text names for tool types ("paintbrush", "clone-stamp", ...), used
+// wherever a tool is stored in settings. The enum order may change when tools
+// are added; these names must not.
+QString toolTypeKey(ToolType type);
+bool toolTypeFromKey(const QString &key, ToolType *type);
+
 class Tool {
 public:
     virtual ~Tool() = default;
