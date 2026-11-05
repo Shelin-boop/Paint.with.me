@@ -47,19 +47,19 @@ No release packages are published from this repository yet.
 
 Almost all of the code comes from
 [paint.software](https://github.com/Univers4craft/paint.software) by
-Univers4craft and its contributors, under the MIT licence. The `.pdn` test files
+Univers4craft and its contributors, under the MIT license. The `.pdn` test files
 in `tests/data/pdn` come from [pypdn](https://github.com/addisonElliott/pypdn)
 (MIT, see `tests/data/pdn/LICENSE-pypdn`).
 
-## Licence
+## License
 
 MIT, see [LICENSE](LICENSE). The original copyright notice of paint.software is
-kept there, as the MIT licence requires.
+kept there, as the MIT license requires.
 
 ## Disclaimer
 
 Paint.with.me is an independent community project. It is not affiliated with,
 endorsed by, or sponsored by dotPDN LLC or Rick Brewster, the makers of
 Paint.NET, nor by Univers4craft, the maintainer of paint.software. "Paint.NET"
-is named only to describe the software this project is modelled on and
+is named only to describe the software this project is modeled on and
 compatible with.
