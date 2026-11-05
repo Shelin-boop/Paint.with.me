@@ -14,6 +14,8 @@
 #include "panels/toolspanel.h"
 #include "core/psdformat.h"
 #include "core/pdfexport.h"
+#include "core/perspective.h"
+#include "tools/perspectivetool.h"
 #include "dialogs/pdfexportdialog.h"
 #include "core/history.h"
 #include "tools/brushpreset.h"
@@ -417,6 +419,7 @@ void MainWindow::createTools() {
     m_tools.push_back(std::make_unique<LineTool>());
     m_tools.push_back(std::make_unique<ShapeTool>());
     m_tools.push_back(std::make_unique<GradientTool>());
+    m_tools.push_back(std::make_unique<PerspectiveTool>());
 }
 
 void MainWindow::createMenus() {
@@ -504,6 +507,19 @@ void MainWindow::createMenus() {
     addUnit(QStringLiteral("Centimeters"), CanvasWidget::Unit::Centimeters, false);
     m_rulersAction->setCheckable(true);
     m_rulersAction->setChecked(true);
+    viewMenu->addSeparator();
+    m_perspectiveGuidesAction = viewMenu->addAction(QStringLiteral("Perspective &Guides"), this, [this](bool on) {
+        Perspective::settings().visible = on;
+        perspectiveSettingsChanged();
+    });
+    m_perspectiveGuidesAction->setCheckable(true);
+    m_perspectiveSnapAction = viewMenu->addAction(QStringLiteral("Snap to Perspecti&ve"), this, [this](bool on) {
+        Perspective::settings().snap = on;
+        perspectiveSettingsChanged();
+    });
+    m_perspectiveSnapAction->setCheckable(true);
+    m_perspectiveGuidesAction->setChecked(Perspective::settings().visible);
+    m_perspectiveSnapAction->setChecked(Perspective::settings().snap);
     viewMenu->addSeparator();
     viewMenu->addAction(QStringLiteral("Reset &Panel Layout"), this, &MainWindow::applyDefaultPanelLayout);
     setShortcuts(zoomFitAction, {QKeySequence("Ctrl+B")});
@@ -1186,6 +1202,7 @@ void MainWindow::createKeyboardShortcuts() {
     addToolShortcut("Recolor tool", "R", ToolType::Recolor);
     addToolShortcut("Text tool", "T", ToolType::Text);
     addToolShortcut("Zoom tool", "Z", ToolType::Zoom);
+    addToolShortcut("Perspective tool", "V", ToolType::Perspective);
     // NB: no W / U bindings — in paint.net the Magic Wand is reached by cycling S
     // and Shapes by cycling O (handled by the cycleToolGroup shortcuts above).
 
@@ -1310,6 +1327,7 @@ QString toolDescription(ToolType t) {
     case ToolType::Text:            return "Adds text on the image.";
     case ToolType::Line:            return "Draws lines and curves.";
     case ToolType::Shape:           return "Draws shapes (rectangle, ellipse, star...).";
+    case ToolType::Perspective:     return "Places vanishing points: guide lines for drawing in perspective, which strokes can follow.";
     default:                        return QString();
     }
 }
@@ -1351,6 +1369,8 @@ void MainWindow::createToolsPanel() {
         {"Text",                 "T", ToolType::Text,             8, 0, {}},
         {"Line / Curve",         "O", ToolType::Line,             8, 1, {}},
         {"Shapes",               "O", ToolType::Shape,            9, 0, {}},
+        // Not in Paint.NET: the free slot next to Shapes.
+        {"Perspective",          "V", ToolType::Perspective,      9, 1, {}},
     };
     for (auto &t : tools) t.description = toolDescription(t.type);
 
@@ -1444,6 +1464,15 @@ void MainWindow::createDockPanels() {
             this, &MainWindow::selectTool);
     connect(m_toolOptionsPanel, &ToolOptionsPanel::toolOptionsChanged,
             this, [this]() { if (m_canvas) m_canvas->update(); });
+    connect(m_toolOptionsPanel, &ToolOptionsPanel::perspectiveSettingsChanged,
+            this, &MainWindow::perspectiveSettingsChanged);
+    connect(m_toolOptionsPanel, &ToolOptionsPanel::perspectiveToLayerRequested,
+            this, &MainWindow::perspectiveGuidesToLayer);
+    connect(m_toolOptionsPanel, &ToolOptionsPanel::perspectiveClearRequested, this, [this]() {
+        if (!m_document) return;
+        m_document->vanishingPoints().clear();
+        m_canvas->update();
+    });
     auto *optionsBar = new QToolBar("Tool options", this);
     optionsBar->setObjectName("VariableToolbar");
     optionsBar->setMovable(false);
@@ -2100,6 +2129,27 @@ bool MainWindow::exportPdfTo(const QString &filePath, PdfExport::Options options
     }
     statusBar()->showMessage(QStringLiteral("Exported %1").arg(QFileInfo(filePath).fileName()), 6000);
     return true;
+}
+
+void MainWindow::perspectiveSettingsChanged() {
+    Perspective::saveSettings();
+    const Perspective::Settings &ps = Perspective::settings();
+    if (m_perspectiveGuidesAction) m_perspectiveGuidesAction->setChecked(ps.visible);
+    if (m_perspectiveSnapAction) m_perspectiveSnapAction->setChecked(ps.snap);
+    if (m_toolOptionsPanel) m_toolOptionsPanel->syncPerspectiveControls();
+    if (m_canvas) m_canvas->update();
+}
+
+void MainWindow::perspectiveGuidesToLayer() {
+    if (!m_document) return;
+    const QVector<QPointF> &points = m_document->vanishingPoints();
+    if (points.isEmpty()) {
+        statusBar()->showMessage(QStringLiteral("Place a vanishing point first: click on the image with the Perspective tool."), 8000);
+        return;
+    }
+    m_document->addLayer(Perspective::renderLayer(points, Perspective::settings().rays, m_document->size()),
+                         QStringLiteral("Perspective guides"));
+    m_canvas->updateCanvas();
 }
 
 // ---- Edit operations ----
@@ -2789,6 +2839,9 @@ void MainWindow::selectTool(ToolType type) {
                     break;
                 case ToolType::Recolor:
                     m_helpTextLabel->setText(QStringLiteral("Left click to replace the secondary color with the primary."));
+                    break;
+                case ToolType::Perspective:
+                    m_helpTextLabel->setText(QStringLiteral("Click to place a vanishing point (up to 3, also outside the image). Drag to move, right click to remove."));
                     break;
                 default:
                     m_helpTextLabel->setText(QStringLiteral("Ready."));

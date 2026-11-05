@@ -27,6 +27,7 @@ const ToolKey kToolKeys[] = {
     {ToolType::Line, "line-curve"},
     {ToolType::Gradient, "gradient"},
     {ToolType::CloneStamp, "clone-stamp"},
+    {ToolType::Perspective, "perspective"},
 };
 } // namespace
 

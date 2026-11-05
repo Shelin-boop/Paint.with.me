@@ -5,6 +5,8 @@
 #include <QColor>
 #include <QSize>
 #include <QStringList>
+#include <QVector>
+#include <QPointF>
 #include <memory>
 #include <vector>
 
@@ -129,6 +131,10 @@ public:
     // Print resolution in dots per inch, stored in PSD and image files.
     double dpi() const { return m_dpi; }
     void setDpi(double dpi) { if (dpi > 0) m_dpi = dpi; }
+    // Vanishing points of the perspective guides (document pixels, may lie
+    // outside the canvas). Not part of the image or its undo history.
+    QVector<QPointF> &vanishingPoints() { return m_vanishingPoints; }
+    const QVector<QPointF> &vanishingPoints() const { return m_vanishingPoints; }
     // Where Save writes; used when recovering an autosave of a saved file.
     void setFilePath(const QString &filePath) { m_filePath = filePath; }
     QString filePath() const { return m_filePath; }
@@ -171,6 +177,7 @@ private:
     bool m_modified = false;
     int m_saveQuality = -1;   // last lossy-format quality chosen via Save As
     double m_dpi = 96.0;
+    QVector<QPointF> m_vanishingPoints;
     QStringList m_loadNotes;
     QString m_lastError;
     bool m_editAllLayers = false;

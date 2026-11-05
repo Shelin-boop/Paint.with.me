@@ -717,6 +717,31 @@ QPixmap drawPaste() {
     return pm;
 }
 
+// Perspective: guide lines converging on a vanishing point on the right.
+QPixmap drawPerspective() {
+    QPixmap pm(TS * 2, TS * 2);
+    pm.setDevicePixelRatio(2.0);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    aa(p);
+    const QPointF vp(16.5, 7.5);
+    p.setPen(QPen(QColor(0, 120, 200), 1.1));
+    for (const QPointF &end : {QPointF(1.5, 1.5), QPointF(1.5, 7.5), QPointF(1.5, 13.5),
+                               QPointF(1.5, 19), QPointF(8, 19)})
+        p.drawLine(vp, end);
+    // A box receding toward the point.
+    p.setPen(QPen(QColor(60, 60, 70), 1.2));
+    p.setBrush(QColor(240, 200, 120));
+    QPolygonF face;
+    face << QPointF(3.5, 9.5) << QPointF(9.5, 10.6) << QPointF(9.5, 15.2) << QPointF(3.5, 17.5);
+    p.drawPolygon(face);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(240, 130, 0));
+    p.drawEllipse(vp, 2.3, 2.3);
+    p.end();
+    return pm;
+}
+
 } // anonymous namespace
 
 namespace ToolIcons {
@@ -745,6 +770,7 @@ QIcon forTool(ToolType type) {
     case ToolType::Text:            return QIcon(drawText());
     case ToolType::Line:            return QIcon(drawLine());
     case ToolType::Shape:           return QIcon(drawShape());
+    case ToolType::Perspective:     return QIcon(drawPerspective());
     default: return QIcon();
     }
 }

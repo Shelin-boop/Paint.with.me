@@ -95,6 +95,14 @@ private:
     Document *m_document = nullptr;
     Tool *m_currentTool = nullptr;
 
+    // Perspective snapping of the stroke in progress: it starts at m_snapStart
+    // and, once it has moved a few pixels, follows m_snapDirection.
+    bool startsPerspectiveSnap(const QMouseEvent *event) const;
+    QPointF perspectiveSnapped(const QPointF &canvasPos);
+    bool m_snapActive = false;
+    QPointF m_snapStart;
+    QPointF m_snapDirection;
+
     double m_zoom = 1.0;
     QPointF m_pan{0, 0};
     // While true the image re-centres on every resize, so the startup view is
