@@ -36,6 +36,7 @@
 #include "canvas/canvaswidget.h"
 #include "core/document.h"
 #include "core/layer.h"
+#include "core/pdfexport.h"
 #include "panels/imagelistbar.h"
 #include "panels/layerspanel.h"
 #include "tools/tool.h"
@@ -413,6 +414,21 @@ int main(int argc, char **argv) {
         if (!saved || !loaded || opened.layerCount() != doc->layerCount())
             std::printf("  ERROR: the .psd did not round-trip\n");
         row("peak memory", peakMb(), "MB");
+    }
+
+    // ---- PDF export ----
+    {
+        std::printf("\nExport as PDF (the image, one page)\n");
+        for (bool jpeg : {false, true}) {
+            PdfExport::Options options;
+            options.jpeg = jpeg;
+            const QString path = home.path() + (jpeg ? QStringLiteral("/bench-jpeg.pdf") : QStringLiteral("/bench.pdf"));
+            QElapsedTimer t;
+            t.start();
+            PdfExport::write(path, PdfExport::pagesFor(*doc, options), doc->dpi(), options);
+            row(jpeg ? "JPEG 92 %" : "lossless", ms(t));
+            row("  file size", QFileInfo(path).size() / 1.0e6, "MB");
+        }
     }
 
     doc->setModified(false);

@@ -13,6 +13,8 @@
 #include "panels/imagelistbar.h"
 #include "panels/toolspanel.h"
 #include "core/psdformat.h"
+#include "core/pdfexport.h"
+#include "dialogs/pdfexportdialog.h"
 #include "core/history.h"
 #include "tools/brushpreset.h"
 #include "dialogs/newdocumentdialog.h"
@@ -432,6 +434,7 @@ void MainWindow::createMenus() {
     fileMenu->addSeparator();
     fileMenu->addAction(QStringLiteral("&Save"), QKeySequence::Save, this, &MainWindow::saveDocument);
     fileMenu->addAction(QStringLiteral("Save &As..."), QKeySequence("Ctrl+Shift+S"), this, &MainWindow::saveDocumentAs);
+    fileMenu->addAction(QStringLiteral("&Export as PDF..."), this, &MainWindow::exportPdf);
     fileMenu->addSeparator();
     fileMenu->addAction(QStringLiteral("&Print..."), QKeySequence::Print, this, &MainWindow::printDocument);
     fileMenu->addSeparator();
@@ -2058,6 +2061,44 @@ bool MainWindow::writeDocument(const QString &filePath, int quality) {
         if (m_autosaveJob.isRunning()) m_discardAutosave = true;
         else clearAutosave();
     }
+    return true;
+}
+
+void MainWindow::exportPdf() {
+    if (!m_document) return;
+    // Suggest the image's name with .pdf, next to it.
+    QString suggested;
+    const QString current = m_document->filePath();
+    if (!current.isEmpty()) {
+        const QFileInfo info(current);
+        suggested = info.dir().filePath(info.completeBaseName() + ".pdf");
+    }
+    QString filePath = QFileDialog::getSaveFileName(this, QStringLiteral("Export as PDF"), suggested,
+                                                    QStringLiteral("PDF (*.pdf)"));
+    if (filePath.isEmpty()) return;
+    if (QFileInfo(filePath).suffix().compare(QLatin1String("pdf"), Qt::CaseInsensitive) != 0)
+        filePath += QStringLiteral(".pdf");
+    PdfExportDialog dlg(m_document->size(), m_document->dpi(), m_document->layerCount(), this);
+    if (dlg.exec() != QDialog::Accepted) return;
+    exportPdfTo(filePath, dlg.options());
+}
+
+bool MainWindow::exportPdfTo(const QString &filePath, PdfExport::Options options) {
+    if (options.title.isEmpty()) {
+        const QString current = m_document->filePath();
+        options.title = current.isEmpty() ? QStringLiteral("Untitled") : QFileInfo(current).completeBaseName();
+    }
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    QString error;
+    const bool ok = PdfExport::write(filePath, PdfExport::pagesFor(*m_document, options),
+                                     m_document->dpi(), options, &error);
+    QApplication::restoreOverrideCursor();
+    if (!ok) {
+        QMessageBox::warning(this, QStringLiteral("Export as PDF"),
+            QStringLiteral("Could not export the PDF.") + (error.isEmpty() ? QString() : QStringLiteral("\n\n") + error));
+        return false;
+    }
+    statusBar()->showMessage(QStringLiteral("Exported %1").arg(QFileInfo(filePath).fileName()), 6000);
     return true;
 }
 
