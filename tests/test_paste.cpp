@@ -53,6 +53,15 @@ static QImage fixture(int w = 40, int h = 30) {
     image.setPixelColor(w - 1, h - 1, Qt::red);
     return image;
 }
+// What saving to .psd (straight alpha) keeps of premultiplied pixels.
+static QImage roundTripped(const QImage &img) {
+    QImage out = img.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    for (int y = 0; y < out.height(); ++y) {
+        QRgb *row = reinterpret_cast<QRgb *>(out.scanLine(y));
+        for (int x = 0; x < out.width(); ++x) row[x] = qPremultiply(qUnpremultiply(row[x]));
+    }
+    return out;
+}
 static void paths() {
     QTemporaryDir dir;
     CHECK(dir.isValid());
@@ -341,17 +350,18 @@ static void matchedCanvasRetention() {
     doc->setActiveLayer(1);
     CHECK(doc->size() == image.size());
     CHECK(doc->activeLayer()->image() == image);
-    // Save before the first move: neither bitmap size nor origin identifies Keep.
+    // Saved before the first move. A .psd has no "keep pixels outside the
+    // canvas" flag; all of this layer's pixels are on the canvas, so it
+    // reopens as an ordinary layer with the same pixels.
     QTemporaryDir directory;
-    CHECK(doc->saveNative(directory.path()+"/matched.psw"));
+    const auto saved = doc->snapshotLayers();
+    CHECK(doc->save(directory.path()+"/matched.psd"));
     Document loaded;
-    CHECK(loaded.loadNative(directory.path()+"/matched.psw"));
-    loaded.setActiveLayer(1);
-    CanvasWidget loadedCanvas;
-    MoveTool move;
-    loadedCanvas.setDocument(&loaded);
-    loadedCanvas.setCurrentTool(&move);
-    for (CanvasWidget *target : {canvas, &loadedCanvas}) {
+    CHECK(loaded.load(directory.path()+"/matched.psd"));
+    CHECK(loaded.layerCount() == doc->layerCount());
+    CHECK(loaded.layerAt(1)->image() == roundTripped(image));
+    CHECK(!loaded.layerAt(1)->retainsOffCanvasPixels());
+    for (CanvasWidget *target : {canvas}) {
         auto *document = target->document();
         for (QPoint delta : {QPoint(50,40), QPoint(-50,-40)}) {
             // Repeat after returning to zero so retention cannot depend on the
@@ -378,7 +388,7 @@ static void matchedCanvasRetention() {
     // Expansion snapshots, duplicates, Layer copy/assignment and add/remove
     // history must retain the same movement behavior.
     Document copies;
-    CHECK(copies.loadNative(directory.path()+"/matched.psw"));
+    copies.restoreFromSnapshot(saved, doc->width(), doc->height(), 1);
     copies.setActiveLayer(1);
     copies.duplicateLayer(1);
     copies.history().undo(); copies.history().redo();
@@ -431,13 +441,15 @@ static void retainedMove() {
     CHECK(doc->activeLayer()->offset() == QPoint(-30, -25));
     CHECK(doc->activeLayer()->image() == image);
     QTemporaryDir dir;
-    CHECK(doc->saveNative(dir.path()+"/retained.psw"));
+    CHECK(doc->save(dir.path()+"/retained.psd"));
     Document loaded;
-    CHECK(loaded.loadNative(dir.path()+"/retained.psw"));
+    CHECK(loaded.load(dir.path()+"/retained.psd"));
     CHECK(loaded.size() == doc->size());
-    CHECK(loaded.activeLayer()->image() == image);
-    CHECK(loaded.activeLayer()->offset() == QPoint(-30,-25));
-    CHECK(loaded.flatten() == doc->flatten());
+    CHECK(loaded.activeLayer()->retainsOffCanvasPixels());
+    // The whole pasted bitmap, including the part outside the canvas.
+    const QRect placed(QPoint(-30,-25), image.size());
+    CHECK(loaded.activeLayer()->image().copy(placed.translated(-loaded.activeLayer()->offset())) == roundTripped(image));
+    CHECK(loaded.flatten() == roundTripped(doc->flatten()) || loaded.flatten() == doc->flatten());
     const QRect tile(10, 10, 30, 40);
     CHECK(doc->flattenVisible(tile) == doc->flatten().copy(tile));
 }

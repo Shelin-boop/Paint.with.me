@@ -1,4 +1,6 @@
 #include "pdnformat.h"
+#include <QRegularExpression>
+#include <QtEndian>
 
 #include <QFile>
 #include <QHash>
@@ -412,6 +414,39 @@ qint64 intOf(const Value *v, qint64 fallback = 0) {
     return fallback;
 }
 
+// Paint.NET 4 keeps the resolution as EXIF tags in the document's metadata:
+// "$exif.tagN" = <exif id="282" type="5" value="base64" />, where 282 is the
+// horizontal resolution (a rational: two little-endian 32-bit numbers) and 296
+// the unit (2 = inch, 3 = centimeter). Returns dots per inch, or 0.
+double resolutionOf(const NrbfReader &nrbf, const Object *document) {
+    const Object *items = nrbf.deref(member(document, "userMetadataItems"));
+    if (!items) return 0;
+    static const QRegularExpression idRe(QStringLiteral("id=\"(\\d+)\""));
+    static const QRegularExpression valueRe(QStringLiteral("value=\"([^\"]*)\""));
+    double resolution = 0;
+    int unit = 2;
+    for (const Value &v : items->values) {
+        const Object *pair = nrbf.deref(&v);
+        if (!pair) continue;
+        if (!nrbf.stringOf(member(pair, "key")).startsWith(QLatin1String("$exif.tag"))) continue;
+        const QString xml = nrbf.stringOf(member(pair, "value"));
+        const auto id = idRe.match(xml);
+        const auto value = valueRe.match(xml);
+        if (!id.hasMatch() || !value.hasMatch()) continue;
+        const QByteArray bytes = QByteArray::fromBase64(value.captured(1).toLatin1());
+        const auto *b = reinterpret_cast<const uchar *>(bytes.constData());
+        if (id.captured(1) == QLatin1String("282") && bytes.size() >= 8) {
+            const quint32 num = qFromLittleEndian<quint32>(b);
+            const quint32 den = qFromLittleEndian<quint32>(b + 4);
+            if (den > 0) resolution = double(num) / den;
+        } else if (id.captured(1) == QLatin1String("296") && bytes.size() >= 2) {
+            unit = qFromLittleEndian<quint16>(b);
+        }
+    }
+    if (resolution <= 0 || resolution > 100000) return 0;
+    return unit == 3 ? resolution * 2.54 : resolution;
+}
+
 // LayerBlendMode order used by Paint.NET 4+ (blendMode.value__).
 BlendMode blendFromIndex(qint64 index) {
     static const BlendMode modes[] = {
@@ -610,6 +645,7 @@ bool read(const QByteArray &data, ImageData &out, QString *error) {
             image.layers.push_back(std::move(out));
         }
         if (image.layers.empty()) return fail(QStringLiteral("no layers"));
+        image.dpi = resolutionOf(nrbf, document);
         out = std::move(image);
         return true;
     } catch (const Error &) {

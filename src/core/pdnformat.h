@@ -26,6 +26,7 @@ struct LayerData {
 struct ImageData {
     int width = 0;
     int height = 0;
+    double dpi = 0;                  // 0: the file does not say
     std::vector<LayerData> layers;   // bottom (background) first
 };
 

@@ -341,8 +341,8 @@ void CanvasWidget::paintEvent(QPaintEvent *) {
         painter.drawRect(QRect(0, 0, rulerSize, rulerSize));
 
         // Pixels-per-unit for the chosen measurement unit.
-        const double pxPerUnit = (m_unit == Unit::Inches)      ? m_dpi
-                               : (m_unit == Unit::Centimeters) ? m_dpi / 2.54
+        const double pxPerUnit = (m_unit == Unit::Inches)      ? dpi()
+                               : (m_unit == Unit::Centimeters) ? dpi() / 2.54
                                                                : 1.0;
         // On-screen pixels per unit, used to pick a readable tick step.
         const double screenPerUnit = pxPerUnit * m_zoom;
@@ -689,4 +689,15 @@ void CanvasWidget::tabletEvent(QTabletEvent *event) {
     // Ignore so Qt still synthesises the compatibility mouse events that drive
     // the tools; the contact gate above decides whether they actually draw.
     event->ignore();
+}
+
+double CanvasWidget::dpi() const {
+    return m_document ? m_document->dpi() : m_dpi;
+}
+
+void CanvasWidget::setDpi(double d) {
+    if (d <= 0) d = 96.0;
+    if (m_document) m_document->setDpi(d);
+    else m_dpi = d;
+    update();
 }

@@ -1,5 +1,6 @@
 #include "document.h"
 #include "pdnformat.h"
+#include "psdformat.h"
 #include <QPainter>
 #include <QtConcurrent/QtConcurrentMap>
 #include <cstring>
@@ -9,10 +10,7 @@
 #include <limits>
 #include <QFileInfo>
 #include <QFile>
-#include <QDataStream>
-
-// Magic number for the native layered format: 'P','S','W','1'.
-static const quint32 kPswMagic = 0x50535731;
+#include <QSaveFile>
 
 Document::Document(int width, int height, QObject *parent)
     : QObject(parent), m_width(width), m_height(height), m_selection(width, height)
@@ -515,91 +513,36 @@ void Document::compositeInto(QImage &dest, const QPoint &origin, int shift) cons
     }
 }
 
-bool Document::isNativeFormat(const QString &filePath) {
-    return QFileInfo(filePath).suffix().toLower() == "psw";
+bool Document::isLayeredFormat(const QString &filePath) {
+    return QFileInfo(filePath).suffix().compare(QLatin1String("psd"), Qt::CaseInsensitive) == 0;
 }
 
-bool Document::saveNative(const QString &filePath) {
-    QFile file(filePath);
-    if (!file.open(QIODevice::WriteOnly)) return false;
-    QDataStream out(&file);
-    out.setVersion(QDataStream::Qt_6_0);
-    out << kPswMagic;
-    // Preserve legacy output only when it preserves the explicit movement state.
-    qint32 version = 1;
-    for (const auto &layer : m_layers) {
-        // v1 infers retention from geometry. Positioned or differently sized
-        // ordinary layers also need v2 to keep their explicit false flag.
-        if (layer->retainsOffCanvasPixels() || layer->image().size() != size()
-            || !layer->offset().isNull()) { version = 2; break; }
+bool Document::loadPsd(const QString &filePath) {
+    Psd::ImageData psd;
+    QString error;
+    if (!Psd::read(filePath, psd, &error)) {
+        m_lastError = error;
+        return false;
     }
-    out << version;
-    out << qint32(m_width) << qint32(m_height);
-    out << qint32(m_activeLayer);
-    out << qint32(static_cast<int>(m_layers.size()));
-    for (const auto &l : m_layers) {
-        out << l->name();
-        out << float(l->opacity());
-        out << bool(l->isVisible());
-        out << bool(l->isLocked());
-        out << qint32(static_cast<int>(l->blendMode()));
-        out << l->offset();
-        if (version == 2) out << l->retainsOffCanvasPixels();
-        out << l->image();
-    }
-    if (out.status() != QDataStream::Ok) return false;
-    file.close();
-    m_filePath = filePath;
-    m_modified = false;
-    return true;
-}
-
-bool Document::loadNative(const QString &filePath) {
-    QFile file(filePath);
-    if (!file.open(QIODevice::ReadOnly)) return false;
-    QDataStream in(&file);
-    in.setVersion(QDataStream::Qt_6_0);
-
-    quint32 magic = 0;
-    in >> magic;
-    if (magic != kPswMagic) return false;
-    qint32 version = 0, w = 0, h = 0, active = 0, count = 0;
-    in >> version >> w >> h >> active >> count;
-    if (version != 1 && version != 2) return false;
-    if (w <= 0 || h <= 0 || count <= 0 || count > 4096) return false;
-
     std::vector<std::shared_ptr<Layer>> layers;
-    layers.reserve(count);
-    for (int i = 0; i < count; ++i) {
-        QString name;
-        float opacity = 1.0f;
-        bool visible = true, locked = false;
-        qint32 blend = 0;
-        QPoint offset;
-        bool retained = false;
-        QImage img;
-        in >> name >> opacity >> visible >> locked >> blend >> offset;
-        if (version == 2) in >> retained;
-        in >> img;
-        if (in.status() != QDataStream::Ok || img.isNull()) return false;
-        auto layer = std::make_shared<Layer>(img, name);
-        layer->setOpacity(opacity);
-        layer->setVisible(visible);
-        layer->setLocked(locked);
-        layer->setBlendMode(static_cast<BlendMode>(blend));
-        layer->setOffset(offset);
-        // v2 always uses its explicit flag, even for canvas-sized zero-origin
-        // retained layers. Legacy v1 has no movement provenance: geometry is
-        // the only available inference and cannot identify that matched case.
-        layer->setRetainsOffCanvasPixels(version == 2 ? retained
-                                                     : img.size() != QSize(w,h) || !offset.isNull());
+    layers.reserve(psd.layers.size());
+    for (Psd::LayerData &data : psd.layers) {
+        auto layer = std::make_shared<Layer>(data.image, data.name);
+        layer->setOffset(data.offset);
+        layer->setRetainsOffCanvasPixels(data.retainsOffCanvasPixels);
+        layer->setVisible(data.visible);
+        layer->setLocked(data.locked);
+        layer->setOpacity(data.opacity);
+        layer->setBlendMode(data.blendMode);
         layers.push_back(layer);
     }
 
-    m_width = w;
-    m_height = h;
+    m_width = psd.width;
+    m_height = psd.height;
     m_layers = std::move(layers);
-    m_activeLayer = qBound(0, static_cast<int>(active), static_cast<int>(m_layers.size()) - 1);
+    m_activeLayer = psd.activeLayer >= 0 ? psd.activeLayer : static_cast<int>(m_layers.size()) - 1;
+    if (psd.dpi > 0) m_dpi = psd.dpi;
+    m_loadNotes = psd.notes;
     m_selection = Selection(m_width, m_height);
     m_history.clear();
     m_filePath = filePath;
@@ -613,7 +556,9 @@ bool Document::loadNative(const QString &filePath) {
 }
 
 bool Document::isOpenOnlyFormat(const QString &filePath) {
-    return QFileInfo(filePath).suffix().compare(QLatin1String("pdn"), Qt::CaseInsensitive) == 0;
+    const QString suffix = QFileInfo(filePath).suffix();
+    return suffix.compare(QLatin1String("pdn"), Qt::CaseInsensitive) == 0
+        || suffix.compare(QLatin1String("psb"), Qt::CaseInsensitive) == 0;
 }
 
 bool Document::loadPdn(const QString &filePath) {
@@ -634,6 +579,7 @@ bool Document::loadPdn(const QString &filePath) {
     m_height = pdn.height;
     m_layers = std::move(layers);
     m_activeLayer = static_cast<int>(m_layers.size()) - 1;   // Paint.NET opens on the top layer
+    if (pdn.dpi > 0) m_dpi = pdn.dpi;
     m_selection = Selection(m_width, m_height);
     m_history.clear();
     m_filePath = filePath;
@@ -647,8 +593,19 @@ bool Document::loadPdn(const QString &filePath) {
 }
 
 bool Document::save(const QString &filePath, int quality) {
-    if (isNativeFormat(filePath))
-        return saveNative(filePath);
+    m_lastError.clear();
+    if (isLayeredFormat(filePath)) {
+        std::vector<Layer> layers;
+        layers.reserve(m_layers.size());
+        for (const auto &l : m_layers) layers.push_back(*l);   // pixels are shared, not copied
+        Psd::WriteOptions options;
+        options.dpi = m_dpi;
+        options.activeLayer = m_activeLayer;
+        if (!Psd::write(filePath, layers, size(), options, &m_lastError)) return false;
+        m_filePath = filePath;
+        m_modified = false;
+        return true;
+    }
 
     // Remember an explicit quality; a later plain Save (quality == -1) reuses it.
     if (quality >= 0) m_saveQuality = quality;
@@ -669,26 +626,47 @@ bool Document::save(const QString &filePath, int quality) {
         p.end();
         flat = opaque;
     }
+    const int dotsPerMeter = qRound(m_dpi / 0.0254);
+    flat.setDotsPerMeterX(dotsPerMeter);
+    flat.setDotsPerMeterY(dotsPerMeter);
 
-    QImageWriter writer(filePath);
-    if (quality >= 0) writer.setQuality(quality);
-    if (writer.write(flat)) {
-        m_filePath = filePath;
-        m_modified = false;
-        return true;
+    // Written next to the old file and swapped in at the end.
+    QSaveFile file(filePath);
+    if (!file.open(QIODevice::WriteOnly)) {
+        m_lastError = file.errorString();
+        return false;
     }
-    return false;
+    QImageWriter writer(&file, suffix.toLatin1());
+    if (quality >= 0) writer.setQuality(quality);
+    if (!writer.write(flat)) {
+        m_lastError = writer.errorString();
+        file.cancelWriting();
+        return false;
+    }
+    if (!file.commit()) {
+        m_lastError = file.errorString();
+        return false;
+    }
+    m_filePath = filePath;
+    m_modified = false;
+    return true;
 }
 
 bool Document::load(const QString &filePath) {
-    if (isNativeFormat(filePath))
-        return loadNative(filePath);
+    m_loadNotes.clear();
+    m_lastError.clear();
+    if (Psd::isPsdFile(filePath))
+        return loadPsd(filePath);
     if (Pdn::isPdnFile(filePath))
         return loadPdn(filePath);
 
     QImageReader reader(filePath);
     QImage image = reader.read();
-    if (image.isNull()) return false;
+    if (image.isNull()) {
+        m_lastError = reader.errorString();
+        return false;
+    }
+    if (image.dotsPerMeterX() > 0) m_dpi = qRound(image.dotsPerMeterX() * 0.0254 * 100.0) / 100.0;
 
     m_width = image.width();
     m_height = image.height();
