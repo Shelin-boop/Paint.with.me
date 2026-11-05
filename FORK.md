@@ -24,6 +24,27 @@ upstream repository. It only reads from it.
 
 ## What differs from upstream
 
+### 2026-11-05: file formats (Photoshop .psd instead of .psw)
+
+- Upstream's own layered format `.psw` is gone (open and save). Layered work is
+  saved as Photoshop `.psd` (`src/core/psdformat.cpp`, own reader and writer,
+  8-bit RGB, RLE, layers cropped to their content, like Krita writes them);
+  `.psb` is read too. Checked against psd-tools 1.26, Krita 5.2 and GIMP 2.10.
+- Kept in `.psd`: layer name (Unicode), position (also outside the canvas),
+  opacity, visibility, lock, blend mode where Photoshop has the same, the
+  resolution and the selected layer. A `.psd` cannot say that a layer keeps
+  pixels outside the canvas ("Keep" paste); a reopened layer keeps them
+  whenever it has such pixels.
+- Documents have a resolution (dpi), read from `.psd`, `.pdn` (its EXIF tags)
+  and image files, written to `.psd` and image files, set in New and Resize,
+  and used by the rulers.
+- Saving goes through a temporary file (`QSaveFile`), for every format.
+- Autosave writes a layered `.psd` in the background; recovery saves back to
+  the original file. Saving an image removes its recovery snapshot.
+- The app is offered for `.psd` files in the menu entry (MIME type).
+- New test suite `psd_format` (`tests/test_psd.cpp`) with files from GIMP and
+  Krita and synthetic ones (`tests/data/psd/make_fixtures.py`).
+
 ### 2026-11-05: Tools panel columns and shortcuts, new default layout
 
 - Default panel layout: Tools above Colors on the left, History above Layers

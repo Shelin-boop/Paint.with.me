@@ -20,8 +20,8 @@ Claude sessions and milestones, not in hours of human work.
 - Target desktop of the owner: Kubuntu, KDE Plasma, Wayland session.
 - Interface: English only. No translation system.
 - File formats: no format of our own. Layered: open `.pdn` (Paint.NET), open
-  and save `.psd` (Adobe). Flat: PNG, JPEG, BMP, GIF, TIFF, WebP and the like.
-  The inherited `.psw` format is to be removed.
+  and save `.psd` (Adobe), open `.psb`. Flat: PNG, JPEG, BMP, GIF, TIFF, WebP
+  and the like. The inherited `.psw` format was removed on 2026-11-05.
 - Undo: to be reworked into a memory-efficient history (store only what
   changed, with a memory budget instead of a fixed step count).
 - New tools: a smudge tool (German "verwischen", drags color like a finger
@@ -39,7 +39,7 @@ Claude sessions and milestones, not in hours of human work.
 3. Speed with large images (owner's test case: 5000 x 5000 px, 16 layers,
    600 dpi) and panels docked inside the main window. Done 2026-11-05.
 4. File formats: remove `.psw`; layered PSD read and write; autosave keeps
-   layers.
+   layers. Done 2026-11-05.
 5. Undo rework: memory budget instead of 100 steps. (Image edits already
    store only the changed rectangle.)
 6. Code cleanup, especially `src/mainwindow.cpp` and a tool registry. Then
@@ -62,14 +62,14 @@ Claude sessions and milestones, not in hours of human work.
 - Keep `tests/data/pdn/LICENSE-pypdn` with the pypdn test files.
 - Write documentation and UI text in American English. Dates as yyyy-mm-dd,
   times in 24-hour format, SI units. Menus use "..." (three dots), not "…".
-- Every change keeps all six test suites passing; new behavior gets a test.
+- Every change keeps all seven test suites passing; new behavior gets a test.
 
 ## Build and test
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_integration_tests
+cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_integration_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
@@ -118,7 +118,9 @@ PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_panel_tests
 | Main window, menus, tool registration, shortcuts | `src/mainwindow.cpp` (about 3,800 lines) |
 | Document, layers, selection, undo history | `src/core/` |
 | `.pdn` reader (own MS-NRBF parser, read-only) | `src/core/pdnformat.cpp` |
-| Inherited `.psw` format (to be removed) | `Document::saveNative` in `src/core/document.cpp` |
+| `.psd` / `.psb` reader and `.psd` writer | `src/core/psdformat.cpp` |
+| Saving and opening, resolution, load notes | `Document::save`, `Document::load` in `src/core/document.cpp` |
+| Save dialogs, PSD warnings, autosave, recovery | `MainWindow::saveDocumentAs`, `writeDocument`, `performAutosave`, `checkForRecovery` |
 | Combining layers (strips on all cores, reduced size) | `Document::compositeInto`, `Layer::compositeInto` |
 | Canvas widget, zoom, rendering cache | `src/canvas/canvaswidget.cpp` |
 | Thumbnails (Layers panel, image list), cached | `src/core/thumbnails.cpp` |
@@ -162,7 +164,23 @@ mouse move. `tests/test_brush.cpp` compares such tools against a full redraw.
   `updateCanvasRegion()`. Zoomed out below 50 %, it combines at half, quarter,
   ... size (exact integer averaging, so areas and the whole always agree).
 - Image-edit undo steps keep only the changed rectangle (`ImageEditCommand`).
-- Autosave combines and writes the PNG in a background thread.
+- Autosave writes a layered `.psd` in a background thread (copies of the
+  layers share their pixels, so starting it costs nothing).
+
+### File formats
+
+- `.psd` is written like Krita does (8-bit RGB, 4 channels, negative layer
+  count, layers cropped to their content, RLE, `luni` names, `lspf` lock,
+  resolution 0x03ED, selected layer 0x0400) and read with groups, masks,
+  16-bit, CMYK, ZIP and `.psb`. What could not be kept on opening goes into
+  `Document::loadNotes()`, shown in a non-blocking message.
+- Test files: `tests/data/psd/` (GIMP and Krita files; `make_fixtures.py`
+  writes the synthetic ones). To check written files in other programs:
+  `PWM_PSD_OUT=/tmp/out build/pwm_psd_tests`, then open them with psd-tools
+  (`pip install psd-tools`), `xvfb-run krita --export --export-filename x.ora
+  file.psd`, or GIMP's `file-psd-load` in `gimp-console -i -b`.
+- Never write to a file directly: `QSaveFile`, so a failed save leaves the old
+  file intact.
 
 ### Settings
 

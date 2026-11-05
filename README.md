@@ -52,12 +52,40 @@ brush saved as a preset (tool, width, hardness, opacity ...). Drag a shortcut
 to move it; right-click it to remove it, or to rename or update a preset.
 Right-click > Columns fixes the number of columns.
 
+## File formats
+
+| Format | Open | Save | Layers |
+|---|---|---|---|
+| Photoshop `.psd` | yes | yes | kept |
+| Photoshop large document `.psb` | yes | no | kept |
+| Paint.NET `.pdn` | yes | no | kept |
+| PNG, JPEG, BMP, TIFF, WebP | yes | yes | flattened |
+| GIF | yes | no | flattened |
+
+To keep your layers, save as `.psd`. Krita and GIMP open it with every layer's
+name, position, opacity, visibility and blend mode, and the resolution (dpi)
+(tested with Krita 5 and GIMP 2.10). The file follows Adobe's published PSD
+format, so other programs should read it too; Photoshop itself has not been
+tested. Paint.NET's Glow, Negation, Reflect, Xor and Overwrite
+blend modes have no Photoshop equivalent; such layers are saved as Normal, and
+the app asks before it does that.
+
+Opening a `.psd` made elsewhere: pixel layers come in as they are. Layer groups
+are opened as separate layers (with the group's visibility and opacity
+applied), layer masks are applied to their layer, 16-bit and CMYK documents
+are converted to 8-bit RGB. Adjustment layers, layer styles and vector masks
+are not supported yet. After opening, a message lists anything that changed.
+
+Saving writes a new file first and replaces the old one only when it is
+complete, so a crash or power loss while saving cannot damage it. Autosave
+(every minute, in the background) keeps the layers too.
+
 ## Roadmap
 
 1. Rebrand and English-only interface (done)
 2. AppImage for Kubuntu and other distributions, with a start-menu entry (done)
 3. Speed with large images, panels docked in the main window (done)
-4. File formats: layered PSD instead of the inherited `.psw` format
+4. File formats: layered PSD instead of the inherited `.psw` format (done)
 5. A memory-efficient undo history
 6. Code cleanup, native Wayland
 7. Smudge tool and blur brush
