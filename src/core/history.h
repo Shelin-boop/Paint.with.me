@@ -32,15 +32,28 @@ private:
     QString m_description;
 };
 
+// One layer's pixels changed. Only the rectangle that actually differs is
+// kept, so a brush stroke on a 5000 x 5000 px layer costs the size of the
+// stroke, not two copies of the whole layer (200 MB).
 class ImageEditCommand : public HistoryCommand {
 public:
     ImageEditCommand(Document *doc, int layerIndex, const QImage &before, const QImage &after, const QString &desc);
     void undo() override;
     void redo() override;
     QString description() const override { return m_description; }
+    // The changed rectangle in layer pixels; empty if nothing changed. Whole
+    // images are kept (and this is the full rectangle) when the size changed.
+    QRect changedRect() const { return m_rect; }
+    qint64 memoryBytes() const { return m_before.sizeInBytes() + m_after.sizeInBytes(); }
+    // Smallest rectangle in which a and b differ (same size and format).
+    static QRect differingRect(const QImage &a, const QImage &b);
 private:
+    void apply(const QImage &pixels);
     Document *m_doc;
     int m_layerIndex;
+    bool m_partial = false;   // m_before/m_after hold just m_rect
+    QRect m_rect;
+    QSize m_layerSize;
     QImage m_before;
     QImage m_after;
     QString m_description;

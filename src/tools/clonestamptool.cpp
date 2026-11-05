@@ -32,6 +32,7 @@ void CloneStampTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *even
     m_doc = doc;
 
     cloneDab(canvasPos, layer->image(), m_sourceImage);
+    reportDab(canvas, canvasPos, canvasPos);
 }
 
 void CloneStampTool::mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *, CanvasWidget &canvas) {
@@ -51,7 +52,16 @@ void CloneStampTool::mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *, Can
         QPointF pos(m_lastPos.x() + dx * t, m_lastPos.y() + dy * t);
         cloneDab(pos, layer->image(), m_sourceImage);
     }
+    reportDab(canvas, m_lastPos, canvasPos);
     m_lastPos = canvasPos;
+}
+
+void CloneStampTool::reportDab(CanvasWidget &canvas, const QPointF &from, const QPointF &to) {
+    // Dab positions are document pixels; cover both ends of the segment.
+    const int r = int(std::ceil(m_brushSize / 2.0)) + 2;
+    const QRect a(QPoint(int(std::floor(from.x())) - r, int(std::floor(from.y())) - r), QSize(2 * r + 1, 2 * r + 1));
+    const QRect b(QPoint(int(std::floor(to.x())) - r, int(std::floor(to.y())) - r), QSize(2 * r + 1, 2 * r + 1));
+    canvas.updateCanvasRegion(a.united(b));
 }
 
 void CloneStampTool::mouseReleaseEvent(const QPointF &, QMouseEvent *, CanvasWidget &canvas) {

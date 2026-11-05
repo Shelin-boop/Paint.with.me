@@ -2,6 +2,7 @@
 #include "canvas/canvaswidget.h"
 #include "core/document.h"
 #include <QPainter>
+#include <algorithm>
 
 void PencilTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) {
     if (!canvas.document() || !canvas.document()->activeLayer()) return;
@@ -21,6 +22,7 @@ void PencilTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, C
     if (img.rect().contains(m_lastPos)
         && imageSelectionAllows(canvas.document(), m_lastPos.x(), m_lastPos.y()))
         plot(img, m_lastPos.x(), m_lastPos.y(), color);
+    canvas.updateCanvasRegion(QRect(m_lastPos, QSize(1, 1)).translated(layer->offset()));
 }
 
 void PencilTool::plot(QImage &img, int x, int y, const QColor &color) {
@@ -51,6 +53,8 @@ void PencilTool::mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *event, Ca
     int dx = std::abs(x1 - x0), dy = -std::abs(y1 - y0);
     int sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1;
     int err = dx + dy;
+    const QRect damage = QRect(QPoint(std::min(x0, x1), std::min(y0, y1)),
+                               QPoint(std::max(x0, x1), std::max(y0, y1)));
 
     while (true) {
         if (x0 >= 0 && x0 < layer->image().width() && y0 >= 0 && y0 < layer->image().height()
@@ -62,6 +66,7 @@ void PencilTool::mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *event, Ca
         if (e2 <= dx) { err += dx; y0 += sy; }
     }
     m_lastPos = pos;
+    canvas.updateCanvasRegion(damage.translated(layer->offset()));
 }
 
 void PencilTool::mouseReleaseEvent(const QPointF &, QMouseEvent *, CanvasWidget &canvas) {

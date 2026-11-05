@@ -22,6 +22,7 @@
 #include "core/history.h"
 #include "core/adjustmentpreview.h"
 #include "core/pdnformat.h"
+#include "core/thumbnails.h"
 #include "canvas/canvaswidget.h"
 #include "theme.h"
 
@@ -768,6 +769,138 @@ static void pdnImportRegression() {
     CHECK(true, "corrupted files do not crash the reader");
 }
 
+
+// ---- Speed work (2026-11-05): results must not change ----
+
+// The original algorithm: each visible layer composited onto a copy of the
+// result below it, whole image at a time.
+static QImage referenceFlatten(const Document &doc) {
+    QImage result(doc.size(), QImage::Format_ARGB32_Premultiplied);
+    result.fill(Qt::transparent);
+    for (int i = 0; i < doc.layerCount(); ++i) result = doc.layerAt(i)->composited(result);
+    return result;
+}
+
+static QImage patternImage(int w, int h, int seed, bool sparse) {
+    QImage img(w, h, QImage::Format_ARGB32_Premultiplied);
+    img.fill(Qt::transparent);
+    for (int y = 0; y < h; ++y) for (int x = 0; x < w; ++x) {
+        if (sparse && (x < w / 3 || y > 2 * h / 3)) continue;   // empty margins
+        const int a = (x * 7 + y * 3 + seed * 41) % 256;
+        img.setPixel(x, y, qPremultiply(qRgba((x * 5 + seed) % 256, (y * 11) % 256, (x + y + seed * 9) % 256, a)));
+    }
+    return img;
+}
+
+static void compositorRegression() {
+    SECTION("Compositing in strips on all cores matches the original algorithm");
+    // 620 x 410: large enough for several threads and the empty-margin skip.
+    Document doc(620, 410);
+    doc.activeLayer()->setImage(patternImage(620, 410, 1, false));
+    const QList<BlendMode> modes = Layer::allBlendModes();
+    for (int i = 0; i < 6; ++i) {
+        doc.addLayer(patternImage(i % 2 ? 300 : 620, i % 2 ? 200 : 410, i + 2, i % 3 == 0));
+        doc.activeLayer()->setOpacity(0.35f + 0.1f * i);
+        if (i % 2) doc.activeLayer()->setOffset(QPoint(-37 + 60 * i, 23 * i - 40));
+    }
+    bool allSame = true, regionsSame = true;
+    for (BlendMode mode : modes) {
+        doc.layerAt(3)->setBlendMode(mode);
+        doc.layerAt(5)->setBlendMode(modes[(int(mode) + 5) % modes.size()]);
+        const QImage flat = doc.flattenVisible();
+        if (flat != referenceFlatten(doc)) allSame = false;
+        for (QRect r : {QRect(0, 0, 17, 9), QRect(250, 100, 333, 290), QRect(600, 400, 20, 10)})
+            if (doc.flattenVisible(r) != flat.copy(r)) regionsSame = false;
+    }
+    CHECK(allSame, "every blend mode: whole image equals layer-by-layer composition");
+    CHECK(regionsSame, "areas equal the same part of the whole image");
+    doc.layerAt(2)->setVisible(false);
+    CHECK(doc.flattenVisible() == referenceFlatten(doc), "hidden layers are left out");
+
+    SECTION("Zoomed-out compositing (reduced size)");
+    Document one(9, 6);
+    QImage img(9, 6, QImage::Format_ARGB32_Premultiplied);
+    for (int y = 0; y < 6; ++y) for (int x = 0; x < 9; ++x) img.setPixel(x, y, qRgba(x * 20, y * 40, 100, 255));
+    one.activeLayer()->setImage(img);
+    QImage half(one.reducedSize(1), QImage::Format_ARGB32_Premultiplied);
+    CHECK(half.size() == QSize(5, 3), "reduced size rounds up");
+    one.compositeInto(half, QPoint(), 1);
+    // Pixel (1,1) stands for document pixels (2..3, 2..3): their average.
+    CHECK(half.pixel(1, 1) == qRgba(50, 100, 100, 255), "a reduced pixel is the average of its block");
+    // Areas of the reduced view equal the whole reduced view, for every shift.
+    bool reducedSame = true;
+    for (int shift : {1, 2, 3}) {
+        QImage whole(doc.reducedSize(shift), QImage::Format_ARGB32_Premultiplied);
+        doc.compositeInto(whole, QPoint(), shift);
+        for (QRect r : {QRect(0, 0, 7, 5), QRect(30, 11, 40, 30), QRect(whole.width() - 9, whole.height() - 4, 9, 4)}) {
+            r = r.intersected(whole.rect());
+            QImage part(r.size(), QImage::Format_ARGB32_Premultiplied);
+            doc.compositeInto(part, r.topLeft(), shift);
+            if (part != whole.copy(r)) reducedSame = false;
+        }
+    }
+    CHECK(reducedSame, "reduced areas match the whole reduced view exactly");
+
+    SECTION("Layer content bounds");
+    Layer empty(50, 40);
+    CHECK(empty.contentBounds().isEmpty(), "an empty layer has no content");
+    empty.image().setPixel(7, 5, qRgba(10, 0, 0, 10));
+    CHECK(empty.contentBounds() == QRect(7, 5, 1, 1), "one pixel gives a one-pixel rectangle");
+    empty.image().setPixel(30, 33, qRgba(0, 0, 0, 255));
+    CHECK(empty.contentBounds() == QRect(QPoint(7, 5), QPoint(30, 33)), "bounds follow later changes");
+}
+
+static void historyRegionRegression() {
+    SECTION("Undo keeps only the changed rectangle");
+    Document doc(400, 300);
+    doc.activeLayer()->clear(QColor(20, 40, 60));
+    doc.activeLayer()->setOffset(QPoint(0, 0));
+    const QImage before = doc.activeLayer()->image().copy();
+    {
+        QPainter p(&doc.activeLayer()->image());
+        p.fillRect(QRect(110, 70, 30, 20), Qt::red);
+    }
+    const QImage after = doc.activeLayer()->image().copy();
+    QRect reported;
+    QObject::connect(&doc, &Document::regionChanged, [&](const QRect &r) { reported = r; });
+    doc.pushImageEdit(0, before, "Paint");
+    CHECK(ImageEditCommand::differingRect(before, after) == QRect(110, 70, 30, 20), "changed rectangle found");
+    ImageEditCommand probe(&doc, 0, before, after, "probe");
+    CHECK(probe.changedRect() == QRect(110, 70, 30, 20), "command stores the changed rectangle");
+    CHECK(probe.memoryBytes() == 2 * 30 * 20 * 4, "memory is two copies of that rectangle only");
+    doc.history().undo();
+    CHECK(doc.activeLayer()->image() == before, "undo restores the pixels");
+    CHECK(reported == QRect(110, 70, 30, 20), "undo reports just the changed area");
+    doc.history().redo();
+    CHECK(doc.activeLayer()->image() == after, "redo restores the change");
+    ImageEditCommand none(&doc, 0, after, after, "none");
+    CHECK(none.changedRect().isEmpty() && none.memoryBytes() == 0, "no change keeps nothing");
+    ImageEditCommand resized(&doc, 0, before.copy(0, 0, 10, 10), after, "resize");
+    CHECK(resized.changedRect() == after.rect(), "a size change keeps whole images");
+}
+
+static void thumbnailRegression() {
+    SECTION("Thumbnails are remembered per content version");
+    Thumbnails::clearCache();
+    QImage big = patternImage(1200, 800, 3, false);
+    const QImage a = Thumbnails::cached(big, QSize(40, 30));
+    CHECK(a.width() == 40 && std::abs(a.height() - 27) <= 1, "fits the box, keeps proportions");
+    CHECK(Thumbnails::cached(big, QSize(40, 30)).cacheKey() == a.cacheKey(), "unchanged image: same thumbnail");
+    big.setPixel(0, 0, qRgba(1, 2, 3, 255));
+    CHECK(Thumbnails::cached(big, QSize(40, 30)).cacheKey() != a.cacheKey(), "changed image: new thumbnail");
+    CHECK(Thumbnails::scaled(QImage(10, 8, QImage::Format_ARGB32_Premultiplied), QSize(40, 30)).size() == QSize(10, 8),
+          "small images are not enlarged");
+    Document doc(1000, 500);
+    doc.activeLayer()->clear(Qt::blue);
+    doc.addLayer(QString());
+    doc.activeLayer()->clear(QColor(255, 0, 0, 255));
+    doc.activeLayer()->setOpacity(0.5f);
+    const QImage t = Thumbnails::document(doc, QSize(30, 30));
+    CHECK(t.size() == QSize(30, 15), "document thumbnail fits the box");
+    const QColor c = QColor::fromRgba(t.pixel(15, 7));
+    CHECK(std::abs(c.red() - 128) <= 2 && std::abs(c.blue() - 127) <= 2, "layers are combined with their opacity");
+}
+
 int main(int argc, char **argv) {
     QApplication app(argc, argv);
     resizeStraightAlphaCharacterization();
@@ -781,6 +914,9 @@ int main(int argc, char **argv) {
     nativeRetentionCompatibility();
     retainedMergeRegression();
     pdnImportRegression();
+    compositorRegression();
+    historyRegionRegression();
+    thumbnailRegression();
 
     // ---------- TOOLS ----------
     SECTION("Tools draw into the active layer");

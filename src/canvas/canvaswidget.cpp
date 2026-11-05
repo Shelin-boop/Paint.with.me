@@ -52,14 +52,9 @@ void CanvasWidget::setDocument(Document *doc) {
     m_previewImage = QImage();
     m_document = doc;
     if (doc) {
-        connect(doc, &Document::documentChanged, this, [this]() {
-            m_cacheValid = false;
-            update();
-        });
-        connect(doc, &Document::layersChanged, this, [this]() {
-            m_cacheValid = false;
-            update();
-        });
+        connect(doc, &Document::documentChanged, this, &CanvasWidget::documentContentChanged);
+        connect(doc, &Document::layersChanged, this, &CanvasWidget::documentContentChanged);
+        connect(doc, &Document::regionChanged, this, &CanvasWidget::updateCanvasRegion);
         connect(doc, &Document::selectionChanged, this, [this]() { update(); });
     }
     m_cacheValid = false;
@@ -187,7 +182,37 @@ QPointF CanvasWidget::canvasToWidget(const QPointF &canvasPos) const {
 }
 
 void CanvasWidget::updateCanvas() {
-    m_cacheValid = false;
+    // The cache is redone only if the layers really changed (see
+    // renderSignature()); undo of a brush stroke, for one, has already
+    // reported its area.
+    documentContentChanged();
+}
+
+std::vector<qint64> CanvasWidget::renderSignature() const {
+    std::vector<qint64> sig;
+    if (!m_document) return sig;
+    sig.reserve(4 + 6 * m_document->layerCount());
+    sig.push_back(reinterpret_cast<qintptr>(m_document));
+    sig.push_back(m_document->width());
+    sig.push_back(m_document->height());
+    sig.push_back(m_document->layerCount());
+    for (int i = 0; i < m_document->layerCount(); ++i) {
+        const Layer *layer = std::as_const(*m_document).layerAt(i);
+        sig.push_back(layer->image().cacheKey());
+        sig.push_back(layer->isVisible() ? 1 : 0);
+        sig.push_back(qRound(layer->opacity() * 1000000.0f));
+        sig.push_back(static_cast<qint64>(layer->blendMode()));
+        sig.push_back(layer->offset().x());
+        sig.push_back(layer->offset().y());
+    }
+    return sig;
+}
+
+void CanvasWidget::documentContentChanged() {
+    // Changes already reported area by area (updateCanvasRegion) are in the
+    // cache or queued; only something else needs the whole image combined again.
+    if (m_cacheValid && renderSignature() != m_cacheSignature)
+        m_cacheValid = false;
     update();
 }
 
@@ -196,6 +221,9 @@ void CanvasWidget::updateCanvasRegion(const QRect &documentRect) {
     const QRect dirty = documentRect.intersected(QRect(QPoint(), m_document->size()));
     if (dirty.isEmpty()) return;
     m_dirtyRender += dirty;
+    // The caller says this area holds all changes since the last update, so
+    // the cache plus the queued areas match the document as it is now.
+    if (m_cacheValid) m_cacheSignature = renderSignature();
     const QRectF widgetRect(canvasToWidget(dirty.topLeft()),
                             QSizeF(dirty.size()) * m_zoom);
     update(widgetRect.toAlignedRect().adjusted(-2, -2, 2, 2));
@@ -221,20 +249,44 @@ void CanvasWidget::paintEvent(QPaintEvent *) {
     // Checkerboard for transparency
     drawCheckerboard(painter, canvasRect.toRect());
 
-    // Render document
+    // Render document. Zoomed out, the layers are combined at a reduced size
+    // (half, quarter, ...) that still has at least one pixel per screen pixel:
+    // combining all 25 million pixels of a 5000 x 5000 image only to shrink
+    // the result to the screen made big images slow.
     if (m_previewImage.isNull()) {
-        if (!m_cacheValid) {
-            m_cachedRender = m_document->flattenVisible();
+        int shift = 0;
+        while (shift < 6 && std::ldexp(1.0, -(shift + 1)) >= m_zoom) ++shift;
+        const QSize cacheSize = m_document->reducedSize(shift);
+        if (!m_cacheValid || shift != m_cacheShift || m_cachedRender.size() != cacheSize) {
+            if (m_cachedRender.size() != cacheSize
+                || m_cachedRender.format() != QImage::Format_ARGB32_Premultiplied)
+                m_cachedRender = QImage(cacheSize, QImage::Format_ARGB32_Premultiplied);
+            m_cacheShift = shift;
+            m_document->compositeInto(m_cachedRender, QPoint(), shift);
             m_cacheValid = true;
+            m_cacheSignature = renderSignature();
         } else if (!m_dirtyRender.isEmpty()) {
-            QPainter cachePainter(&m_cachedRender);
-            cachePainter.setCompositionMode(QPainter::CompositionMode_Source);
+            // Recombine the changed areas straight into the cache.
+            uchar *bits = m_cachedRender.bits();
+            const qsizetype bpl = m_cachedRender.bytesPerLine();
+            QRegion reduced;
             for (const QRect &dirty : m_dirtyRender)
-                cachePainter.drawImage(dirty.topLeft(), m_document->flattenVisible(dirty));
+                reduced += Layer::reducedRect(dirty, shift).intersected(m_cachedRender.rect());
+            for (const QRect &area : reduced) {
+                QImage view(bits + area.y() * bpl + area.x() * 4, area.width(), area.height(),
+                            bpl, QImage::Format_ARGB32_Premultiplied);
+                m_document->compositeInto(view, area.topLeft(), shift);
+            }
         }
         m_dirtyRender = QRegion();
+        // The cache may reach a few document pixels past the right and bottom
+        // edges (sizes round up); show exactly the document's area of it.
+        const double s = std::ldexp(1.0, m_cacheShift);
+        painter.drawImage(canvasRect, m_cachedRender,
+                          QRectF(0, 0, m_document->width() / s, m_document->height() / s));
+    } else {
+        painter.drawImage(canvasRect, m_previewImage);
     }
-    painter.drawImage(canvasRect, m_previewImage.isNull() ? m_cachedRender : m_previewImage);
 
     // Grid at high zoom
     if (m_showGrid && m_zoom >= 4.0) {

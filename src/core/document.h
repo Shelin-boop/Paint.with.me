@@ -78,6 +78,11 @@ public:
     void pushImageEdit(int layerIndex, const QImage &before, const QString &desc);
     // Emitted by history commands so the canvas and panels refresh after undo/redo.
     void notifyContentChanged() { emit documentChanged(); emit layersChanged(); }
+    // Same, when only this document rectangle of one layer changed.
+    void notifyRegionChanged(const QRect &documentRect) {
+        emit regionChanged(documentRect);
+        notifyContentChanged();
+    }
 
     // Rendering
     static QImage compositeLayers(const std::vector<Layer> &layers, QSize size);
@@ -86,6 +91,19 @@ public:
     QImage flattenVisible() const;
     // Same composition as flattenVisible(), restricted to a document-space tile.
     QImage flattenVisible(const QRect &region) const;
+    // Combines the visible layers into `dest` (premultiplied ARGB32), which shows
+    // the document area of its own size starting at `origin`. Overwrites `dest`.
+    // Splits the work into strips over all CPU cores and skips the empty parts
+    // of each layer.
+    //
+    // With `shift` > 0, `dest` is a view reduced by 2^shift in each direction
+    // (one pixel per 2^shift x 2^shift document pixels) and `origin` is in
+    // reduced pixels; for showing a zoomed-out image quickly.
+    void compositeInto(QImage &dest, const QPoint &origin, int shift = 0) const;
+    // Size of the reduced view of the whole document for `shift`.
+    QSize reducedSize(int shift) const {
+        return QSize((m_width + (1 << shift) - 1) >> shift, (m_height + (1 << shift) - 1) >> shift);
+    }
 
     // File I/O
     // quality: 0..100 for lossy formats (JPEG, WebP). -1 means "reuse the last
@@ -120,6 +138,10 @@ signals:
     void activeLayerChanged(int index);
     void selectionChanged();
     void documentChanged();
+    // Pixels of one layer changed only inside this document rectangle (undo and
+    // redo of a painted area). Sent before documentChanged(), so the canvas can
+    // recombine just that area.
+    void regionChanged(const QRect &documentRect);
     void editScopeChanged(bool editAllLayers);
     void primaryColorChanged(const QColor &color);
     void secondaryColorChanged(const QColor &color);

@@ -3,6 +3,17 @@
 #include "core/selection.h"
 #include <QPainter>
 #include <QImage>
+#include <cstdlib>
+
+QImage Tool::transparentImage(const QSize &size) {
+    if (size.isEmpty()) return QImage();
+    const qsizetype bpl = qsizetype(size.width()) * 4;
+    void *data = std::calloc(size_t(bpl) * size_t(size.height()), 1);
+    if (!data) return QImage();
+    return QImage(static_cast<uchar *>(data), size.width(), size.height(), bpl,
+                  QImage::Format_ARGB32_Premultiplied,
+                  [](void *p) { std::free(p); }, data);
+}
 
 void Tool::clipToSelection(QPainter &painter, Document *doc) {
     if (!doc) return;

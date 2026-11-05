@@ -1,5 +1,7 @@
 #pragma once
 
+#include <vector>
+
 #include <QWidget>
 #include <QImage>
 #include <QTimer>
@@ -118,9 +120,17 @@ private:
 
     // Cached render
     QImage m_previewImage;
-    QImage m_cachedRender;
+    QImage m_cachedRender;   // combined layers, reduced by 2^m_cacheShift
+    int m_cacheShift = 0;
     bool m_cacheValid = false;
     QRegion m_dirtyRender;
+    // What the cached render (plus the queued dirty areas) shows: the content
+    // version, visibility, opacity, blend mode and position of every layer. A
+    // document change that leaves this unchanged needs no recomposition, e.g.
+    // the end of a brush stroke whose dabs were already drawn area by area.
+    std::vector<qint64> m_cacheSignature;
+    std::vector<qint64> renderSignature() const;
+    void documentContentChanged();
 
     // Tablet pressure
     double m_pressure = 1.0;

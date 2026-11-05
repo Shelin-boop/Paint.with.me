@@ -137,6 +137,11 @@ protected:
     // Masks a freshly produced full-layer image so only selected pixels differ
     // from the original. Used by tools that rebuild the whole image.
     static QImage maskEditToSelection(Document *doc, const QImage &before, const QImage &after);
+    // A fully transparent premultiplied ARGB32 image of `size`, for stroke
+    // buffers. The memory comes from the system already zeroed, so creating a
+    // layer-sized buffer (100 MB for 5000 x 5000 px) costs nothing up front;
+    // only the parts a stroke touches are ever used.
+    static QImage transparentImage(const QSize &size);
 
     double m_brushSize = 10;
     int m_hardness = 100;

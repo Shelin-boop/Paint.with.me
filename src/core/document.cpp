@@ -1,6 +1,8 @@
 #include "document.h"
 #include "pdnformat.h"
 #include <QPainter>
+#include <QtConcurrent/QtConcurrentMap>
+#include <cstring>
 #include <QImageReader>
 #include <QImageWriter>
 #include <cstdlib>
@@ -421,19 +423,18 @@ bool Document::commitImageEdits(const std::vector<ImageEditState> &edits, const 
 }
 QImage Document::compositeLayers(const std::vector<Layer> &layers, QSize size) {
     QImage result(size, QImage::Format_ARGB32_Premultiplied);
+    if (result.isNull()) return result;
     result.fill(Qt::transparent);
+    QPainter painter(&result);
     for (const auto &layer : layers)
-        if (layer.isVisible()) result = layer.composited(result);
+        layer.compositeInto(painter, result, QPoint(), result.rect());
     return result;
 }
 
 QImage Document::flatten() const {
     QImage result(m_width, m_height, QImage::Format_ARGB32_Premultiplied);
-    result.fill(Qt::transparent);
-    for (const auto &layer : m_layers) {
-        if (layer->isVisible())
-            result = layer->composited(result);
-    }
+    if (result.isNull()) return result;
+    compositeInto(result, QPoint());
     return result;
 }
 
@@ -445,20 +446,73 @@ QImage Document::flattenVisible(const QRect &region) const {
     const QRect tile = region.intersected(QRect(QPoint(), size()));
     if (tile.isEmpty()) return QImage();
     QImage result(tile.size(), QImage::Format_ARGB32_Premultiplied);
-    result.fill(Qt::transparent);
-    for (const auto &layer : m_layers) {
-        if (!layer->isVisible() || layer->opacity() <= 0) continue;
-        const QRect source = tile.translated(-layer->offset()).intersected(layer->image().rect());
-        if (source.isEmpty()) continue;
-        // Reuse the exact layer blend implementation, including custom modes,
-        // while keeping all its allocations and per-pixel loops tile-sized.
-        Layer part(layer->image().copy(source));
-        part.setOffset(source.topLeft() + layer->offset() - tile.topLeft());
-        part.setOpacity(layer->opacity());
-        part.setBlendMode(layer->blendMode());
-        result = part.composited(result);
-    }
+    if (result.isNull()) return result;
+    compositeInto(result, tile.topLeft());
     return result;
+}
+
+void Document::compositeInto(QImage &dest, const QPoint &origin, int shift) const {
+    if (dest.isNull()) return;
+    Q_ASSERT(dest.format() == QImage::Format_ARGB32_Premultiplied);
+    shift = std::max(0, shift);
+    const QRect region(origin, dest.size());   // in `dest` (possibly reduced) pixels
+    const QSize full = reducedSize(shift);
+
+    // Which layers take part, and the part of `region` each one can change.
+    // For big areas, the empty margins of each layer are left out (finding them
+    // costs one pass over a changed layer, then it is remembered). An Overwrite
+    // layer also changes pixels below its transparent parts, so it keeps its
+    // full rectangle.
+    const bool useBounds = qint64(region.width()) * region.height() * 8
+                           >= qint64(full.width()) * full.height();
+    struct Item { const Layer *layer; QRect area; };   // area: in `dest` pixels
+    std::vector<Item> items;
+    items.reserve(m_layers.size());
+    for (const auto &ptr : m_layers) {
+        const Layer &layer = *ptr;
+        if (!layer.isVisible() || layer.opacity() <= 0.0f || layer.image().isNull()) continue;
+        QRect area = (useBounds && layer.blendMode() != BlendMode::Overwrite)
+                         ? layer.contentBounds()
+                         : layer.image().rect();
+        area = Layer::reducedRect(area.translated(layer.offset()), shift)
+                   .intersected(region).translated(-origin);
+        if (!area.isEmpty()) items.push_back({&layer, area});
+    }
+
+    // Strips of about 256 KB stay in the CPU cache while all layers are blended
+    // onto them, instead of streaming the whole result through memory per layer.
+    uchar *bits = dest.bits();   // once, here: never detach from worker threads
+    const qsizetype bpl = dest.bytesPerLine();
+    const int width = dest.width();
+    const int stripRows = std::max(8, int(65536 / std::max(1, width)));
+    struct Strip { int y0, y1; };
+    std::vector<Strip> strips;
+    for (int y = 0; y < dest.height(); y += stripRows)
+        strips.push_back({y, std::min(dest.height(), y + stripRows)});
+
+    auto work = [&](const Strip &strip) {
+        const int rows = strip.y1 - strip.y0;
+        uchar *first = bits + strip.y0 * bpl;
+        for (int r = 0; r < rows; ++r)
+            std::memset(first + r * bpl, 0, size_t(width) * 4);
+        QImage view(first, width, rows, bpl, QImage::Format_ARGB32_Premultiplied);
+        const QRect stripRect(0, strip.y0, width, rows);
+        QPainter painter;
+        for (const Item &item : items) {
+            const QRect part = item.area.intersected(stripRect);
+            if (part.isEmpty()) continue;
+            if (!painter.isActive()) painter.begin(&view);
+            item.layer->compositeInto(painter, view, origin + QPoint(0, strip.y0),
+                                      part.translated(0, -strip.y0), shift);
+        }
+    };
+
+    // Small areas (a brush dab while zoomed in) are quicker without threads.
+    if (strips.size() < 2 || qint64(width) * dest.height() < 128 * 1024) {
+        for (const Strip &strip : strips) work(strip);
+    } else {
+        QtConcurrent::blockingMap(strips, work);
+    }
 }
 
 bool Document::isNativeFormat(const QString &filePath) {
