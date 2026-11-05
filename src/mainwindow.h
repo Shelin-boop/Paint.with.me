@@ -193,8 +193,14 @@ private:
 
     // Autosave / crash recovery.
     void performAutosave();
-    QFuture<bool> m_autosaveJob;   // combines and writes in the background
+    QFuture<bool> m_autosaveJob;   // writes the layered snapshot in the background
+    bool m_discardAutosave = false;   // saved meanwhile: drop the running snapshot
+    QPointer<Document> m_autosaveDocument;   // the image the snapshot is of
     void clearAutosave();
+    QString recoveryFile() const;   // the autosave file, if there is one
+    // Saves the active document to `filePath`, warning first about what a
+    // .psd cannot keep; shows errors. quality: see Document::save.
+    bool writeDocument(const QString &filePath, int quality);
     void checkForRecovery();
     QString autosaveDir() const;
 
