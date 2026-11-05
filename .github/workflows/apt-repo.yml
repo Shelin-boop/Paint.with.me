@@ -1,0 +1,182 @@
+name: APT repository (GitHub Pages)
+
+# Builds the .deb and publishes a proper APT repository to GitHub Pages, so users
+# can `apt install paint.software` and get updates via `apt upgrade`.
+on:
+  push:
+    branches: [ main ]     # every change to main auto-publishes a new version
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write    # also update the rolling "continuous" GitHub Release
+  pages: write
+  id-token: write
+
+# One Pages deployment at a time.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build-and-publish:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    # Optional GPG signing: set the GPG_PRIVATE_KEY (and GPG_PASSPHRASE) secrets to
+    # sign the repo. Without them it publishes unsigned (users add [trusted=yes]).
+    env:
+      GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+      GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0     # full history so the commit count (patch version) is real
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build qt6-base-dev qt6-image-formats-plugins libgl1-mesa-dev zlib1g-dev \
+            dpkg-dev apt-utils file
+
+      - name: Build .deb
+        run: |
+          # Auto version = <major.minor from CMakeLists>.<commit count>, so it always
+          # increases → APT sees each push to main as an available upgrade.
+          MM=$(grep -oP 'project\(PaintDali VERSION \K[0-9]+\.[0-9]+' CMakeLists.txt)
+          VER="${MM}.$(git rev-list --count HEAD)"
+          echo "Packaging version $VER"
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release -DPAINTSW_VERSION="$VER"
+          cmake --build build -j
+          (cd build && cpack -G DEB)
+          # Built on Ubuntu, but Debian/LMDE name the Qt6 libraries differently:
+          # offer both names so the package installs on either (issue #1).
+          for deb in build/*.deb; do packaging/deb-add-debian-alternatives.sh "$deb"; done
+
+      - name: Publish this build as its own Release
+        # Every build gets its own permanent release, tagged with the version it
+        # produced. The previous scheme deleted and recreated a single rolling
+        # "continuous" release, so each build destroyed the one before it and no
+        # history survived.
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          DEB=$(ls build/*.deb | head -1)
+          VERSION=$(dpkg-deb -f "$DEB" Version)
+          TAG="v${VERSION}"
+
+          # Re-running the workflow on a commit that was already released must not
+          # fail or duplicate: the version comes from the commit count, so the tag
+          # is already there.
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG already exists — leaving it alone."
+            exit 0
+          fi
+
+          # Each release documents only what IT added: the range starts at the
+          # previous build's tag. --match 'v*' skips the leftover "continuous" tag
+          # from the old scheme, which a bare `describe --tags` would pick as the
+          # most recent one.
+          SINCE=$(git describe --tags --abbrev=0 --match 'v*' 2>/dev/null || true)
+          if [ -n "$SINCE" ]; then RANGE="${SINCE}..HEAD"; else RANGE="HEAD~10..HEAD"; fi
+          CHANGES=$(git log --no-merges --format='## %s%n%n%b' "$RANGE" 2>/dev/null \
+                      | grep -v -e '^Co-Authored-By:' -e '^Signed-off-by:' || true)
+          # No tag yet, or nothing since it: still show something real.
+          if [ -z "$(echo "$CHANGES" | tr -d '[:space:]')" ]; then
+            CHANGES=$(git log -1 --format='## %s%n%n%b' | grep -v '^Co-Authored-By:')
+          fi
+
+          # Single-quoted lines keep backticks and quotes literal.
+          {
+            printf '%s\n' \
+              "Automatic build of \`main\` — version ${VERSION}." \
+              ''
+            if [ -n "$SINCE" ]; then
+              printf '%s\n' "## Changes since ${SINCE} / Nouveautés depuis ${SINCE}" ''
+            else
+              printf '%s\n' '## Changes / Nouveautés' ''
+            fi
+            printf '%s\n' "$CHANGES"
+            printf '%s\n' \
+              '' \
+              '---' \
+              '' \
+              '### Debian / Ubuntu / Linux Mint' \
+              '**APT (recommended — auto-updates via `apt upgrade`):**' \
+              '```bash' \
+              'curl -fsSL https://univers4craft.github.io/paint.software/paint.software.gpg | sudo tee /usr/share/keyrings/paint.software.gpg > /dev/null' \
+              'echo "deb [signed-by=/usr/share/keyrings/paint.software.gpg] https://univers4craft.github.io/paint.software stable main" | sudo tee /etc/apt/sources.list.d/paint.software.list' \
+              'sudo apt update && sudo apt install paint.software' \
+              '```' \
+              'Or download the `.deb` below and `sudo apt install ./paint.software_*_amd64.deb`.' \
+              '' \
+              '### Any distribution — Fedora, Arch, openSUSE…' \
+              '**AppImage** (portable, no install — download, then):' \
+              '```bash' \
+              'chmod +x paint.software-*-x86_64.AppImage && ./paint.software-*-x86_64.AppImage' \
+              '```' \
+              '**Flatpak** (download `paint.software.flatpak`, then):' \
+              '```bash' \
+              'flatpak install --user paint.software.flatpak' \
+              'flatpak run io.github.univers4craft.PaintSoftware' \
+              '```' \
+              'All three files are attached to this release below.'
+          } > /tmp/release-notes.md
+
+          # create only — nothing is ever deleted, so past builds stay downloadable.
+          gh release create "$TAG" "$DEB" \
+            --target "$GITHUB_SHA" \
+            --title "v$VERSION" \
+            --notes-file /tmp/release-notes.md
+
+      - name: Assemble APT repository
+        run: |
+          REPO=public
+          mkdir -p "$REPO/pool/main" "$REPO/dists/stable/main/binary-amd64"
+          cp build/*.deb "$REPO/pool/main/"
+          (
+            cd "$REPO"
+            dpkg-scanpackages --arch amd64 pool/ > dists/stable/main/binary-amd64/Packages
+            gzip -9 -k -f dists/stable/main/binary-amd64/Packages
+            apt-ftparchive \
+              -o APT::FTPArchive::Release::Origin="paint.software" \
+              -o APT::FTPArchive::Release::Label="paint.software" \
+              -o APT::FTPArchive::Release::Suite="stable" \
+              -o APT::FTPArchive::Release::Codename="stable" \
+              -o APT::FTPArchive::Release::Components="main" \
+              -o APT::FTPArchive::Release::Architectures="amd64" \
+              release dists/stable > dists/stable/Release
+          )
+          cp packaging/pages-index.html "$REPO/index.html"
+
+      - name: Sign repository (only if a GPG key secret is configured)
+        if: env.GPG_PRIVATE_KEY != ''
+        run: |
+          echo "$GPG_PRIVATE_KEY" | gpg --batch --import
+          KEYID=$(gpg --list-secret-keys --with-colons | awk -F: '/^fpr:/{print $10; exit}')
+          echo "Signing with key $KEYID"
+          # Publish the public key (dearmored keyring) for users.
+          gpg --export "$KEYID" > public/paint.software.gpg
+          GPG_OPTS="--batch --yes --pinentry-mode loopback --local-user $KEYID"
+          if [ -n "$GPG_PASSPHRASE" ]; then GPG_OPTS="$GPG_OPTS --passphrase $GPG_PASSPHRASE"; fi
+          ( cd public/dists/stable
+            gpg $GPG_OPTS --clearsign -o InRelease Release
+            gpg $GPG_OPTS -abs -o Release.gpg Release )
+          # Swap in the signed install instructions on the landing page.
+          cp packaging/pages-index-signed.html public/index.html
+
+      - name: Configure Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4

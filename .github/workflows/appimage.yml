@@ -1,0 +1,100 @@
+name: AppImage
+
+# Builds a portable AppImage that runs on any Linux distribution — download,
+# chmod +x, run. Attached to the same per-version release as the .deb.
+on:
+  push:
+    branches: [ main ]
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # attach the AppImage to the Release
+
+jobs:
+  appimage:
+    # Oldest still-supported Ubuntu LTS, so the resulting AppImage doesn't
+    # link against a glibc newer than what most users' distros ship
+    # (see AppImage/appimage.github.io#6449 — glibc 2.38 from ubuntu-latest
+    # made the AppImage refuse to start on older systems).
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+        with:
+          fetch-depth: 0   # full history so the version (commit count) is real
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential cmake ninja-build libgl1-mesa-dev zlib1g-dev \
+            libfuse2 file wget desktop-file-utils python3-pip \
+            libxkbcommon-x11-0 libxcb-cursor0 libxcb-icccm4 libxcb-image0 \
+            libxcb-keysyms1 libxcb-randr0 libxcb-render-util0 libxcb-render0 \
+            libxcb-shape0 libxcb-shm0 libxcb-sync1 libxcb-xfixes0 \
+            libxcb-xinerama0 libxcb-xkb1 libxcb-util1
+          pip install aqtinstall
+
+      - name: Install Qt 6 (aqtinstall — ubuntu-22.04's own Qt6 package is too old)
+        env:
+          QT_VERSION: 6.5.3
+        run: |
+          aqt install-qt linux desktop "$QT_VERSION" gcc_64 -m qtimageformats -O "$GITHUB_WORKSPACE/Qt"
+          echo "$GITHUB_WORKSPACE/Qt/$QT_VERSION/gcc_64/bin" >> "$GITHUB_PATH"
+          echo "QT_ROOT=$GITHUB_WORKSPACE/Qt/$QT_VERSION/gcc_64" >> "$GITHUB_ENV"
+
+      - name: Build and install into an AppDir
+        run: |
+          MM=$(grep -oP 'project\(PaintDali VERSION \K[0-9]+\.[0-9]+' CMakeLists.txt)
+          VER="${MM}.$(git rev-list --count HEAD)"
+          echo "VER=$VER" >> "$GITHUB_ENV"
+          cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
+            -DPAINTSW_VERSION="$VER" -DCMAKE_INSTALL_PREFIX=/usr \
+            -DCMAKE_PREFIX_PATH="$QT_ROOT"
+          cmake --build build -j
+          DESTDIR="$PWD/AppDir" cmake --install build
+
+      - name: Fetch linuxdeploy + Qt plugin
+        run: |
+          wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
+          wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
+          chmod +x linuxdeploy*.AppImage
+
+      - name: Build the AppImage
+        env:
+          QMAKE: ${{ env.QT_ROOT }}/bin/qmake6
+          EXTRA_QT_MODULES: printsupport
+          OUTPUT: paint.software-${{ env.VER }}-x86_64.AppImage
+        run: |
+          export LD_LIBRARY_PATH="$QT_ROOT/lib:$LD_LIBRARY_PATH"
+          ./linuxdeploy-x86_64.AppImage --appdir AppDir \
+            --desktop-file AppDir/usr/share/applications/paint.software.desktop \
+            --icon-file AppDir/usr/share/pixmaps/paint.software.png \
+            --plugin qt --output appimage
+          ls -1 *.AppImage
+
+      - name: Attach the AppImage to the release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FILE=$(ls paint.software-*-x86_64.AppImage | head -1)
+          TAG="v${VER}"
+          # apt-repo.yml creates the release; give it a moment, then attach.
+          for i in $(seq 1 30); do
+            if gh release view "$TAG" >/dev/null 2>&1; then
+              gh release upload "$TAG" "$FILE" --clobber
+              echo "Uploaded $FILE to $TAG"
+              exit 0
+            fi
+            echo "Waiting for release $TAG… ($i)"
+            sleep 10
+          done
+          echo "Release $TAG never appeared; leaving the AppImage as a build artifact."
+
+      - name: Upload as a workflow artifact too
+        uses: actions/upload-artifact@v4
+        with:
+          name: appimage
+          path: paint.software-*-x86_64.AppImage
