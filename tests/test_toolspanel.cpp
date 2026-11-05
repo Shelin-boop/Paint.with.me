@@ -24,6 +24,8 @@
 #include "toolicons.h"
 #include "tools/brushpreset.h"
 #include "tools/brushtool.h"
+#include "tools/toolregistry.h"
+#include <QSet>
 
 static int g_pass = 0, g_fail = 0;
 #define CHECK(cond) do { if (cond) ++g_pass; else { ++g_fail; \
@@ -104,6 +106,22 @@ static void toolKeys() {
         CHECK(toolTypeFromKey(key, &back) && back == type);
     }
     CHECK(!toolTypeFromKey("smudge-with-a-typo", nullptr));
+
+    // The registry lists every tool once, in a slot of its own, and makes it.
+    std::printf("== Tool registry ==\n");
+    QSet<int> types;
+    QSet<QPair<int, int>> cells;
+    for (const ToolInfo &info : toolInfos()) {
+        CHECK(!types.contains(int(info.type)));
+        types.insert(int(info.type));
+        CHECK(!cells.contains({info.row, info.col}));
+        cells.insert({info.row, info.col});
+        CHECK(qstrlen(info.name) > 0 && qstrlen(info.shortcut) == 1 && qstrlen(info.hint) > 0);
+        auto tool = createTool(info.type);
+        CHECK(tool && tool->type() == info.type);
+        CHECK(&toolInfo(info.type) == &info);
+    }
+    CHECK(types.size() == int(ToolType::Perspective) + 1);
 }
 
 static void presets() {
@@ -289,6 +307,27 @@ static void mainWindowLayout() {
     CHECK(panel && panel->columnCount() == 4);
     CHECK(tools->width() >= 190 && tools->width() <= 260);
     screenshot(window, "1-default-layout");
+
+    // Key S cycles the selection tools in Paint.NET's order, Shift+S back.
+    auto *canvasForKeys = window.findChild<CanvasWidget *>();
+    auto trigger = [&window](const QString &text) {
+        for (QAction *a : window.findChildren<QAction *>())
+            if (a->text() == text) { a->trigger(); return true; }
+        return false;
+    };
+    CHECK(trigger("Tools S"));
+    CHECK(canvasForKeys->currentTool()->type() == ToolType::RectSelection);
+    trigger("Tools S");
+    CHECK(canvasForKeys->currentTool()->type() == ToolType::LassoSelection);
+    trigger("Tools S reverse");
+    trigger("Tools S reverse");
+    CHECK(canvasForKeys->currentTool()->type() == ToolType::MagicWand);
+    QAction *keyV = nullptr;
+    for (QAction *a : window.findChildren<QAction *>())
+        if (a->shortcut() == QKeySequence("V")) keyV = a;
+    CHECK(keyV != nullptr);
+    if (keyV) keyV->trigger();
+    CHECK(canvasForKeys->currentTool()->type() == ToolType::Perspective);
 
     // Pin commands from the real menus and a brush preset.
     CHECK(panel != nullptr);

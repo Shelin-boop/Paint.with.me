@@ -64,6 +64,7 @@ set(TOOLS_SOURCES
     src/tools/magicwandtool.cpp
     src/tools/brushpreset.cpp
     src/tools/perspectivetool.cpp
+    src/tools/toolregistry.cpp
 )
 
 set(PANELS_SOURCES
