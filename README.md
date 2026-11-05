@@ -52,6 +52,24 @@ brush saved as a preset (tool, width, hardness, opacity ...). Drag a shortcut
 to move it; right-click it to remove it, or to rename or update a preset.
 Right-click > Columns fixes the number of columns.
 
+**Perspective tool** (V, next to Shapes): click on the image to place up to
+three vanishing points (they may also lie outside the image), drag them to
+move, right-click to remove. Guide lines radiate from them over the canvas.
+Strokes of the paintbrush, pencil, eraser, line, clone stamp and recolor tools
+then follow the guide they start along; the tool options set the number of
+lines, snapping to horizontal and vertical, and "Guides to New Layer" draws
+the lines into a layer of their own. View > Perspective Guides and Snap to
+Perspective switch them on and off while you paint.
+
+**Undo** keeps as many steps as fit into a memory limit (Settings > Undo
+History; by default one eighth of the computer's memory, between 512 MB and
+2 GB). When the steps need more, the oldest are dropped.
+
+**Pen tablets**: pen pressure changes the brush width, as in Paint.NET. It is
+read through Qt's tablet support, so it works wherever the system's tablet
+driver delivers pressure (tested by the owner with an XPPen Artist 15.6 Pro V2
+on Kubuntu).
+
 ## File formats
 
 | Format | Open | Save | Layers |
@@ -61,6 +79,7 @@ Right-click > Columns fixes the number of columns.
 | Paint.NET `.pdn` | yes | no | kept |
 | PNG, JPEG, BMP, TIFF, WebP | yes | yes | flattened |
 | GIF | yes | no | flattened |
+| PDF | no | File > Export as PDF... | one page, or one page per layer |
 
 To keep your layers, save as `.psd`. Krita and GIMP open it with every layer's
 name, position, opacity, visibility and blend mode, and the resolution (dpi)
@@ -80,13 +99,19 @@ Saving writes a new file first and replaces the old one only when it is
 complete, so a crash or power loss while saving cannot damage it. Autosave
 (every minute, in the background) keeps the layers too.
 
+**File > Export as PDF...** writes each page as a picture at the image's
+resolution, so the page has the image's print size (for example 7625 x 5250
+px at 600 dpi gives a 322.8 x 222.3 mm page). Choose lossless pictures (every
+pixel exact) or JPEG, the whole image or one page per layer, and transparency
+or a white background.
+
 ## Roadmap
 
 1. Rebrand and English-only interface (done)
 2. AppImage for Kubuntu and other distributions, with a start-menu entry (done)
 3. Speed with large images, panels docked in the main window (done)
 4. File formats: layered PSD instead of the inherited `.psw` format (done)
-5. A memory-efficient undo history
+5. A memory-efficient undo history (done)
 6. Code cleanup, native Wayland
 7. Smudge tool and blur brush
 

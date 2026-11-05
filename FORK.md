@@ -24,6 +24,22 @@ upstream repository. It only reads from it.
 
 ## What differs from upstream
 
+### 2026-11-05: undo memory budget, PDF export, perspective tool
+
+- Undo keeps steps within a memory budget instead of 100 steps: every step
+  reports its images, pixels shared with the image or other steps count once
+  (`QImage::cacheKey`), the oldest steps go first. Default 1/8 of the
+  computer's memory (512 MB to 2 GB), Settings > Undo History.
+- File > Export as PDF... (`src/core/pdfexport.cpp`, own writer): page size from
+  the resolution, lossless (Flate with PNG prediction) or JPEG, soft-mask
+  transparency or white, the image or one page per layer.
+- Perspective tool (`src/tools/perspectivetool.cpp`, `src/core/perspective.cpp`):
+  up to three vanishing points per image, guide lines drawn by the canvas,
+  strokes of painting tools projected onto the guide they start along, guides
+  into a new layer. Not in Paint.NET.
+- New test suites `pdf_export` and `perspective`; the functional tests keep
+  their settings in a temporary folder.
+
 ### 2026-11-05: file formats (Photoshop .psd instead of .psw)
 
 - Upstream's own layered format `.psw` is gone (open and save). Layered work is
