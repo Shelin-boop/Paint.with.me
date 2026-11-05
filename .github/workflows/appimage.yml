@@ -48,7 +48,8 @@ jobs:
             libfontconfig1 libxkbcommon0 libxkbcommon-x11-0 libxcb-cursor0 \
             libxcb-icccm4 libxcb-image0 libxcb-keysyms1 libxcb-randr0 \
             libxcb-render-util0 libxcb-render0 libxcb-shape0 libxcb-shm0 \
-            libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libxcb-util1
+            libxcb-sync1 libxcb-xfixes0 libxcb-xinerama0 libxcb-xkb1 libxcb-util1 \
+            libwayland-client0 libwayland-cursor0 libwayland-egl1 weston
           pip install aqtinstall
           cmake --version
 
@@ -99,8 +100,15 @@ jobs:
 
       - name: Bundle Qt into the AppDir
         env:
-          EXTRA_QT_MODULES: printsupport
+          EXTRA_QT_MODULES: printsupport;waylandcompositor   # the latter: all Wayland plugin folders
         run: |
+          # Qt's Wayland display plugins too (X11 is always included), so the
+          # app can run natively on Wayland when chosen in Settings. Their names
+          # are taken from this Qt, as they may change between Qt versions.
+          WAYLAND_PLUGINS=$(cd "$QT_ROOT/plugins/platforms" && ls libqwayland*.so | paste -sd';')
+          [ -n "$WAYLAND_PLUGINS" ] || { echo "This Qt has no Wayland platform plugin"; exit 1; }
+          echo "Wayland plugins: $WAYLAND_PLUGINS"
+          export EXTRA_PLATFORM_PLUGINS="$WAYLAND_PLUGINS"
           wget -q https://github.com/linuxdeploy/linuxdeploy/releases/download/continuous/linuxdeploy-x86_64.AppImage
           wget -q https://github.com/linuxdeploy/linuxdeploy-plugin-qt/releases/download/continuous/linuxdeploy-plugin-qt-x86_64.AppImage
           chmod +x linuxdeploy*.AppImage
@@ -109,6 +117,9 @@ jobs:
             --desktop-file "AppDir/usr/share/applications/$APP_ID.desktop" \
             --icon-file "AppDir/usr/share/icons/hicolor/256x256/apps/$APP_ID.png" \
             --plugin qt
+          ls AppDir/usr/plugins/platforms/libqwayland*.so
+          # Window frames and the xdg-shell protocol, where this Qt has them as plugins.
+          ls -R AppDir/usr/plugins | grep -E '^AppDir/usr/plugins/wayland|\.so$' | grep -iE 'wayland|xdg|bradient' || true
 
       - name: Pack the AppImage (static runtime, no libfuse2 needed)
         run: |
@@ -133,6 +144,25 @@ jobs:
           grep -q "X-PaintWithMe-AppImage=true" "$XDG_DATA_HOME/applications/$APP_ID.desktop"
           desktop-file-validate "$XDG_DATA_HOME/applications/$APP_ID.desktop"
           test -f "$XDG_DATA_HOME/icons/hicolor/256x256/apps/$APP_ID.png"
+
+      - name: Smoke test natively on Wayland
+        run: |
+          # A headless Weston compositor; QT_QPA_PLATFORM=wayland means no
+          # fallback to X11, so a missing or broken Wayland plugin fails here.
+          export HOME="$RUNNER_TEMP/smoke-home" XDG_RUNTIME_DIR="$RUNNER_TEMP/xdg"
+          mkdir -p -m 700 "$XDG_RUNTIME_DIR"
+          weston --backend=headless-backend.so --socket=wl-smoke --idle-time=0 > weston.log 2>&1 &
+          WESTON=$!
+          for i in $(seq 50); do [ -S "$XDG_RUNTIME_DIR/wl-smoke" ] && break; sleep 0.2; done
+          WAYLAND_DISPLAY=wl-smoke QT_QPA_PLATFORM=wayland \
+            timeout 15 ./"$FILE" --appimage-extract-and-run 2> wayland.log || code=$?
+          kill "$WESTON" || true
+          cat wayland.log
+          [ "${code:-0}" = 124 ] || { echo "AppImage exited early on Wayland with code ${code:-0}"; exit 1; }
+          # Without a shell integration Qt keeps running but shows no windows.
+          if grep -E 'Loading shell integration failed|No shell integration|Could not load the Qt platform plugin' wayland.log; then
+            echo "The Wayland plugins are incomplete"; exit 1
+          fi
 
       - name: Summary
         run: |
