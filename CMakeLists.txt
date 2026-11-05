@@ -28,6 +28,7 @@ set(CORE_SOURCES
     src/core/document.cpp
     src/core/pdnformat.cpp
     src/core/psdformat.cpp
+    src/core/pdfexport.cpp
     src/core/layer.cpp
     src/core/selection.cpp
     src/core/history.cpp
@@ -137,6 +138,7 @@ set(DIALOGS_SOURCES
     src/dialogs/settingsdialog.cpp
     src/dialogs/previewdialog.cpp
     src/dialogs/saveconfigdialog.cpp
+    src/dialogs/pdfexportdialog.cpp
 )
 
 set(PLUGINS_SOURCES
@@ -197,6 +199,7 @@ pwm_test(pwm_paste_tests tests/test_paste.cpp)
 pwm_test(pwm_preview_tests tests/test_adjustmentpreview.cpp)
 pwm_test(pwm_panel_tests tests/test_toolspanel.cpp)
 pwm_test(pwm_psd_tests tests/test_psd.cpp)
+pwm_test(pwm_pdf_tests tests/test_pdf.cpp)
 target_compile_definitions(pwm_psd_tests PRIVATE PWM_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 
 enable_testing()
@@ -206,7 +209,8 @@ add_test(NAME paste_regression COMMAND pwm_paste_tests)
 add_test(NAME adjustment_preview COMMAND pwm_preview_tests)
 add_test(NAME tools_panel COMMAND pwm_panel_tests)
 add_test(NAME psd_format COMMAND pwm_psd_tests)
-set_tests_properties(functional brush_regression paste_regression adjustment_preview tools_panel psd_format
+add_test(NAME pdf_export COMMAND pwm_pdf_tests)
+set_tests_properties(functional brush_regression paste_regression adjustment_preview tools_panel psd_format pdf_export
                      PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # Speed benchmark with a large document (5000 x 5000 px, 16 layers). Not part of

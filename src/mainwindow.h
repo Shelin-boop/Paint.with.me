@@ -18,6 +18,7 @@
 #include <memory>
 #include <vector>
 #include "tools/tool.h"
+#include "core/pdfexport.h"
 
 class QMenu;
 class Document;
@@ -62,6 +63,7 @@ private slots:
     void openRecentFile();
     bool saveDocument();
     bool saveDocumentAs();
+    void exportPdf();
     void printDocument();
     void closeCurrentDocument();
     void showSettingsDialog();
@@ -201,6 +203,10 @@ private:
     // Saves the active document to `filePath`, warning first about what a
     // .psd cannot keep; shows errors. quality: see Document::save.
     bool writeDocument(const QString &filePath, int quality);
+public:
+    // Exports the active image as PDF without asking (used by exportPdf()).
+    bool exportPdfTo(const QString &filePath, PdfExport::Options options);
+private:
     void checkForRecovery();
     QString autosaveDir() const;
 
