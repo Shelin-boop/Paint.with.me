@@ -11,12 +11,12 @@
 
 // On a Wayland desktop, run through XWayland unless told otherwise.
 //
-// The Tools, Colors, History and Layers panels are separate floating windows
-// that the app places next to the main window. Wayland does not let an
-// application position its own windows, so natively the compositor would
-// place them, and "keep panels attached" and "reset position" would not work.
-// XWayland keeps the intended behavior. This goes away once the panels live
-// inside the main window.
+// The panels are docked inside the main window by default, but they can be
+// torn off as floating windows, which the app places next to the main window.
+// Wayland does not let an application position its own windows, so natively
+// the compositor would place them and "keep panels attached" would not work.
+// XWayland keeps the intended behavior. Native Wayland follows once the
+// AppImage ships Qt's Wayland plugin and it has been tested on KDE Plasma.
 //
 // QT_QPA_PLATFORM, when set, always wins (QT_QPA_PLATFORM=wayland forces
 // native Wayland). Without XWayland (no DISPLAY) Qt's default is kept.

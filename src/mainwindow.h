@@ -170,6 +170,10 @@ private:
     void updateRecentFilesMenu();
     void createMenuBarCornerIcons();
     void resetUtilityWindow(QDockWidget *dock);
+    // Docks all four panels in their default places (View > Reset Panel Layout).
+    void applyDefaultPanelLayout();
+    // Narrowest Tools column that still shows its title in full.
+    int toolsColumnWidth() const;
     void positionUtilityWindow(QDockWidget *dock, bool resetSize = false);
     void scheduleUtilityWindowFollow();
     void populateFixedToolbar();

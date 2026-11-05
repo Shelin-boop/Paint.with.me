@@ -70,6 +70,60 @@ static void paths() {
     CHECK(doc->activeLayer()->image().size() == doc->size());
 }
 
+
+// Panels are part of the main window: docked at the sides, not overlapping each
+// other or the canvas, and "Reset" puts a torn-off panel back.
+static void dockedPanels() {
+    QSettings settings(AppInfo::kId, AppInfo::kId);
+    settings.remove("ui/mainWindowStateV8");
+    MainWindow window;
+    window.resize(1400, 900);
+    window.show();
+    QApplication::processEvents();
+    auto *canvas = window.findChild<CanvasWidget *>();
+    const QStringList names = {"ToolsDock", "HistoryDock", "LayersDock", "ColorsDock"};
+    QList<QDockWidget *> docks;
+    for (const QString &name : names) docks.append(window.findChild<QDockWidget *>(name));
+    for (QDockWidget *d : docks) {
+        CHECK(d && !d->isFloating() && d->isVisible());
+        if (!d) return;
+    }
+    CHECK(window.dockWidgetArea(docks[0]) == Qt::LeftDockWidgetArea);
+    for (int i = 1; i < 4; ++i) CHECK(window.dockWidgetArea(docks[i]) == Qt::RightDockWidgetArea);
+    for (int i = 0; i < 4; ++i) {
+        const QRect gi(docks[i]->mapTo(&window, QPoint()), docks[i]->size());
+        CHECK(!gi.intersects(QRect(canvas->mapTo(&window, QPoint()), canvas->size())));
+        for (int j = i + 1; j < 4; ++j)
+            CHECK(!gi.intersects(QRect(docks[j]->mapTo(&window, QPoint()), docks[j]->size())));
+    }
+    // History above Layers above Colors.
+    CHECK(docks[1]->mapTo(&window, QPoint()).y() < docks[2]->mapTo(&window, QPoint()).y());
+    CHECK(docks[2]->mapTo(&window, QPoint()).y() < docks[3]->mapTo(&window, QPoint()).y());
+    // The Tools title is not shortened to "...".
+    CHECK(docks[0]->width() >= docks[0]->fontMetrics().horizontalAdvance("Tools") + 30);
+    // Torn off, then View > Reset Panel Layout: back in place.
+    docks[2]->setFloating(true);
+    docks[0]->hide();
+    QApplication::processEvents();
+    QAction *reset = nullptr;
+    for (QAction *a : window.findChildren<QAction *>())
+        if (a->text() == QStringLiteral("Reset &Panel Layout")) reset = a;
+    CHECK(reset != nullptr);
+    if (reset) reset->trigger();
+    QApplication::processEvents();
+    CHECK(!docks[2]->isFloating() && window.dockWidgetArea(docks[2]) == Qt::RightDockWidgetArea);
+    CHECK(docks[0]->isVisible() && window.dockWidgetArea(docks[0]) == Qt::LeftDockWidgetArea);
+    // Ctrl+Shift+F7 (reset Layers) docks a floating Layers panel again.
+    docks[2]->setFloating(true);
+    QApplication::processEvents();
+    for (QAction *a : window.findChildren<QAction *>())
+        if (a->text() == QStringLiteral("Reset Layers")) a->trigger();
+    QApplication::processEvents();
+    CHECK(!docks[2]->isFloating() && window.dockWidgetArea(docks[2]) == Qt::RightDockWidgetArea);
+    CHECK(docks[1]->mapTo(&window, QPoint()).y() < docks[2]->mapTo(&window, QPoint()).y());
+    settings.remove("ui/mainWindowStateV8");
+}
+
 static void utilityPanelPreferences() {
     QSettings settings(AppInfo::kId, AppInfo::kId);
     settings.remove("ui/followUtilityPanels");
@@ -111,6 +165,13 @@ static void utilityPanelPreferences() {
         return;
     }
     window.show();
+    QApplication::processEvents();
+    // Panels are docked inside the main window by default ...
+    for (QDockWidget *dock : window.findChildren<QDockWidget *>())
+        CHECK(!dock->isFloating() && dock->window() == &window);
+    // ... these preferences are about panels the user made floating.
+    tools->setFloating(true);
+    tools->resize(tools->width(), 312);   // the usual floating size
     tools->show();
     colors->hide();
     QApplication::processEvents();
@@ -780,6 +841,7 @@ int main(int argc, char **argv) {
     clipboardVariants();
     typingTextPaste();
     pendingToolPaste();
+    dockedPanels();
     std::cout << checks << " paste checks, " << failures << " failures\n";
     return failures ? 1 : 0;
 }
