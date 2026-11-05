@@ -3,8 +3,8 @@ name: Package (.deb)
 # Builds a Debian package. On a version tag (v*) it publishes the .deb on the
 # GitHub Release; on a manual run it uploads the .deb as a downloadable artifact.
 on:
-  push:
-    tags: ['v*']
+  # Paint.with.me: publishing is manual-only until the fork is rebranded
+  # (see FORK.md). Re-enable the push trigger after the rebrand.
   workflow_dispatch:
 
 permissions:

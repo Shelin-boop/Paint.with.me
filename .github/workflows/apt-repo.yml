@@ -3,9 +3,8 @@ name: APT repository (GitHub Pages)
 # Builds the .deb and publishes a proper APT repository to GitHub Pages, so users
 # can `apt install paint.software` and get updates via `apt upgrade`.
 on:
-  push:
-    branches: [ main ]     # every change to main auto-publishes a new version
-    tags: ['v*']
+  # Paint.with.me: publishing is manual-only until the fork is rebranded
+  # (see FORK.md). Re-enable the push trigger after the rebrand.
   workflow_dispatch:
 
 permissions:
