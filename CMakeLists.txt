@@ -59,6 +59,7 @@ set(TOOLS_SOURCES
     src/tools/gradienttool.cpp
     src/tools/clonestamptool.cpp
     src/tools/magicwandtool.cpp
+    src/tools/brushpreset.cpp
 )
 
 set(PANELS_SOURCES
@@ -67,6 +68,7 @@ set(PANELS_SOURCES
     src/panels/historypanel.cpp
     src/panels/tooloptionspanel.cpp
     src/panels/imagelistbar.cpp
+    src/panels/toolspanel.cpp
 )
 
 set(EFFECTS_SOURCES
@@ -192,13 +194,15 @@ target_compile_definitions(pwm_tests PRIVATE PWM_TEST_DATA_DIR="${CMAKE_CURRENT_
 pwm_test(pwm_brush_tests tests/test_brush.cpp tests/referencebrush.cpp)
 pwm_test(pwm_paste_tests tests/test_paste.cpp)
 pwm_test(pwm_preview_tests tests/test_adjustmentpreview.cpp)
+pwm_test(pwm_panel_tests tests/test_toolspanel.cpp)
 
 enable_testing()
 add_test(NAME functional COMMAND pwm_tests)
 add_test(NAME brush_regression COMMAND pwm_brush_tests)
 add_test(NAME paste_regression COMMAND pwm_paste_tests)
 add_test(NAME adjustment_preview COMMAND pwm_preview_tests)
-set_tests_properties(functional brush_regression paste_regression adjustment_preview
+add_test(NAME tools_panel COMMAND pwm_panel_tests)
+set_tests_properties(functional brush_regression paste_regression adjustment_preview tools_panel
                      PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # Speed benchmark with a large document (5000 x 5000 px, 16 layers). Not part of

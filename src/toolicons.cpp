@@ -4,6 +4,8 @@
 #include <QPainterPath>
 #include <QLinearGradient>
 #include <QFont>
+#include <QFontMetricsF>
+#include <QStringList>
 #include <cmath>
 
 namespace {
@@ -919,6 +921,125 @@ QIcon help() {
     p.drawText(QRect(1, 1, 14, 14), Qt::AlignCenter, "?");
     p.end();
     return themed(pm);
+}
+
+} // namespace ToolIcons
+
+// ==================== TOOLS PANEL SHORTCUTS (20x20, drawn at 2x) ====================
+
+namespace {
+
+QPixmap mkpm2x(int size) {
+    QPixmap pm(size * 2, size * 2);
+    pm.setDevicePixelRatio(2.0);
+    pm.fill(Qt::transparent);
+    return pm;
+}
+
+// Colour per top-level menu, so pinned commands from the same menu read as a
+// family.
+QColor categoryColor(const QString &category) {
+    if (category == QLatin1String("Adjustments")) return QColor(32, 150, 132);
+    if (category == QLatin1String("Effects"))     return QColor(128, 84, 196);
+    if (category == QLatin1String("Image"))       return QColor(214, 122, 32);
+    if (category == QLatin1String("Layers"))      return QColor(58, 112, 186);
+    if (category == QLatin1String("Edit"))        return QColor(176, 72, 84);
+    return QColor(104, 110, 122);
+}
+
+} // namespace
+
+namespace ToolIcons {
+
+QString commandInitials(const QString &label) {
+    QString text = label;
+    text.remove(QLatin1String("..."));
+    text.remove(QChar(0x2026));   // "…"
+    QStringList words;
+    QString word;
+    for (const QChar c : text) {
+        if (c.isLetterOrNumber()) {
+            word += c;
+        } else if (!word.isEmpty()) {
+            words << word;
+            word.clear();
+        }
+    }
+    if (!word.isEmpty()) words << word;
+    if (words.isEmpty()) return QStringLiteral("?");
+    if (words.size() == 1) {
+        const QString w = words.first();
+        return w.left(1).toUpper() + w.mid(1, 1).toLower();
+    }
+    // First and last word: "Move Layer Up" -> MU, "Move Layer Down" -> MD.
+    return words.first().left(1).toUpper() + words.last().left(1).toUpper();
+}
+
+QIcon command(const QString &label, const QString &category) {
+    QPixmap pm = mkpm2x(TS);
+    QPainter p(&pm);
+    aa(p);
+    const QColor base = categoryColor(category);
+    QLinearGradient g(0, 2, 0, 18);
+    g.setColorAt(0, base.lighter(118));
+    g.setColorAt(1, base.darker(112));
+    p.setPen(QPen(base.darker(135), 1));
+    p.setBrush(g);
+    p.drawRoundedRect(QRectF(1.5, 1.5, 17, 17), 4, 4);
+    QFont f(QStringLiteral("Sans"));
+    f.setPixelSize(9);
+    f.setBold(true);
+    p.setFont(f);
+    p.setPen(Qt::white);
+    p.drawText(QRectF(1.5, 1.5, 17, 17), Qt::AlignCenter, commandInitials(label));
+    p.end();
+    return QIcon(pm);
+}
+
+QIcon brushPreset(ToolType type, double size) {
+    QPixmap pm = mkpm2x(TS);
+    QPainter p(&pm);
+    aa(p);
+    p.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    // The tool's own icon, a little smaller, top-left ...
+    const QPixmap toolPm = forTool(type).pixmap(QSize(40, 40), 2.0);
+    p.drawPixmap(QRectF(0, 0, 15, 15), toolPm, QRectF(QPointF(0, 0), toolPm.size()));
+    // ... and its width as a badge, bottom-right.
+    QString badge;
+    if (type == ToolType::Pencil) badge = QStringLiteral("1");
+    else if (size >= 1000) badge = QString::number(size / 1000.0, 'f', 1) + 'k';   // 1.4k
+    else badge = QString::number(qRound(size));
+    badge.replace(QLatin1String(".0k"), QLatin1String("k"));
+    QFont f(QStringLiteral("Sans"));
+    f.setPixelSize(7);
+    f.setBold(true);
+    p.setFont(f);
+    const qreal w = qMin<qreal>(20, QFontMetricsF(f).horizontalAdvance(badge) + 3);
+    const QRectF r(20 - w, 12, w, 8);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(40, 44, 52, 225));
+    p.drawRoundedRect(r, 2, 2);
+    p.setPen(Qt::white);
+    p.drawText(r, Qt::AlignCenter, badge);
+    p.end();
+    return QIcon(pm);
+}
+
+QIcon addSlot() {
+    QPixmap pm = mkpm2x(TS);
+    QPainter p(&pm);
+    aa(p);
+    const QColor c = Theme::isDark() ? QColor(170, 176, 186) : QColor(105, 112, 124);
+    QPen dash(c, 1, Qt::DashLine);
+    dash.setDashPattern({2.0, 2.0});
+    p.setPen(dash);
+    p.setBrush(Qt::NoBrush);
+    p.drawRoundedRect(QRectF(2.5, 2.5, 15, 15), 3, 3);
+    p.setPen(QPen(c, 1.8, Qt::SolidLine, Qt::RoundCap));
+    p.drawLine(QPointF(10, 6), QPointF(10, 14));
+    p.drawLine(QPointF(6, 10), QPointF(14, 10));
+    p.end();
+    return QIcon(pm);
 }
 
 } // namespace ToolIcons

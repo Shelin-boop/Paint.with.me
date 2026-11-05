@@ -88,17 +88,19 @@ static void dockedPanels() {
         CHECK(d && !d->isFloating() && d->isVisible());
         if (!d) return;
     }
+    // Tools above Colors on the left, History above Layers on the right.
     CHECK(window.dockWidgetArea(docks[0]) == Qt::LeftDockWidgetArea);
-    for (int i = 1; i < 4; ++i) CHECK(window.dockWidgetArea(docks[i]) == Qt::RightDockWidgetArea);
+    CHECK(window.dockWidgetArea(docks[3]) == Qt::LeftDockWidgetArea);
+    CHECK(window.dockWidgetArea(docks[1]) == Qt::RightDockWidgetArea);
+    CHECK(window.dockWidgetArea(docks[2]) == Qt::RightDockWidgetArea);
     for (int i = 0; i < 4; ++i) {
         const QRect gi(docks[i]->mapTo(&window, QPoint()), docks[i]->size());
         CHECK(!gi.intersects(QRect(canvas->mapTo(&window, QPoint()), canvas->size())));
         for (int j = i + 1; j < 4; ++j)
             CHECK(!gi.intersects(QRect(docks[j]->mapTo(&window, QPoint()), docks[j]->size())));
     }
-    // History above Layers above Colors.
+    CHECK(docks[0]->mapTo(&window, QPoint()).y() < docks[3]->mapTo(&window, QPoint()).y());
     CHECK(docks[1]->mapTo(&window, QPoint()).y() < docks[2]->mapTo(&window, QPoint()).y());
-    CHECK(docks[2]->mapTo(&window, QPoint()).y() < docks[3]->mapTo(&window, QPoint()).y());
     // The Tools title is not shortened to "...".
     CHECK(docks[0]->width() >= docks[0]->fontMetrics().horizontalAdvance("Tools") + 30);
     // Torn off, then View > Reset Panel Layout: back in place.
@@ -113,6 +115,7 @@ static void dockedPanels() {
     QApplication::processEvents();
     CHECK(!docks[2]->isFloating() && window.dockWidgetArea(docks[2]) == Qt::RightDockWidgetArea);
     CHECK(docks[0]->isVisible() && window.dockWidgetArea(docks[0]) == Qt::LeftDockWidgetArea);
+    CHECK(window.dockWidgetArea(docks[3]) == Qt::LeftDockWidgetArea);
     // Ctrl+Shift+F7 (reset Layers) docks a floating Layers panel again.
     docks[2]->setFloating(true);
     QApplication::processEvents();
