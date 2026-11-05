@@ -1,4 +1,5 @@
 #include "tooloptionspanel.h"
+#include "tools/toolregistry.h"
 #include "core/perspective.h"
 #include <QSpinBox>
 #include <QSignalBlocker>
@@ -21,33 +22,6 @@
 #include <QHBoxLayout>
 #include <QMouseEvent>
 
-namespace {
-// The tool list shown in the dropdown, in paint.net's documented group order.
-struct ToolEntry { const char *name; ToolType type; };
-const ToolEntry kToolEntries[] = {
-    {"Rectangle Select",              ToolType::RectSelection},
-    {"Lasso Select",               ToolType::LassoSelection},
-    {"Ellipse Select",                ToolType::EllipseSelection},
-    {"Magic Wand",                 ToolType::MagicWand},
-    {"Move Selected Pixels", ToolType::Move},
-    {"Move Selection",            ToolType::MoveSelection},
-    {"Zoom",                             ToolType::Zoom},
-    {"Pan",                      ToolType::Pan},
-    {"Paint Bucket",                  ToolType::Fill},
-    {"Gradient",                          ToolType::Gradient},
-    {"Paintbrush",                          ToolType::Brush},
-    {"Eraser",                            ToolType::Eraser},
-    {"Pencil",                           ToolType::Pencil},
-    {"Color Picker",             ToolType::ColorPicker},
-    {"Clone Stamp",                ToolType::CloneStamp},
-    {"Recolor",                      ToolType::Recolor},
-    {"Text",                            ToolType::Text},
-    {"Line / Curve",                   ToolType::Line},
-    {"Shapes",                           ToolType::Shape},
-    {"Perspective",                      ToolType::Perspective},
-};
-}
-
 ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
     setFixedHeight(26);
     auto *layout = new QHBoxLayout(this);
@@ -59,12 +33,12 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
     m_toolCombo->setFixedHeight(20);
     m_toolCombo->setMinimumWidth(170);
     m_toolCombo->setIconSize(QSize(16, 16));
-    for (const auto &e : kToolEntries)
-        m_toolCombo->addItem(ToolIcons::forTool(e.type), (QString::fromUtf8(e.name)));
+    for (const ToolInfo &info : toolInfos())
+        m_toolCombo->addItem(ToolIcons::forTool(info.type), QString::fromLatin1(info.name));
     layout->addWidget(m_toolCombo);
     connect(m_toolCombo, QOverload<int>::of(&QComboBox::activated), this, [this](int i) {
-        if (i >= 0 && i < int(sizeof(kToolEntries) / sizeof(kToolEntries[0])))
-            emit toolChangeRequested(kToolEntries[i].type);
+        if (i >= 0 && i < int(toolInfos().size()))
+            emit toolChangeRequested(toolInfos()[size_t(i)].type);
     });
 
     layout->addWidget(createSep());
@@ -489,8 +463,8 @@ void ToolOptionsPanel::updateFromTool() {
     if (!m_tool) return;
 
     // Reflect the active tool in the dropdown.
-    for (int i = 0; i < int(sizeof(kToolEntries) / sizeof(kToolEntries[0])); ++i) {
-        if (kToolEntries[i].type == m_tool->type()) {
+    for (int i = 0; i < int(toolInfos().size()); ++i) {
+        if (toolInfos()[size_t(i)].type == m_tool->type()) {
             m_toolCombo->blockSignals(true);
             m_toolCombo->setCurrentIndex(i);
             m_toolCombo->blockSignals(false);

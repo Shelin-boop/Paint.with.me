@@ -15,7 +15,7 @@
 #include "core/psdformat.h"
 #include "core/pdfexport.h"
 #include "core/perspective.h"
-#include "tools/perspectivetool.h"
+#include "tools/toolregistry.h"
 #include "dialogs/pdfexportdialog.h"
 #include "core/history.h"
 #include "tools/brushpreset.h"
@@ -146,7 +146,6 @@
 #include "desktopintegration.h"
 
 // One-line tool description used in tooltips (defined further down).
-QString toolDescription(ToolType t);
 
 // The version comes from the build system, so the title bar always names the
 // build actually running — it used to be hard-coded and drifted to 1.1 while the
@@ -400,26 +399,7 @@ void MainWindow::normalizeDockLayout(QDockWidget *changedDock) {
 }
 
 void MainWindow::createTools() {
-    m_tools.push_back(std::make_unique<SelectionTool>(SelectionShape::Rectangle));
-    m_tools.push_back(std::make_unique<LassoTool>());
-    m_tools.push_back(std::make_unique<SelectionTool>(SelectionShape::Ellipse));
-    m_tools.push_back(std::make_unique<MagicWandTool>());
-    m_tools.push_back(std::make_unique<MoveTool>());
-    m_tools.push_back(std::make_unique<MoveSelectionTool>());
-    m_tools.push_back(std::make_unique<ZoomTool>());
-    m_tools.push_back(std::make_unique<PanTool>());
-    m_tools.push_back(std::make_unique<BrushTool>());
-    m_tools.push_back(std::make_unique<EraserTool>());
-    m_tools.push_back(std::make_unique<PencilTool>());
-    m_tools.push_back(std::make_unique<FillTool>());
-    m_tools.push_back(std::make_unique<ColorPickerTool>());
-    m_tools.push_back(std::make_unique<RecolorTool>());
-    m_tools.push_back(std::make_unique<CloneStampTool>());
-    m_tools.push_back(std::make_unique<TextTool>());
-    m_tools.push_back(std::make_unique<LineTool>());
-    m_tools.push_back(std::make_unique<ShapeTool>());
-    m_tools.push_back(std::make_unique<GradientTool>());
-    m_tools.push_back(std::make_unique<PerspectiveTool>());
+    for (const ToolInfo &info : toolInfos()) m_tools.push_back(createTool(info.type));
 }
 
 void MainWindow::createMenus() {
@@ -1165,46 +1145,26 @@ void MainWindow::createKeyboardShortcuts() {
         deselectAll();
     });
 
-    addShortcutAction("Selection tools", {QKeySequence("S")}, [this]() {
-        cycleToolGroup({ToolType::RectSelection, ToolType::LassoSelection, ToolType::EllipseSelection, ToolType::MagicWand});
-    });
-    addShortcutAction("Selection tools reverse", {QKeySequence("Shift+S")}, [this]() {
-        cycleToolGroup({ToolType::RectSelection, ToolType::LassoSelection, ToolType::EllipseSelection, ToolType::MagicWand}, true);
-    });
-    addShortcutAction("Move tools", {QKeySequence("M")}, [this]() {
-        cycleToolGroup({ToolType::Move, ToolType::MoveSelection});
-    });
-    addShortcutAction("Move tools reverse", {QKeySequence("Shift+M")}, [this]() {
-        cycleToolGroup({ToolType::Move, ToolType::MoveSelection}, true);
-    });
-    addShortcutAction("Shape tools", {QKeySequence("O")}, [this]() {
-        cycleToolGroup({ToolType::Line, ToolType::Shape});
-    });
-    addShortcutAction("Shape tools reverse", {QKeySequence("Shift+O")}, [this]() {
-        cycleToolGroup({ToolType::Line, ToolType::Shape}, true);
-    });
-
-    auto addToolShortcut = [this](const QString &text, const QString &shortcut, ToolType type) {
-        addShortcutAction(text, {QKeySequence(shortcut)}, [this, type]() {
-            if (!allowSingleKeyShortcuts()) return;
-            selectTool(type);
-        });
-    };
-
-    addToolShortcut("Brush tool", "B", ToolType::Brush);
-    addToolShortcut("Pencil tool", "P", ToolType::Pencil);
-    addToolShortcut("Eraser tool", "E", ToolType::Eraser);
-    addToolShortcut("Fill tool", "F", ToolType::Fill);
-    addToolShortcut("Gradient tool", "G", ToolType::Gradient);
-    addToolShortcut("Pan tool", "H", ToolType::Pan);
-    addToolShortcut("Color picker tool", "K", ToolType::ColorPicker);
-    addToolShortcut("Clone stamp tool", "L", ToolType::CloneStamp);
-    addToolShortcut("Recolor tool", "R", ToolType::Recolor);
-    addToolShortcut("Text tool", "T", ToolType::Text);
-    addToolShortcut("Zoom tool", "Z", ToolType::Zoom);
-    addToolShortcut("Perspective tool", "V", ToolType::Perspective);
-    // NB: no W / U bindings — in paint.net the Magic Wand is reached by cycling S
-    // and Shapes by cycling O (handled by the cycleToolGroup shortcuts above).
+    // Tool keys from the registry. Tools sharing a key (S: selection tools,
+    // M: move tools, O: line and shapes) cycle in Paint.NET's order, and
+    // Shift with that key cycles backwards.
+    QMap<QString, std::vector<ToolType>> groups;
+    QStringList keyOrder;
+    for (const ToolInfo &info : toolInfos()) {
+        const QString key = QString::fromLatin1(info.shortcut);
+        if (key.isEmpty()) continue;
+        if (!groups.contains(key)) keyOrder << key;
+        groups[key].push_back(info.type);
+    }
+    for (const QString &key : keyOrder) {
+        const std::vector<ToolType> group = groups.value(key);
+        const QString label = group.size() > 1 ? QStringLiteral("Tools ") + key
+                                               : QString::fromLatin1(toolInfo(group.front()).name);
+        addShortcutAction(label, {QKeySequence(key)}, [this, group]() { cycleToolGroup(group); });
+        if (group.size() > 1)
+            addShortcutAction(label + QStringLiteral(" reverse"), {QKeySequence(QStringLiteral("Shift+") + key)},
+                              [this, group]() { cycleToolGroup(group, true); });
+    }
 
     addShortcutAction("Swap colors", {QKeySequence("X")}, [this]() {
         if (!allowSingleKeyShortcuts() || !m_colorsPanel) return;
@@ -1305,74 +1265,14 @@ static constexpr int kRightPanelWidth = 262;
 static constexpr int kToolsHeight = 340, kColorsHeight = 530;
 static constexpr int kHistoryHeight = 310, kLayersHeight = 550;
 
-// One-line explanation of what each tool does, shown in its tooltip.
-QString toolDescription(ToolType t) {
-    switch (t) {
-    case ToolType::RectSelection:   return "Selects a rectangular area to edit.";
-    case ToolType::EllipseSelection:return "Selects an oval area to edit.";
-    case ToolType::LassoSelection:  return "Selects a freehand area by drawing around it.";
-    case ToolType::MagicWand:       return "Automatically selects a range of similar colors.";
-    case ToolType::Move:            return "Moves the selected pixels (or the whole layer).";
-    case ToolType::MoveSelection:   return "Moves the selection outline without moving the pixels.";
-    case ToolType::Zoom:            return "Zooms in (left click) or out (right click).";
-    case ToolType::Pan:             return "Pans the view around the image by dragging (hand).";
-    case ToolType::Fill:            return "Fills a uniformly-colored area with the active color.";
-    case ToolType::Gradient:        return "Draws a gradient between the primary and secondary color.";
-    case ToolType::Brush:           return "Paints soft strokes with the active color.";
-    case ToolType::Eraser:          return "Erases to transparency (or the secondary color).";
-    case ToolType::Pencil:          return "Draws crisp 1-px pixels with no antialiasing.";
-    case ToolType::ColorPicker:     return "Picks a color from the image as the active color.";
-    case ToolType::CloneStamp:      return "Clones part of the image (Ctrl+click sets the source).";
-    case ToolType::Recolor:         return "Replaces a color with the active color where you paint.";
-    case ToolType::Text:            return "Adds text on the image.";
-    case ToolType::Line:            return "Draws lines and curves.";
-    case ToolType::Shape:           return "Draws shapes (rectangle, ellipse, star...).";
-    case ToolType::Perspective:     return "Places vanishing points: guide lines for drawing in perspective, which strokes can follow.";
-    default:                        return QString();
-    }
-}
-
 void MainWindow::createToolsPanel() {
     m_toolActionGroup = new QActionGroup(this);
     m_toolActionGroup->setExclusive(true);
 
-    // paint.net's Tools window, 2 columns x 10 rows — positions taken from the
-    // official Tools window (paint.net/doc/latest/images/tools/toolswindow.png):
-    // the four SELECTION tools run down the LEFT column (rows 0-3) while
-    // Move / Move Selection / Zoom / Pan run down the RIGHT column (rows 0-3);
-    // the remaining groups sit in pairs on rows 4-9.
-    // The list order below is paint.net's documented tool order (1..19) — it is what
-    // the single-row horizontal palette follows.
-    QVector<ToolsPanel::ToolEntry> tools = {
-        // Selection tools -> left column
-        {"Rectangle Select",     "S", ToolType::RectSelection,    0, 0, {}},
-        {"Lasso Select",         "S", ToolType::LassoSelection,   1, 0, {}},
-        {"Ellipse Select",       "S", ToolType::EllipseSelection, 2, 0, {}},
-        {"Magic Wand",           "S", ToolType::MagicWand,        3, 0, {}},
-        // Move + view tools -> right column
-        {"Move Selected Pixels", "M", ToolType::Move,             0, 1, {}},
-        {"Move Selection",       "M", ToolType::MoveSelection,    1, 1, {}},
-        {"Zoom",                 "Z", ToolType::Zoom,             2, 1, {}},
-        {"Pan",                  "H", ToolType::Pan,              3, 1, {}},
-        // Fill tools
-        {"Paint Bucket",         "F", ToolType::Fill,             4, 0, {}},
-        {"Gradient",             "G", ToolType::Gradient,         4, 1, {}},
-        // Drawing tools
-        {"Paintbrush",           "B", ToolType::Brush,            5, 0, {}},
-        {"Eraser",               "E", ToolType::Eraser,           5, 1, {}},
-        {"Pencil",               "P", ToolType::Pencil,           6, 0, {}},
-        // Photo tools
-        {"Color Picker",         "K", ToolType::ColorPicker,      6, 1, {}},
-        {"Clone Stamp",          "L", ToolType::CloneStamp,       7, 0, {}},
-        {"Recolor",              "R", ToolType::Recolor,          7, 1, {}},
-        // Text and shape tools
-        {"Text",                 "T", ToolType::Text,             8, 0, {}},
-        {"Line / Curve",         "O", ToolType::Line,             8, 1, {}},
-        {"Shapes",               "O", ToolType::Shape,            9, 0, {}},
-        // Not in Paint.NET: the free slot next to Shapes.
-        {"Perspective",          "V", ToolType::Perspective,      9, 1, {}},
-    };
-    for (auto &t : tools) t.description = toolDescription(t.type);
+    QVector<ToolsPanel::ToolEntry> tools;
+    for (const ToolInfo &info : toolInfos())
+        tools.push_back({QString::fromLatin1(info.name), QString::fromLatin1(info.shortcut), info.type,
+                         info.row, info.col, QString::fromLatin1(info.description)});
 
     m_toolsPanel = new ToolsPanel(tools);
     for (const auto &t : tools) {
@@ -2782,72 +2682,7 @@ void MainWindow::selectTool(ToolType type) {
                 action->setChecked(true);
             if (m_toolsPanel) m_toolsPanel->setCurrentTool(type);
 
-            // Update help text based on tool type
-            if (m_helpTextLabel) {
-                switch (type) {
-                case ToolType::Brush:
-                    m_helpTextLabel->setText(QStringLiteral("Left click to draw with the primary color, right click for the secondary color."));
-                    break;
-                case ToolType::Eraser:
-                    m_helpTextLabel->setText(QStringLiteral("Left click to erase to transparent. Right click to the secondary color."));
-                    break;
-                case ToolType::Fill:
-                    m_helpTextLabel->setText(QStringLiteral("Left click to fill an area with the primary color."));
-                    break;
-                case ToolType::ColorPicker:
-                    m_helpTextLabel->setText(QStringLiteral("Left click to set the primary color. Right click for the secondary."));
-                    break;
-                case ToolType::RectSelection:
-                case ToolType::EllipseSelection:
-                    m_helpTextLabel->setText(QStringLiteral("Click and drag to draw a selection. Hold Shift to constrain."));
-                    break;
-                case ToolType::MagicWand:
-                    m_helpTextLabel->setText(QStringLiteral("Click to select an area of similar color."));
-                    break;
-                case ToolType::Move:
-                    m_helpTextLabel->setText(QStringLiteral("Click and drag to move the selected pixels or the layer."));
-                    break;
-                case ToolType::MoveSelection:
-                    m_helpTextLabel->setText(QStringLiteral("Click and drag to move the selection outline without moving pixels."));
-                    break;
-                case ToolType::Zoom:
-                    m_helpTextLabel->setText(QStringLiteral("Left click to zoom in. Right click to zoom out."));
-                    break;
-                case ToolType::Pan:
-                    m_helpTextLabel->setText(QStringLiteral("Click and drag to pan around the image."));
-                    break;
-                case ToolType::LassoSelection:
-                    m_helpTextLabel->setText(QStringLiteral("Click and drag to draw a freehand selection."));
-                    break;
-                case ToolType::Text:
-                    m_helpTextLabel->setText(QStringLiteral("Click to place text on the canvas."));
-                    break;
-                case ToolType::Line:
-                    m_helpTextLabel->setText(QStringLiteral("Click and drag to draw a line. Hold Shift to constrain the angle."));
-                    break;
-                case ToolType::Shape:
-                    m_helpTextLabel->setText(QStringLiteral("Click and drag to draw a shape. Hold Shift to constrain proportions."));
-                    break;
-                case ToolType::Gradient:
-                    m_helpTextLabel->setText(QStringLiteral("Click and drag to draw a color gradient."));
-                    break;
-                case ToolType::CloneStamp:
-                    m_helpTextLabel->setText(QStringLiteral("Ctrl + click to set the source. Left click to paint from the source."));
-                    break;
-                case ToolType::Pencil:
-                    m_helpTextLabel->setText(QStringLiteral("Left click to draw 1px with the primary color. Right click for the secondary."));
-                    break;
-                case ToolType::Recolor:
-                    m_helpTextLabel->setText(QStringLiteral("Left click to replace the secondary color with the primary."));
-                    break;
-                case ToolType::Perspective:
-                    m_helpTextLabel->setText(QStringLiteral("Click to place a vanishing point (up to 3, also outside the image). Drag to move, right click to remove."));
-                    break;
-                default:
-                    m_helpTextLabel->setText(QStringLiteral("Ready."));
-                    break;
-                }
-            }
+            if (m_helpTextLabel) m_helpTextLabel->setText(QString::fromLatin1(toolInfo(type).hint));
             return;
         }
     }
