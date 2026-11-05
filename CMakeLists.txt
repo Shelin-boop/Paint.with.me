@@ -140,21 +140,18 @@ set(PLUGINS_SOURCES
     src/plugins/plugineffect.cpp
 )
 
-set(MAIN_SOURCES
-    src/main.cpp
+set(RESOURCES
+    src/resources/resources.qrc
+)
+
+# Everything except main.cpp, compiled once and shared by the app and all test
+# programs (they used to compile the whole app again, three times over).
+set(APP_SOURCES
     src/mainwindow.cpp
     src/desktopintegration.cpp
     src/toolicons.cpp
     src/theme.cpp
     src/dockdropoverlay.cpp
-)
-
-set(RESOURCES
-    src/resources/resources.qrc
-)
-
-set(ALL_SOURCES
-    ${MAIN_SOURCES}
     ${CORE_SOURCES}
     ${CANVAS_SOURCES}
     ${TOOLS_SOURCES}
@@ -166,13 +163,9 @@ set(ALL_SOURCES
     ${RESOURCES}
 )
 
-add_executable(paint-with-me ${ALL_SOURCES})
-
-target_include_directories(paint-with-me PRIVATE
-    ${CMAKE_CURRENT_SOURCE_DIR}/src
-)
-
-target_link_libraries(paint-with-me PRIVATE
+add_library(pwm_app OBJECT ${APP_SOURCES})
+target_include_directories(pwm_app PUBLIC ${CMAKE_CURRENT_SOURCE_DIR}/src)
+target_link_libraries(pwm_app PUBLIC
     Qt6::Widgets
     Qt6::PrintSupport
     Qt6::Concurrent
@@ -180,59 +173,37 @@ target_link_libraries(paint-with-me PRIVATE
     Qt6::Gui
     ZLIB::ZLIB
 )
+target_compile_definitions(pwm_app PUBLIC PWM_VERSION_STR="${PWM_VERSION_STR}")
 
-target_compile_definitions(paint-with-me PRIVATE PWM_VERSION_STR="${PWM_VERSION_STR}")
+add_executable(paint-with-me src/main.cpp)
+target_link_libraries(paint-with-me PRIVATE pwm_app)
 
 install(TARGETS paint-with-me DESTINATION bin)
 
-# ---- Test harness (headless functional tests) ----
-set(NONMAIN_SOURCES
-    ${CORE_SOURCES}
-    ${CANVAS_SOURCES}
-    ${TOOLS_SOURCES}
-    ${PANELS_SOURCES}
-    ${EFFECTS_SOURCES}
-    ${ADJUSTMENTS_SOURCES}
-    ${DIALOGS_SOURCES}
-    ${PLUGINS_SOURCES}
-    src/toolicons.cpp
-    src/theme.cpp
-    src/desktopintegration.cpp
-    ${RESOURCES}
-)
+# ---- Tests (headless; custom harness, not QTest) ----
+function(pwm_test target)
+  add_executable(${target} EXCLUDE_FROM_ALL ${ARGN})
+  target_link_libraries(${target} PRIVATE pwm_app)
+endfunction()
 
-add_executable(pwm_tests EXCLUDE_FROM_ALL
-    tests/test_all.cpp
-    ${NONMAIN_SOURCES}
-)
-target_include_directories(pwm_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(pwm_tests PRIVATE
-    Qt6::Widgets Qt6::PrintSupport Qt6::Concurrent Qt6::Core Qt6::Gui ZLIB::ZLIB)
-
-add_executable(pwm_brush_tests EXCLUDE_FROM_ALL
-    tests/test_brush.cpp tests/referencebrush.cpp
-    ${CORE_SOURCES} ${CANVAS_SOURCES} src/tools/tool.cpp src/tools/brushtool.cpp)
-target_include_directories(pwm_brush_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(pwm_brush_tests PRIVATE Qt6::Widgets Qt6::Concurrent Qt6::Core Qt6::Gui ZLIB::ZLIB)
-add_executable(pwm_paste_tests EXCLUDE_FROM_ALL
-    tests/test_paste.cpp src/mainwindow.cpp src/dockdropoverlay.cpp ${NONMAIN_SOURCES})
-target_include_directories(pwm_paste_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(pwm_paste_tests PRIVATE Qt6::Widgets Qt6::PrintSupport Qt6::Concurrent Qt6::Core Qt6::Gui ZLIB::ZLIB)
+pwm_test(pwm_tests tests/test_all.cpp)
+target_compile_definitions(pwm_tests PRIVATE PWM_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
+pwm_test(pwm_brush_tests tests/test_brush.cpp tests/referencebrush.cpp)
+pwm_test(pwm_paste_tests tests/test_paste.cpp)
+pwm_test(pwm_preview_tests tests/test_adjustmentpreview.cpp)
 
 enable_testing()
-add_test(NAME paste_regression COMMAND pwm_paste_tests)
-set_tests_properties(paste_regression PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 add_test(NAME functional COMMAND pwm_tests)
-target_compile_definitions(pwm_tests PRIVATE PWM_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 add_test(NAME brush_regression COMMAND pwm_brush_tests)
-set_tests_properties(functional brush_regression PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
-
-add_executable(pwm_preview_tests EXCLUDE_FROM_ALL tests/test_adjustmentpreview.cpp src/mainwindow.cpp src/dockdropoverlay.cpp ${NONMAIN_SOURCES})
-target_include_directories(pwm_preview_tests PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/src)
-target_link_libraries(pwm_preview_tests PRIVATE Qt6::Widgets Qt6::PrintSupport Qt6::Concurrent Qt6::Core Qt6::Gui ZLIB::ZLIB)
+add_test(NAME paste_regression COMMAND pwm_paste_tests)
 add_test(NAME adjustment_preview COMMAND pwm_preview_tests)
-set_tests_properties(adjustment_preview PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
+set_tests_properties(functional brush_regression paste_regression adjustment_preview
+                     PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
+# Speed benchmark with a large document (5000 x 5000 px, 16 layers). Not part of
+# ctest: it needs about 4 GB of memory and takes a while. Run it by hand:
+#   cmake --build build --target pwm_bench && QT_QPA_PLATFORM=offscreen build/pwm_bench
+pwm_test(pwm_bench tests/bench_large.cpp)
 
 # AppImage application-menu entry; small and fast, Qt Core only.
 add_executable(pwm_integration_tests EXCLUDE_FROM_ALL
