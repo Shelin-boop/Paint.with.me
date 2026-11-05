@@ -29,7 +29,7 @@ jobs:
         run: cmake --build build -j
 
       - name: Build tests
-        run: cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_integration_tests pwm_bench -j4
+        run: cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_integration_tests pwm_bench -j4
 
       - name: Run tests (headless)
         env:

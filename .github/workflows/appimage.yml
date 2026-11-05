@@ -88,10 +88,12 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          cmake --build build -j --target pwm_tests pwm_integration_tests
+          cmake --build build -j --target pwm_tests pwm_psd_tests pwm_panel_tests pwm_integration_tests
           export LD_LIBRARY_PATH="$QT_ROOT/lib:$LD_LIBRARY_PATH"
           ./build/pwm_integration_tests
           ./build/pwm_tests
+          ./build/pwm_psd_tests
+          ./build/pwm_panel_tests
 
       - name: Bundle Qt into the AppDir
         env:
