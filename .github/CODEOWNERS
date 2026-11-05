@@ -1,3 +1,2 @@
-# The maintainer is automatically requested to review every pull request,
-# which — together with branch protection on `main` — enforces final approval.
-* @Univers4craft
+# Every pull request requests a review from the owner of Paint.with.me.
+* @Shelin-boop

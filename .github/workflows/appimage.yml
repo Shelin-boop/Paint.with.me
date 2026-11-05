@@ -3,9 +3,8 @@ name: AppImage
 # Builds a portable AppImage that runs on any Linux distribution — download,
 # chmod +x, run. Attached to the same per-version release as the .deb.
 on:
-  push:
-    branches: [ main ]
-    tags: ['v*']
+  # Paint.with.me: publishing is manual-only until the fork is rebranded
+  # (see FORK.md). Re-enable the push trigger after the rebrand.
   workflow_dispatch:
 
 permissions:
