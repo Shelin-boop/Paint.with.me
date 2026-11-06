@@ -589,6 +589,8 @@ bool CanvasWidget::startsPerspectiveSnap(const QMouseEvent *event) const {
     case ToolType::Line:
     case ToolType::CloneStamp:
     case ToolType::Recolor:
+    case ToolType::Smudge:
+    case ToolType::BlurBrush:
         return true;
     default:
         return false;

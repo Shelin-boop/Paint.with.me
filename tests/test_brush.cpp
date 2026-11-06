@@ -10,11 +10,13 @@
 #include "tools/penciltool.h"
 #include "tools/recolortool.h"
 #include "tools/clonestamptool.h"
+#include "tools/retouchtool.h"
 #include "referencebrush.h"
 #include "core/pensettings.h"
 #include <QTabletEvent>
 #include <QPointingDevice>
 #include <QTemporaryDir>
+#include <QDir>
 
 static int failures = 0;
 #define CHECK(c) do { if (!(c)) { ++failures; fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #c); } } while (0)
@@ -299,6 +301,115 @@ static void largeDifferential() {
 // Eraser, pencil, recolor and clone stamp redraw only the area they changed.
 // The canvas they update area by area must match one that combines the whole
 // image again, at full size and zoomed out (reduced rendering).
+
+// ---- Smudge tool and blur brush ----
+static void stroke(Tool &tool, Document &doc, QPointF from, QPointF to, int steps = 12) {
+    CanvasWidget canvas;
+    canvas.setDocument(&doc);
+    send(tool, canvas, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+    for (int i = 1; i <= steps; ++i)
+        send(tool, canvas, QEvent::MouseMove, from + (to - from) * (double(i) / steps), Qt::NoButton, Qt::LeftButton);
+    send(tool, canvas, QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton);
+}
+static void retouchTools() {
+    // The dab shape: full in the middle, nothing outside, a soft edge between.
+    Dab dab;
+    dab.pos = QPointF(10, 10);
+    dab.radius = 8;
+    CHECK(RetouchTool::dabWeight(dab, 50, true, {10, 10}) == 1.0);
+    CHECK(RetouchTool::dabWeight(dab, 50, true, {19, 10}) == 0.0);
+    const double mid = RetouchTool::dabWeight(dab, 50, true, {16, 10});
+    CHECK(mid > 0.0 && mid < 1.0);
+    dab.roundness = 0.5;   // flattened across a tilt to the right
+    CHECK(RetouchTool::dabWeight(dab, 100, false, {16, 10}) == 1.0);
+    CHECK(RetouchTool::dabWeight(dab, 100, false, {10, 16}) == 0.0);
+
+    // Smudge: red on the left, blue on the right. Dragging from the red into
+    // the blue carries red along; a stronger finger carries it further.
+    auto twoColors = [](Document &doc) {
+        QImage img(200, 60, QImage::Format_ARGB32_Premultiplied);
+        for (int y = 0; y < 60; ++y)
+            for (int x = 0; x < 200; ++x) img.setPixel(x, y, x < 100 ? qRgb(220, 30, 30) : qRgb(30, 30, 220));
+        doc.activeLayer()->setImage(img);
+    };
+    auto redAt = [](Document &doc, int x) { return qRed(doc.activeLayer()->image().pixel(x, 30)); };
+    int reach[2] = {0, 0};
+    for (int i = 0; i < 2; ++i) {
+        Document doc(200, 60);
+        twoColors(doc);
+        const QImage before = doc.activeLayer()->image().copy();
+        SmudgeTool smudge;
+        smudge.setBrushSize(20);
+        smudge.setOpacity(i == 0 ? 30 : 90);
+        stroke(smudge, doc, {70, 30}, {170, 30}, 25);
+        CHECK(redAt(doc, 102) > 60);                 // red dragged into the blue
+        CHECK(redAt(doc, 50) == 220);                // behind the start: untouched
+        CHECK(qRed(doc.activeLayer()->image().pixel(150, 5)) == 30);   // away from the stroke
+        for (int x = 100; x < 200; ++x) if (redAt(doc, x) > 80) reach[i] = x;
+        doc.history().undo();
+        CHECK(doc.activeLayer()->image() == before);
+    }
+    CHECK(reach[1] > reach[0] + 10);
+    printf("smudge reach: strength 30 %%: x=%d, strength 90 %%: x=%d\n", reach[0], reach[1]);
+
+    // Blur: a hard black-white edge gets grays where the brush went, and
+    // stays hard elsewhere.
+    Document doc(200, 80);
+    QImage edge(200, 80, QImage::Format_ARGB32_Premultiplied);
+    for (int y = 0; y < 80; ++y)
+        for (int x = 0; x < 200; ++x) edge.setPixel(x, y, x < 100 ? qRgb(0, 0, 0) : qRgb(255, 255, 255));
+    doc.activeLayer()->setImage(edge);
+    BlurBrushTool blur;
+    blur.setBrushSize(24);
+    blur.setOpacity(100);
+    CHECK(BlurBrushTool::blurRadius(24) == 3 && BlurBrushTool::blurRadius(4) == 1);
+    stroke(blur, doc, {100, 20}, {100, 60}, 10);
+    const int nearEdge = qRed(doc.activeLayer()->image().pixel(99, 40));
+    CHECK(nearEdge > 40 && nearEdge < 200);
+    CHECK(qRed(doc.activeLayer()->image().pixel(99, 2)) == 0);     // above the stroke: still hard
+    CHECK(qRed(doc.activeLayer()->image().pixel(101, 78)) == 255);
+    // A selection keeps the right half as it is.
+    doc.history().undo();
+    doc.selection().selectRect(QRect(0, 0, 100, 80));
+    stroke(blur, doc, {100, 20}, {100, 60}, 10);
+    CHECK(qRed(doc.activeLayer()->image().pixel(101, 40)) == 255);
+    CHECK(qRed(doc.activeLayer()->image().pixel(98, 40)) > 0);
+    doc.selection().clear();
+
+    // Strength by pen pressure: no pressure, no change.
+    doc.history().undo();
+    const QImage hard = doc.activeLayer()->image().copy();
+    blur.setPressureTarget(PressureTarget::Opacity);
+    blur.setStylus(true);
+    blur.setPressure(0.0);
+    stroke(blur, doc, {100, 20}, {100, 60}, 10);
+    CHECK(doc.activeLayer()->image() == hard);
+    blur.setStylus(false);
+
+    // A picture to look at: colored stripes, smudged on the left, blurred on the right.
+    const QByteArray shots = qgetenv("PWM_SCREENSHOT_DIR");
+    if (!shots.isEmpty()) {
+        Document demo(480, 200);
+        QImage stripes(480, 200, QImage::Format_ARGB32_Premultiplied);
+        const QRgb colors[] = {qRgb(230, 60, 50), qRgb(250, 200, 50), qRgb(60, 170, 80), qRgb(50, 110, 220), qRgb(250, 250, 250)};
+        for (int y = 0; y < 200; ++y)
+            for (int x = 0; x < 480; ++x) stripes.setPixel(x, y, colors[(x / 24) % 5]);
+        demo.activeLayer()->setImage(stripes);
+        SmudgeTool finger;
+        finger.setBrushSize(36);
+        for (int i = 0; i < 4; ++i) stroke(finger, demo, {20.0 + i * 50, 30}, {60.0 + i * 50, 170}, 30);
+        BlurBrushTool soft;
+        soft.setBrushSize(48);
+        soft.setOpacity(80);
+        stroke(soft, demo, {270, 40}, {460, 60}, 30);
+        stroke(soft, demo, {270, 130}, {460, 170}, 30);
+        stroke(soft, demo, {270, 135}, {460, 165}, 30);
+        QDir().mkpath(QString::fromLocal8Bit(shots));
+        demo.activeLayer()->image().save(QString::fromLocal8Bit(shots) + "/smudge-and-blur.png");
+    }
+    printf("smudge and blur brush checks complete\n");
+}
+
 static void regionalToolsDifferential() {
     for (double zoom : {1.0, 0.3, 0.12}) {
         Document doc(900, 600);
@@ -315,8 +426,11 @@ static void regionalToolsDifferential() {
         PencilTool pencil;
         RecolorTool recolor; recolor.setBrushSize(35);
         CloneStampTool clone; clone.setBrushSize(25);
+        SmudgeTool smudge; smudge.setBrushSize(31);
+        BlurBrushTool blur; blur.setBrushSize(27);
         for (Tool *tool : {static_cast<Tool *>(&eraser), static_cast<Tool *>(&pencil),
-                           static_cast<Tool *>(&recolor), static_cast<Tool *>(&clone)}) {
+                           static_cast<Tool *>(&recolor), static_cast<Tool *>(&clone),
+                           static_cast<Tool *>(&smudge), static_cast<Tool *>(&blur)}) {
             CHECK(tool->updatesCanvasRegion());
             CanvasWidget actual, forced;
             for (CanvasWidget *c : {&actual, &forced}) {
@@ -348,7 +462,7 @@ static void regionalToolsDifferential() {
             doc.history().redo(); compare();
         }
     }
-    printf("eraser/pencil/recolor/clone regional comparisons complete\n");
+    printf("eraser/pencil/recolor/clone/smudge/blur regional comparisons complete\n");
 }
 
 int main(int argc,char **argv) {
@@ -358,6 +472,7 @@ int main(int argc,char **argv) {
     QApplication app(argc,argv);
     differential();
     penExtras();
+    retouchTools();
     renderDifferential();
     largeDifferential();
     regionalToolsDifferential();

@@ -742,6 +742,76 @@ QPixmap drawPerspective() {
     return pm;
 }
 
+// A fingertip pulling a smear of color.
+QPixmap drawSmudge() {
+    QPixmap pm(TS * 2, TS * 2);
+    pm.setDevicePixelRatio(2.0);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    aa(p);
+    // The smear: a band of color thinning out to the lower left.
+    QLinearGradient smear(QPointF(12, 12), QPointF(1, 19));
+    smear.setColorAt(0, QColor(220, 60, 60));
+    smear.setColorAt(0.5, QColor(240, 150, 40, 220));
+    smear.setColorAt(1, QColor(250, 200, 60, 0));
+    QPainterPath trail;
+    trail.moveTo(10.5, 9.5);
+    trail.cubicTo(7, 12, 4, 15, 0.5, 19.5);
+    trail.cubicTo(5, 19, 10, 17, 14, 14);
+    trail.closeSubpath();
+    p.setPen(Qt::NoPen);
+    p.setBrush(smear);
+    p.drawPath(trail);
+    // The finger, from the top right, pressing down at the smear's start.
+    p.save();
+    p.translate(13, 8.5);
+    p.rotate(-38);
+    p.setPen(QPen(QColor(140, 80, 50), 1.1));
+    p.setBrush(QColor(242, 190, 150));
+    p.drawRoundedRect(QRectF(-3.4, -4.5, 6.8, 16), 3.4, 3.4);
+    p.setPen(QPen(QColor(170, 110, 80), 0.8));
+    p.drawLine(QPointF(-2.4, 4.5), QPointF(2.4, 4.5));   // a knuckle crease
+    p.setPen(QPen(QColor(180, 120, 100), 0.8));
+    p.setBrush(QColor(255, 232, 222));
+    p.drawRoundedRect(QRectF(-2.1, -3.6, 4.2, 4.4), 1.8, 1.8);   // the nail
+    p.restore();
+    p.end();
+    return pm;
+}
+
+// A water drop over soft, blurred dots.
+QPixmap drawBlurBrush() {
+    QPixmap pm(TS * 2, TS * 2);
+    pm.setDevicePixelRatio(2.0);
+    pm.fill(Qt::transparent);
+    QPainter p(&pm);
+    aa(p);
+    for (const QPointF &c : {QPointF(5, 15), QPointF(10.5, 16.5), QPointF(15.5, 14.5)}) {
+        QRadialGradient g(c, 3.6);
+        g.setColorAt(0, QColor(60, 120, 210, 220));
+        g.setColorAt(1, QColor(60, 120, 210, 0));
+        p.setPen(Qt::NoPen);
+        p.setBrush(g);
+        p.drawEllipse(c, 3.6, 3.6);
+    }
+    QPainterPath drop;
+    drop.moveTo(10, 1.5);
+    drop.cubicTo(13, 6, 15, 8, 15, 10.5);
+    drop.arcTo(QRectF(5, 5.5, 10, 10), 0, -180);
+    drop.cubicTo(5, 8, 7, 6, 10, 1.5);
+    QLinearGradient water(QPointF(6, 3), QPointF(14, 14));
+    water.setColorAt(0, QColor(170, 215, 250));
+    water.setColorAt(1, QColor(60, 140, 220));
+    p.setPen(QPen(QColor(30, 80, 150), 1.0));
+    p.setBrush(water);
+    p.drawPath(drop);
+    p.setPen(Qt::NoPen);
+    p.setBrush(QColor(255, 255, 255, 190));
+    p.drawEllipse(QPointF(8.2, 9.5), 1.2, 1.8);
+    p.end();
+    return pm;
+}
+
 } // anonymous namespace
 
 namespace ToolIcons {
@@ -771,6 +841,8 @@ QIcon forTool(ToolType type) {
     case ToolType::Line:            return QIcon(drawLine());
     case ToolType::Shape:           return QIcon(drawShape());
     case ToolType::Perspective:     return QIcon(drawPerspective());
+    case ToolType::Smudge:          return QIcon(drawSmudge());
+    case ToolType::BlurBrush:       return QIcon(drawBlurBrush());
     default: return QIcon();
     }
 }
