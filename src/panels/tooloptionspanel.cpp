@@ -1,4 +1,6 @@
 #include "tooloptionspanel.h"
+#include <QSignalBlocker>
+#include <QStandardItemModel>
 #include "tools/toolregistry.h"
 #include "core/perspective.h"
 #include <QSpinBox>
@@ -280,20 +282,24 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
     connect(m_alignCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
             this, &ToolOptionsPanel::onTextStyleChanged);
 
-    // --- Antialiasing ---
-    m_antialiasCheck = new QCheckBox(QStringLiteral("Antialiasing"));
-    m_antialiasCheck->setStyleSheet("font-size: 11px;");
-    m_antialiasCheck->setChecked(true);
-    layout->addWidget(m_antialiasCheck);
-    connect(m_antialiasCheck, &QCheckBox::toggled, this, &ToolOptionsPanel::onAntialiasToggled);
+    // (Antialiasing is one setting for all tools: Settings > Tools.)
 
-    m_pressureCheck = new QCheckBox(QStringLiteral("Pressure"));
-    m_pressureCheck->setStyleSheet("font-size: 11px;");
-    m_pressureCheck->setChecked(true);
-    m_pressureCheck->setToolTip(QStringLiteral("Stylus pressure sensitivity (varies dab size)"));
+    // --- Pen pressure: off, or what it changes ---
+    m_pressureLabel = new QLabel(QStringLiteral("Pressure:"));
+    m_pressureLabel->setStyleSheet("font-size: 11px;");
+    m_pressureCombo = new QComboBox;
+    m_pressureCombo->setObjectName("pressureMode");
+    m_pressureCombo->setFixedHeight(20);
+    m_pressureCombo->addItems({QStringLiteral("Off"), QStringLiteral("Size"), QStringLiteral("Opacity"),
+                               QStringLiteral("Size + opacity")});
+    m_pressureCombo->setToolTip(QStringLiteral(
+        "What pressing harder with a pen changes. The pressure curve and tilt are in "
+        "Settings > Tools."));
     // Paint.NET puts the Pressure toggle right after Brush size (before Hardness).
-    layout->insertWidget(layout->indexOf(m_brushSizeCombo) + 1, m_pressureCheck);
-    connect(m_pressureCheck, &QCheckBox::toggled, this, &ToolOptionsPanel::onPressureToggled);
+    layout->insertWidget(layout->indexOf(m_brushSizeCombo) + 1, m_pressureLabel);
+    layout->insertWidget(layout->indexOf(m_pressureLabel) + 1, m_pressureCombo);
+    connect(m_pressureCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+            this, &ToolOptionsPanel::onPressureModeChanged);
 
     // --- Selection constraint (Normal / Fixed Ratio / Fixed Size) ---
     m_selectionModeLabel = new QLabel(QStringLiteral("Mode:"));
@@ -493,13 +499,25 @@ void ToolOptionsPanel::updateFromTool() {
     m_opacitySpin->setValue(m_tool->opacity());
     m_opacitySpin->blockSignals(false);
 
-    m_antialiasCheck->blockSignals(true);
-    m_antialiasCheck->setChecked(m_tool->antialiased());
-    m_antialiasCheck->blockSignals(false);
-
-    m_pressureCheck->blockSignals(true);
-    m_pressureCheck->setChecked(m_tool->pressureSensitivity());
-    m_pressureCheck->blockSignals(false);
+    {
+        const QSignalBlocker block(m_pressureCombo);
+        int mode = 0;
+        if (m_tool->pressureSensitivity()) {
+            switch (m_tool->pressureTarget()) {
+            case PressureTarget::Size:           mode = 1; break;
+            case PressureTarget::Opacity:        mode = 2; break;
+            case PressureTarget::SizeAndOpacity: mode = 3; break;
+            }
+        }
+        // The clone stamp follows pressure with its size only.
+        const bool opacityToo = m_tool->type() != ToolType::CloneStamp;
+        if (auto *model = qobject_cast<QStandardItemModel *>(m_pressureCombo->model())) {
+            for (int row : {2, 3})
+                if (QStandardItem *item = model->item(row)) item->setEnabled(opacityToo);
+        }
+        if (!opacityToo && mode > 1) mode = 1;
+        m_pressureCombo->setCurrentIndex(mode);
+    }
 
     m_blendModeCombo->blockSignals(true);
     m_blendModeCombo->setCurrentIndex(m_tool->blendMode());
@@ -604,8 +622,6 @@ void ToolOptionsPanel::updateFromTool() {
     const bool hasFillStyle = (t == ToolType::Brush || t == ToolType::Shape);
     const bool hasOpacity = hasSize || t == ToolType::Fill || t == ToolType::Gradient
                             || t == ToolType::Text;
-    const bool hasAA = hasSize || t == ToolType::Fill || t == ToolType::Gradient
-                       || t == ToolType::Text;
 
     // Recolor gets a soft-edge Hardness control, like the brush-like tools.
     const bool hasHardness = isBrushLike || t == ToolType::Recolor;
@@ -669,9 +685,9 @@ void ToolOptionsPanel::updateFromTool() {
     m_strikeBtn->setVisible(hasText);
     m_alignCombo->setVisible(hasText);
 
-    m_antialiasCheck->setVisible(hasAA);
     // Shown only when a tablet has been detected (Paint.NET), on brush-like tools.
-    m_pressureCheck->setVisible(isBrushLike && m_tabletPresent);
+    m_pressureLabel->setVisible(isBrushLike && m_tabletPresent);
+    m_pressureCombo->setVisible(isBrushLike && m_tabletPresent);
 }
 
 void ToolOptionsPanel::onBrushSizeChanged() {
@@ -712,12 +728,13 @@ void ToolOptionsPanel::onToleranceChanged(int value) {
     if (m_tool) { m_tool->setTolerance(value); emit toolOptionsChanged(); }
 }
 
-void ToolOptionsPanel::onAntialiasToggled(bool checked) {
-    if (m_tool) { m_tool->setAntialiased(checked); emit toolOptionsChanged(); }
-}
-
-void ToolOptionsPanel::onPressureToggled(bool checked) {
-    if (m_tool) { m_tool->setPressureSensitivity(checked); emit toolOptionsChanged(); }
+void ToolOptionsPanel::onPressureModeChanged(int index) {
+    if (!m_tool) return;
+    m_tool->setPressureSensitivity(index > 0);
+    if (index == 1) m_tool->setPressureTarget(PressureTarget::Size);
+    else if (index == 2) m_tool->setPressureTarget(PressureTarget::Opacity);
+    else if (index == 3) m_tool->setPressureTarget(PressureTarget::SizeAndOpacity);
+    emit toolOptionsChanged();
 }
 
 void ToolOptionsPanel::setTabletPresent(bool present) {

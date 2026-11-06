@@ -17,7 +17,7 @@ public:
 
 private:
     void drawBrushStroke(const QPointF &from, const QPointF &to, const QColor &color);
-    void drawBrushDab(const QPointF &pos, const QColor &color);
+    void drawBrushDab(const QPointF &pos, const QColor &color, double pressure);
     void compositeStroke(class Document *doc, class Layer *layer, const QColor &color);
     void compositeOverwrite(class Document *doc, class Layer *layer, const QColor &color);
     QPainter::CompositionMode brushCompositionMode() const;

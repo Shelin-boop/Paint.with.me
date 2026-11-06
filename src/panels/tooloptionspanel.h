@@ -44,8 +44,7 @@ private slots:
     void onHardnessChanged(int value);
     void onOpacityChanged(int value);
     void onToleranceChanged(int value);
-    void onAntialiasToggled(bool checked);
-    void onPressureToggled(bool checked);
+    void onPressureModeChanged(int index);
     void onBlendModeChanged(int index);
     void onSamplingChanged(int index);
     void onRecolorTargetChanged(int index);
@@ -100,8 +99,8 @@ private:
     QLabel *m_toleranceValue;
     QWidget *m_toleranceGroup;
 
-    QCheckBox *m_antialiasCheck;
-    QCheckBox *m_pressureCheck;   // stylus pressure varies dab size (Paint.NET)
+    QLabel *m_pressureLabel;
+    QComboBox *m_pressureCombo;   // pen pressure: off, size (Paint.NET), opacity, both
     bool m_tabletPresent = false;   // Pressure toggle is shown only once a tablet is seen
 
     QLabel *m_fillLabel;

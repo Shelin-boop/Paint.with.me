@@ -2,6 +2,8 @@
 #include "tools/toolregistry.h"
 #include "core/document.h"
 #include "core/selection.h"
+#include "core/hatchpatterns.h"
+#include "core/pensettings.h"
 #include <QPainter>
 #include <QImage>
 #include <cstdlib>
@@ -18,6 +20,119 @@ bool toolTypeFromKey(const QString &key, ToolType *type) {
         }
     }
     return false;
+}
+
+QString Tool::pressureTargetKey(PressureTarget target) {
+    switch (target) {
+    case PressureTarget::Opacity:        return QStringLiteral("opacity");
+    case PressureTarget::SizeAndOpacity: return QStringLiteral("size-and-opacity");
+    case PressureTarget::Size:           break;
+    }
+    return QStringLiteral("size");
+}
+
+PressureTarget Tool::pressureTargetFromKey(const QString &key) {
+    if (key == QLatin1String("opacity")) return PressureTarget::Opacity;
+    if (key == QLatin1String("size-and-opacity")) return PressureTarget::SizeAndOpacity;
+    return PressureTarget::Size;
+}
+
+Dab Tool::dabAt(const QPointF &pos, double pressure) const {
+    Dab dab;
+    dab.pos = pos;
+    dab.radius = (m_brushSize / 2.0) * (pressureSetsSize() ? pressure : 1.0);
+    dab.alpha = (m_stylus && pressureSetsOpacity()) ? pressure : 1.0;
+    if (m_stylus && Pen::settings().tiltFlattens) {
+        const Pen::TipShape tip = Pen::tipForTilt(m_tilt);
+        dab.angle = tip.angle;
+        dab.roundness = tip.roundness;
+    }
+    return dab;
+}
+
+void Tool::forEachDab(const QPointF &from, const QPointF &to, double fromPressure,
+                      double toPressure, const std::function<void(const Dab &)> &paint) const {
+    const double dx = to.x() - from.x();
+    const double dy = to.y() - from.y();
+    const double dist = std::sqrt(dx * dx + dy * dy);
+    const double spacing = std::max(1.0, m_brushSize * (m_spacing / 100.0));
+    const int steps = std::max(1, static_cast<int>(dist / spacing));
+    for (int i = 1; i <= steps; ++i) {
+        const double t = double(i) / steps;
+        paint(dabAt(QPointF(from.x() + dx * t, from.y() + dy * t),
+                    fromPressure + (toPressure - fromPressure) * t));
+    }
+}
+
+QRect Tool::paintDab(QImage &buffer, const Dab &dab, const QColor &opaqueColor, int hardness,
+                     int fillStyle, bool antialiased, bool peak, QImage &scratch) {
+    if (dab.radius < 0.4 || dab.alpha <= 0.0) return QRect();   // no pressure, no mark
+    const double r = dab.radius;
+    // Include the rasterizer's antialias fringe, including fractional centres.
+    const QRect area = QRectF(dab.pos.x() - r - 2, dab.pos.y() - r - 2, 2 * r + 4, 2 * r + 4)
+                           .toAlignedRect().intersected(buffer.rect());
+    if (area.isEmpty()) return area;
+    const bool round = dab.roundness >= 0.999;
+
+    // Draws the dab with `painter` at `center`, in `color`.
+    auto draw = [&](QPainter &painter, const QPointF &center, const QColor &color) {
+        if (antialiased) painter.setRenderHint(QPainter::Antialiasing);
+        painter.setPen(Qt::NoPen);
+        QPointF c = center;
+        if (!round) {
+            // Flattened tip: an ellipse, long along the tilt, narrow across it.
+            painter.translate(center);
+            painter.rotate(dab.angle);
+            painter.scale(1.0, dab.roundness);
+            c = QPointF();
+        }
+        if (fillStyle > 0) {
+            // Patterned brush (Fill Style): pattern lines in the color,
+            // transparent between them, with a hard edge.
+            painter.setBrush(Hatch::brush(fillStyle, color, QColor(Qt::transparent)));
+        } else if (hardness >= 95) {
+            painter.setBrush(color);
+        } else {
+            QRadialGradient gradient(c, r);
+            gradient.setColorAt(0, color);
+            gradient.setColorAt(hardness / 100.0, color);
+            QColor transparent = color;
+            transparent.setAlpha(0);
+            gradient.setColorAt(1, transparent);
+            painter.setBrush(gradient);
+        }
+        painter.drawEllipse(c, r, r);
+    };
+
+    if (!peak) {
+        QPainter painter(&buffer);
+        if (dab.alpha < 1.0) painter.setOpacity(dab.alpha);
+        draw(painter, dab.pos, opaqueColor);
+        return area;
+    }
+
+    // Peak coverage: paint the dab alone, then keep the higher coverage.
+    if (scratch.width() < area.width() || scratch.height() < area.height())
+        scratch = QImage(area.size().expandedTo(scratch.size()), QImage::Format_ARGB32_Premultiplied);
+    {
+        QPainter painter(&scratch);
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        painter.fillRect(QRect(QPoint(), area.size()), Qt::transparent);
+        painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+        draw(painter, dab.pos - area.topLeft(), QColor(0, 0, 0));
+    }
+    const int cr = opaqueColor.red(), cg = opaqueColor.green(), cb = opaqueColor.blue();
+    const int scale = qRound(qBound(0.0, dab.alpha, 1.0) * 256);
+    for (int y = 0; y < area.height(); ++y) {
+        const QRgb *src = reinterpret_cast<const QRgb *>(scratch.constScanLine(y));
+        QRgb *dst = reinterpret_cast<QRgb *>(buffer.scanLine(y + area.y())) + area.x();
+        for (int x = 0; x < area.width(); ++x) {
+            const int a = (qAlpha(src[x]) * scale) >> 8;
+            if (a <= qAlpha(dst[x])) continue;
+            dst[x] = qRgba((cr * a + 127) / 255, (cg * a + 127) / 255, (cb * a + 127) / 255, a);
+        }
+    }
+    return area;
 }
 
 QImage Tool::transparentImage(const QSize &size) {

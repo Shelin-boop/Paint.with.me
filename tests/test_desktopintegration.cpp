@@ -9,6 +9,7 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QProcessEnvironment>
 #include <QSettings>
 #include <QTemporaryDir>
 #include <cstdio>
@@ -219,29 +220,61 @@ static void displayServerChoice() {
     CHECK(env.waylandSession && env.xDisplay && !env.platformForced);
     CHECK(Environment::fromSystem(3, withFlag).platformForced);
 
-    // The setting: off by default, read at startup.
-    CHECK(!DisplayServer::nativeWaylandEnabled());
-    DisplayServer::applyAtStartup(2, plain);
-    CHECK(qgetenv("QT_QPA_PLATFORM") == "xcb");
-    CHECK(!DisplayServer::platformForcedAtStartup());
-    qunsetenv("QT_QPA_PLATFORM");
-    DisplayServer::setNativeWaylandEnabled(true);
+    // The setting: native Wayland by default, read at startup. The opt-in
+    // key of the first test builds is dropped, so it cannot hold XWayland.
+    QSettings(AppInfo::kId, AppInfo::kId).setValue("display/nativeWayland", false);
     CHECK(DisplayServer::nativeWaylandEnabled());
-    CHECK(QSettings(AppInfo::kId, AppInfo::kId).value("display/nativeWayland").toBool());
     DisplayServer::applyAtStartup(2, plain);
     CHECK(qgetenv("QT_QPA_PLATFORM") == "wayland;xcb");
+    CHECK(!DisplayServer::platformForcedAtStartup());
+    CHECK(!QSettings(AppInfo::kId, AppInfo::kId).contains("display/nativeWayland"));
+    qunsetenv("QT_QPA_PLATFORM");
+    DisplayServer::setNativeWaylandEnabled(false);
+    CHECK(!DisplayServer::nativeWaylandEnabled());
+    CHECK(QSettings(AppInfo::kId, AppInfo::kId).value("display/windowSystem").toString() == "xwayland");
+    DisplayServer::applyAtStartup(2, plain);
+    CHECK(qgetenv("QT_QPA_PLATFORM") == "xcb");
     // Chosen outside the app: left alone, and reported.
     qputenv("QT_QPA_PLATFORM", "offscreen");
     DisplayServer::applyAtStartup(2, plain);
     CHECK(qgetenv("QT_QPA_PLATFORM") == "offscreen");
     CHECK(DisplayServer::platformForcedAtStartup());
-    DisplayServer::setNativeWaylandEnabled(false);
-    CHECK(!DisplayServer::nativeWaylandEnabled());
+    DisplayServer::setNativeWaylandEnabled(true);
+    CHECK(DisplayServer::nativeWaylandEnabled());
+    // Whether a restart would change anything.
+    CHECK(DisplayServer::runningAsChosen("wayland", true));
+    CHECK(!DisplayServer::runningAsChosen("xcb", true));
+    CHECK(DisplayServer::runningAsChosen("xcb", false));
+    CHECK(!DisplayServer::runningAsChosen("wayland", false));
+    CHECK(!DisplayServer::runningAsChosen("offscreen", false));
     const char *names[] = {"QT_QPA_PLATFORM", "WAYLAND_DISPLAY", "DISPLAY"};
     for (int i = 0; i < 3; ++i) {
         if (saved[i].isNull()) qunsetenv(names[i]);
         else qputenv(names[i], saved[i]);
     }
+
+    // Starting again: from an AppImage the .AppImage file, not the binary in
+    // its mount; variables this instance set are not passed on.
+    QProcessEnvironment procEnv;
+    procEnv.insert("APPIMAGE", "/home/me/Apps/Paint.with.me.AppImage");
+    procEnv.insert("APPDIR", "/tmp/.mount_PaintX/");
+    procEnv.insert("ARGV0", "Paint.with.me.AppImage");
+    procEnv.insert("OWD", "/home/me");
+    procEnv.insert("QT_QPA_PLATFORM", "xcb");
+    procEnv.insert("HOME", "/home/me");
+    DisplayServer::Relaunch again = DisplayServer::relaunchCommand(
+        "/tmp/.mount_PaintX/usr/bin/paint-with-me", {"/home/me/a.psd"}, procEnv, false);
+    CHECK(again.program == "/home/me/Apps/Paint.with.me.AppImage");
+    CHECK(again.arguments == QStringList{"/home/me/a.psd"});
+    CHECK(!again.environment.contains("QT_QPA_PLATFORM"));
+    for (const char *name : {"APPIMAGE", "APPDIR", "ARGV0", "OWD"})
+        CHECK(!again.environment.contains(QString::fromLatin1(name)));
+    CHECK(again.environment.value("HOME") == "/home/me");
+    // Not an AppImage, and QT_QPA_PLATFORM given from outside: kept.
+    procEnv.remove("APPIMAGE");
+    again = DisplayServer::relaunchCommand("/usr/bin/paint-with-me", {}, procEnv, true);
+    CHECK(again.program == "/usr/bin/paint-with-me" && again.arguments.isEmpty());
+    CHECK(again.environment.value("QT_QPA_PLATFORM") == "xcb");
 
     // What people are told, and whether the app may place its windows.
     CHECK(DisplayServer::describe("wayland", true) == "Wayland (native)");

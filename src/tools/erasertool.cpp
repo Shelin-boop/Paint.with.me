@@ -19,7 +19,9 @@ void EraserTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, C
     m_beforeImage = layer->image().copy();
     m_strokeBuffer = transparentImage(layer->image().size());
     m_dirtyRect = QRect();
-    eraseDab(canvasPos);
+    m_strokePeak = strokeUsesPeakCoverage();
+    m_lastPressure = m_pressure;
+    eraseDab(dabAt(canvasPos, m_pressure));
     compositeErase(doc, layer, canvas);
 }
 
@@ -46,46 +48,16 @@ void EraserTool::mouseReleaseEvent(const QPointF &, QMouseEvent *event, CanvasWi
 }
 
 void EraserTool::eraseStroke(const QPointF &from, const QPointF &to) {
-    double dx = to.x() - from.x();
-    double dy = to.y() - from.y();
-    double dist = std::sqrt(dx * dx + dy * dy);
-    double spacing = std::max(1.0, m_brushSize * (m_spacing / 100.0));
-    int steps = std::max(1, static_cast<int>(dist / spacing));
-
-    for (int i = 1; i <= steps; ++i) {
-        double t = (double)i / steps;
-        QPointF pos(from.x() + dx * t, from.y() + dy * t);
-        eraseDab(pos);
-    }
+    forEachDab(from, to, m_lastPressure, m_pressure, [&](const Dab &dab) { eraseDab(dab); });
+    m_lastPressure = m_pressure;
 }
 
-void EraserTool::eraseDab(const QPointF &pos) {
-    // Paint.NET stylus model: pressure varies the dab SIZE (0..brush size), not
-    // opacity. A mouse reports full pressure, so its dabs are full size.
-    const double p = m_pressureSensitivity ? m_pressure : 1.0;
-    const double radius = (m_brushSize / 2.0) * p;
-    if (radius < 0.4) return;   // effectively no pressure = no mark
-
-    m_dirtyRect = m_dirtyRect.united(QRectF(pos.x() - radius - 2, pos.y() - radius - 2,
-                                            2 * radius + 4, 2 * radius + 4).toAlignedRect()
-                                         .intersected(m_strokeBuffer.rect()));
-    QPainter painter(&m_strokeBuffer);
-    if (m_antialiased) painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(Qt::NoPen);
-
-    // Hardness controls the edge falloff, exactly like the brush: the dab's alpha
-    // is the erase coverage (opacity is applied when the buffer is composited).
-    if (m_hardness >= 95) {
-        painter.setBrush(QColor(0, 0, 0, 255));
-    } else {
-        QRadialGradient g(pos, radius);
-        const double hardRatio = m_hardness / 100.0;
-        g.setColorAt(0, QColor(0, 0, 0, 255));
-        g.setColorAt(hardRatio, QColor(0, 0, 0, 255));
-        g.setColorAt(1, QColor(0, 0, 0, 0));
-        painter.setBrush(g);
-    }
-    painter.drawEllipse(pos, radius, radius);
+void EraserTool::eraseDab(const Dab &dab) {
+    // Like the brush: the dab's alpha is the erase coverage (hardness falloff
+    // included); opacity is applied when the buffer is composited. Pressure
+    // sets the dab's size (Paint.NET), opacity or both.
+    m_dirtyRect = m_dirtyRect.united(paintDab(m_strokeBuffer, dab, QColor(0, 0, 0), m_hardness, 0,
+                                              m_antialiased, m_strokePeak, m_dabScratch));
 }
 
 void EraserTool::compositeErase(Document *doc, Layer *layer, CanvasWidget &canvas) {

@@ -18,6 +18,9 @@ public:
     explicit SettingsDialog(QWidget *parent = nullptr);
     // Shown on the Undo History page.
     void setHistoryUsage(qint64 bytes, int steps);
+    // "Restart Now" was chosen after changing the window system; the dialog
+    // has closed itself and the caller restarts the app.
+    bool restartRequested() const { return m_restartRequested; }
 
 signals:
     // Emitted as soon as the user picks a new color scheme, so the
@@ -26,12 +29,16 @@ signals:
     void canvasSettingsChanged();
     void panelBehaviorChanged();
     void historySettingsChanged();
+    // Antialiasing, pressure curve or tilt changed (Tools page).
+    void toolSettingsChanged();
 
 private:
     QWidget *buildUserInterfacePage();
     QWidget *buildCanvasPage();
     QWidget *buildHistoryPage();
-    QWidget *buildPlaceholderPage(const QString &text);
+    QWidget *buildToolsPage();
+    QWidget *buildHelpPage();
+    void askForRestart(const QString &windowSystem);
 
     QListWidget *m_categories;
     QStackedWidget *m_pages;
@@ -40,4 +47,5 @@ private:
     QSlider *m_checkerSlider;
     QSpinBox *m_historyLimit = nullptr;
     QLabel *m_historyUsage = nullptr;
+    bool m_restartRequested = false;
 };

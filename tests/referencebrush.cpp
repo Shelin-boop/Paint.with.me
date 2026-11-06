@@ -35,7 +35,8 @@ void ReferenceBrushTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *
     m_strokeBuffer.fill(Qt::transparent);
 
     m_strokeColor = col;
-    drawBrushDab(canvasPos, m_strokeColor);
+    m_lastPressure = m_pressure;
+    drawBrushDab(canvasPos, m_strokeColor, m_pressure);
     compositeStroke(doc, layer, m_strokeColor);
 }
 
@@ -88,14 +89,16 @@ void ReferenceBrushTool::drawBrushStroke(const QPointF &from, const QPointF &to,
     double spacing = std::max(1.0, m_brushSize * (m_spacing / 100.0));
     int steps = std::max(1, static_cast<int>(dist / spacing));
 
+    // Pressure goes smoothly from the previous point's to the current one.
     for (int i = 1; i <= steps; ++i) {
         double t = (double)i / steps;
         QPointF pos(from.x() + dx * t, from.y() + dy * t);
-        drawBrushDab(pos, color);
+        drawBrushDab(pos, color, m_lastPressure + (m_pressure - m_lastPressure) * t);
     }
+    m_lastPressure = m_pressure;
 }
 
-void ReferenceBrushTool::drawBrushDab(const QPointF &pos, const QColor &color) {
+void ReferenceBrushTool::drawBrushDab(const QPointF &pos, const QColor &color, double pressure) {
     QPainter painter(&m_strokeBuffer);
     if (m_antialiased) painter.setRenderHint(QPainter::Antialiasing);
     painter.setPen(Qt::NoPen);
@@ -106,7 +109,7 @@ void ReferenceBrushTool::drawBrushDab(const QPointF &pos, const QColor &color) {
 
     // Paint.NET model: stylus pressure varies the dab SIZE (0..brush size), not
     // the opacity. A mouse reports full pressure, so it stamps the full size.
-    const double p = m_pressureSensitivity ? m_pressure : 1.0;
+    const double p = m_pressureSensitivity ? pressure : 1.0;
     const double radius = (m_brushSize / 2.0) * p;
     if (radius < 0.4) return;   // effectively no pressure = no mark
 

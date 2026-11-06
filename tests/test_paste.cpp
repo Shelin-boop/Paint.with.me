@@ -40,6 +40,15 @@
 #include "tools/clonestamptool.h"
 #include "tools/colorpickertool.h"
 #include "tools/movetool.h"
+#include <QMessageBox>
+#include <QPointer>
+#include <QComboBox>
+#include <memory>
+#include <QAbstractButton>
+#include <QSlider>
+#include <QListWidget>
+#include "core/pensettings.h"
+#include "tools/tool.h"
 #include "appinfo.h"
 
 
@@ -137,10 +146,25 @@ static void dockedPanels() {
     settings.remove("ui/mainWindowStateV8");
 }
 
-// Settings > User Interface > Window System: XWayland or native Wayland.
+// Answers the next restart question with the button labeled `answer`;
+// *asked tells whether it came.
+static void answerRestartQuestion(const QString &answer, std::shared_ptr<bool> asked) {
+    QTimer::singleShot(0, [answer, asked]() {
+        for (QWidget *w : QApplication::topLevelWidgets()) {
+            auto *box = qobject_cast<QMessageBox *>(w);
+            if (!box || box->objectName() != "restartQuestion" || !box->isVisible()) continue;
+            *asked = true;
+            for (QAbstractButton *b : box->buttons())
+                if (b->text() == answer) { b->click(); return; }
+        }
+    });
+}
+
+// Settings > User Interface > Window System: native Wayland or XWayland, and
+// the restart it needs.
 static void windowSystemPreference() {
     QSettings settings(AppInfo::kId, AppInfo::kId);
-    settings.remove("display/nativeWayland");
+    settings.remove("display/windowSystem");
     const QByteArray savedWayland = qgetenv("WAYLAND_DISPLAY");
     const QString running = QStringLiteral("Running on: ")
         + DisplayServer::describe(QGuiApplication::platformName(), false);
@@ -148,10 +172,10 @@ static void windowSystemPreference() {
     {
         // Not a Wayland session: nothing to choose.
         SettingsDialog dialog;
-        auto *native = dialog.findChild<QCheckBox *>("nativeWayland");
+        auto *choice = dialog.findChild<QComboBox *>("windowSystemChoice");
         auto *label = dialog.findChild<QLabel *>("windowSystem");
-        auto *note = dialog.findChild<QLabel *>("nativeWaylandNote");
-        CHECK(native && !native->isEnabled() && !native->isChecked());
+        auto *note = dialog.findChild<QLabel *>("windowSystemNote");
+        CHECK(choice && !choice->isEnabled() && choice->currentIndex() == 0);   // native by default
         CHECK(label && label->text() == running);
         CHECK(note && note->text().contains("Wayland session"));
         // Only off Wayland can the app place its floating panels itself.
@@ -161,27 +185,127 @@ static void windowSystemPreference() {
     qputenv("WAYLAND_DISPLAY", "wayland-test");
     {
         SettingsDialog dialog;
-        auto *native = dialog.findChild<QCheckBox *>("nativeWayland");
-        auto *note = dialog.findChild<QLabel *>("nativeWaylandNote");
-        CHECK(native && native->isEnabled());
-        CHECK(note && note->text().contains("next time"));
+        auto *choice = dialog.findChild<QComboBox *>("windowSystemChoice");
+        auto *note = dialog.findChild<QLabel *>("windowSystemNote");
+        CHECK(choice && choice->isEnabled());
+        CHECK(note && note->text().contains("restart"));
         const QByteArray shots = qgetenv("PWM_SCREENSHOT_DIR");
         if (!shots.isEmpty()) {
             QDir().mkpath(QString::fromLocal8Bit(shots));
             dialog.resize(dialog.sizeHint().expandedTo(QSize(560, 400)));
             dialog.grab().save(QString::fromLocal8Bit(shots) + "/settings-window-system.png");
         }
-        if (native) {
-            native->setChecked(true);
-            CHECK(settings.value("display/nativeWayland").toBool());
-            CHECK(DisplayServer::nativeWaylandEnabled());
-            native->setChecked(false);
+        if (choice) {
+            // Switching asks for a restart; "Later" keeps the dialog open.
+            auto asked = std::make_shared<bool>(false);
+            answerRestartQuestion("Later", asked);
+            choice->setCurrentIndex(1);
+            CHECK(*asked);
+            CHECK(settings.value("display/windowSystem").toString() == "xwayland");
             CHECK(!DisplayServer::nativeWaylandEnabled());
+            CHECK(!dialog.restartRequested() && dialog.result() != QDialog::Accepted);
+            // "Restart Now" closes the dialog and asks the caller to restart.
+            asked = std::make_shared<bool>(false);
+            answerRestartQuestion("Restart Now", asked);
+            choice->setCurrentIndex(0);
+            CHECK(*asked);
+            CHECK(DisplayServer::nativeWaylandEnabled());
+            CHECK(dialog.restartRequested() && dialog.result() == QDialog::Accepted);
         }
     }
     if (savedWayland.isNull()) qunsetenv("WAYLAND_DISPLAY");
     else qputenv("WAYLAND_DISPLAY", savedWayland);
-    settings.remove("display/nativeWayland");
+    settings.remove("display/windowSystem");
+
+    // The main window closes like quitting and keeps the saved files to reopen.
+    QTemporaryDir dir;
+    const QString path = dir.path() + "/saved.png";
+    QImage(40, 30, QImage::Format_ARGB32_Premultiplied).save(path);
+    {
+        MainWindow window;
+        window.show();
+        window.openFile(path);
+        QApplication::processEvents();
+        window.restartApplication();
+        CHECK(window.restartRequested() && !window.isVisible());
+        CHECK(window.restartFiles().contains(path));
+    }
+    {
+        // Unsaved changes, and "Cancel" at the question: no restart.
+        MainWindow window;
+        window.show();
+        auto *canvas = window.findChild<CanvasWidget *>();
+        if (canvas && canvas->document()) canvas->document()->setModified(true);
+        QPointer<MainWindow> guard(&window);
+        QTimer::singleShot(0, [guard]() {
+            for (QWidget *w : QApplication::topLevelWidgets())
+                if (auto *box = qobject_cast<QMessageBox *>(w); box && box->isVisible())
+                    if (QAbstractButton *b = box->button(QMessageBox::Cancel)) b->click();
+        });
+        window.restartApplication();
+        CHECK(!window.restartRequested() && window.isVisible());
+        if (canvas && canvas->document()) canvas->document()->setModified(false);
+    }
+}
+
+// Settings > Tools: antialiasing for all tools, pressure curve, tilt; Help.
+static void toolSettingsPage() {
+    QSettings settings(AppInfo::kId, AppInfo::kId);
+    MainWindow window;
+    SettingsDialog dialog;
+    QObject::connect(&dialog, &SettingsDialog::toolSettingsChanged, &window, &MainWindow::applyToolSettings);
+    auto *antialias = dialog.findChild<QCheckBox *>("antialiasing");
+    auto *curve = dialog.findChild<QSlider *>("pressureCurve");
+    auto *reset = dialog.findChild<QPushButton *>("pressureCurveReset");
+    auto *tilt = dialog.findChild<QCheckBox *>("tiltFlattens");
+    CHECK(antialias && curve && reset && tilt && dialog.findChild<QWidget *>("penTestPad"));
+    auto *canvas = window.findChild<CanvasWidget *>();
+    if (antialias && canvas) {
+        CHECK(antialias->isChecked());
+        antialias->setChecked(false);
+        CHECK(!settings.value("tools/antialiasing").toBool());
+        CHECK(canvas->currentTool() && !canvas->currentTool()->antialiased());
+        antialias->setChecked(true);
+        CHECK(canvas->currentTool()->antialiased());
+        // No antialiasing switch in the tool bar any more.
+        bool inToolBar = false;
+        for (QCheckBox *c : window.findChildren<QCheckBox *>())
+            if (c->text() == QStringLiteral("Antialiasing")) inToolBar = true;
+        CHECK(!inToolBar);
+    }
+    if (curve && reset && tilt) {
+        curve->setValue(40);
+        CHECK(Pen::settings().pressureCurve == 40 && settings.value("pen/pressureCurve").toInt() == 40);
+        reset->click();
+        CHECK(Pen::settings().pressureCurve == 0);
+        tilt->setChecked(true);
+        CHECK(Pen::settings().tiltFlattens && settings.value("pen/tiltFlattens").toBool());
+        tilt->setChecked(false);
+    }
+    // The pressure mode in the tool bar: off, size, opacity, both.
+    auto *mode = window.findChild<QComboBox *>("pressureMode");
+    CHECK(mode && mode->count() == 4);
+    if (mode && canvas && canvas->currentTool()) {
+        mode->setCurrentIndex(2);
+        CHECK(canvas->currentTool()->pressureSensitivity()
+              && canvas->currentTool()->pressureTarget() == PressureTarget::Opacity);
+        mode->setCurrentIndex(0);
+        CHECK(!canvas->currentTool()->pressureSensitivity());
+        mode->setCurrentIndex(1);
+        CHECK(canvas->currentTool()->pressureTarget() == PressureTarget::Size);
+    }
+    // The Help page lists the shortcuts, tool keys from the registry included.
+    auto *help = dialog.findChild<QLabel *>("shortcutsHelp");
+    CHECK(help && help->text().contains("Perspective") && help->text().contains("F5")
+          && !help->text().contains(QChar(0x2026)) && !help->text().contains("Maj"));
+    const QByteArray shots = qgetenv("PWM_SCREENSHOT_DIR");
+    if (!shots.isEmpty()) {
+        if (auto *list = dialog.findChild<QListWidget *>()) list->setCurrentRow(3);
+        dialog.resize(640, 640);
+        dialog.grab().save(QString::fromLocal8Bit(shots) + "/settings-tools.png");
+        if (auto *list = dialog.findChild<QListWidget *>()) list->setCurrentRow(4);
+        dialog.grab().save(QString::fromLocal8Bit(shots) + "/settings-help.png");
+    }
 }
 
 static void utilityPanelPreferences() {
@@ -891,6 +1015,7 @@ int main(int argc, char **argv) {
     pasteDialogStyles();
     utilityPanelPreferences();
     windowSystemPreference();
+    toolSettingsPage();
     paths();
     cancelPrompt();
     expandPaste();

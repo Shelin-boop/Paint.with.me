@@ -30,8 +30,8 @@ BrushPreset BrushPreset::capture(const Tool &tool, const QString &name) {
     p.blendMode = tool.blendMode();
     p.fillStyle = tool.fillStyle();
     p.tolerance = tool.tolerance();
-    p.antialiased = tool.antialiased();
     p.pressureSensitivity = tool.pressureSensitivity();
+    p.pressureTarget = tool.pressureTarget();
     return p;
 }
 
@@ -52,15 +52,17 @@ void BrushPreset::applyTo(Tool &tool) const {
     tool.setBlendMode(blendMode);
     tool.setFillStyle(fillStyle);
     tool.setTolerance(tolerance);
-    tool.setAntialiased(antialiased);
+    // Antialiasing is one setting for all tools (Settings > Tools), not part
+    // of a preset.
     tool.setPressureSensitivity(pressureSensitivity);
+    tool.setPressureTarget(pressureTarget);
 }
 
 bool BrushPreset::sameSettings(const BrushPreset &o) const {
     return tool == o.tool && std::fabs(size - o.size) < 1e-9 && hardness == o.hardness
         && opacity == o.opacity && spacing == o.spacing && blendMode == o.blendMode
         && fillStyle == o.fillStyle && tolerance == o.tolerance
-        && antialiased == o.antialiased && pressureSensitivity == o.pressureSensitivity;
+        && pressureSensitivity == o.pressureSensitivity && pressureTarget == o.pressureTarget;
 }
 
 QJsonObject BrushPreset::toJson() const {
@@ -75,8 +77,8 @@ QJsonObject BrushPreset::toJson() const {
     o["blendMode"] = blendMode;
     o["fillStyle"] = fillStyle;
     o["tolerance"] = tolerance;
-    o["antialiased"] = antialiased;
     o["pressureSensitivity"] = pressureSensitivity;
+    o["pressureTarget"] = Tool::pressureTargetKey(pressureTarget);
     return o;
 }
 
@@ -94,8 +96,9 @@ bool BrushPreset::fromJson(const QJsonObject &o, BrushPreset *preset) {
                          int(Layer::allBlendModes().size()) - 1);
     p.fillStyle = qBound(0, o.value("fillStyle").toInt(p.fillStyle), Hatch::count() - 1);
     p.tolerance = qBound(0, o.value("tolerance").toInt(p.tolerance), 100);
-    p.antialiased = o.value("antialiased").toBool(p.antialiased);
+    // Older presets also stored "antialiased"; that is a global setting now.
     p.pressureSensitivity = o.value("pressureSensitivity").toBool(p.pressureSensitivity);
+    p.pressureTarget = Tool::pressureTargetFromKey(o.value("pressureTarget").toString());
     if (preset) *preset = p;
     return true;
 }

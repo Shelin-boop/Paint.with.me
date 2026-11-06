@@ -18,8 +18,8 @@ struct BrushPreset {
     int blendMode = 0;
     int fillStyle = 0;
     int tolerance = 50;
-    bool antialiased = true;
     bool pressureSensitivity = true;
+    PressureTarget pressureTarget = PressureTarget::Size;
 
     // Tools whose settings make a useful preset: the ones that paint with a
     // round tip.

@@ -17,7 +17,7 @@ public:
 
 private:
     void drawBrushStroke(const QPointF &from, const QPointF &to, const QColor &color);
-    void drawBrushDab(const QPointF &pos, const QColor &color);
+    void drawBrushDab(const Dab &dab, const QColor &color);
     QRect compositeStroke(class Document *doc, class Layer *layer, const QColor &color);
     void compositeOverwrite(class Document *doc, class Layer *layer, const QColor &color, const QRect &dirty);
     QPainter::CompositionMode brushCompositionMode() const;
@@ -40,4 +40,6 @@ private:
     QRegion m_selectionRegion;
     QColor m_strokeColor;
     QPointF m_currentPos;
+    bool m_strokePeak = false;   // pressure on opacity: keep the peak coverage
+    QImage m_dabScratch;
 };

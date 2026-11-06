@@ -144,6 +144,15 @@ bool MainWindow::maybeSave() {
     return maybeSaveDocument(m_document);
 }
 
+bool MainWindow::maybeSaveAll() {
+    // Every open image, not just the one in view: quitting used to ask only
+    // about the active image and dropped unsaved changes in the others.
+    const QVector<Document *> docs = m_documents;
+    for (Document *doc : docs)
+        if (!maybeSaveDocument(doc)) return false;
+    return true;
+}
+
 void MainWindow::newDocument() {
     NewDocumentDialog dlg(this);
     if (dlg.exec() == QDialog::Accepted) {

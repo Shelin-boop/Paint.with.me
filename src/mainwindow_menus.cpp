@@ -41,6 +41,7 @@
 #include "appinfo.h"
 #include "desktopintegration.h"
 #include "displayserver.h"
+#include "dialogs/shortcutshelp.h"
 #include <QMenuBar>
 
 void MainWindow::createMenus() {
@@ -320,31 +321,7 @@ void MainWindow::populatePluginsMenu(QMenu *pluginsMenu) {
 }
 
 void MainWindow::showShortcutsHelp() {
-    const QString html = QString(
-        "<h3>%1</h3>"
-        "<table cellspacing='6'>"
-        "<tr><td><b>%2</b></td><td>S · S×2 · S×3 · S×4</td></tr>"
-        "<tr><td><b>%3</b></td><td>M · M×2</td></tr>"
-        "<tr><td><b>%4</b></td><td>O · O×2</td></tr>"
-        "<tr><td>%5</td><td>B · P · E · F · G · H · K · L · R · T · Z</td></tr>"
-        "<tr><td>%6</td><td>[ ] &nbsp; Ctrl+[ Ctrl+]</td></tr>"
-        "<tr><td>%7</td><td>X · C</td></tr>"
-        "<tr><td>%8</td><td>F5 · F6 · F7 · F8</td></tr>"
-        "<tr><td>%9</td><td>Ctrl+Maj+F5…F8</td></tr>"
-        "<tr><td>%10</td><td>Ctrl+Z · Ctrl+Y</td></tr>"
-        "<tr><td>%11</td><td>Ctrl+F</td></tr>"
-        "</table>")
-        .arg(QStringLiteral("Keyboard shortcuts"),
-             QStringLiteral("Selection tools (cycle)"),
-             QStringLiteral("Move tools (cycle)"),
-             QStringLiteral("Line / Shapes (cycle)"),
-             QStringLiteral("Direct tool keys"),
-             QStringLiteral("Brush size"),
-             QStringLiteral("Swap / toggle colors"),
-             QStringLiteral("Tools / History / Layers / Colors windows"),
-             QStringLiteral("Reset a window's position"))
-        .arg(QStringLiteral("Undo / Redo"),
-             QStringLiteral("Repeat last effect"));
+    const QString html = ShortcutsHelp::html();
 
     QMessageBox box(this);
     box.setWindowTitle(QStringLiteral("Keyboard shortcuts"));
@@ -630,12 +607,8 @@ void MainWindow::populateFixedToolbar() {
     if (m_rulersAction)
         connect(m_rulersAction, &QAction::toggled, rulersToggle, &QAction::setChecked);
 
-    // Right side of the toolbar: the open-image thumbnail list (like browser tabs).
-    auto *spacer = new QWidget;
-    spacer->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Preferred);
-    toolbar->addWidget(spacer);
-
-    // Created here, together with the toolbar that hosts it.
+    // The rest of the toolbar: the open-image thumbnails (like browser tabs),
+    // centred on the window. Created here, together with the toolbar.
     m_imageListBar = new ImageListBar(this);
     connect(m_imageListBar, &ImageListBar::imageSelected, this, &MainWindow::setActiveDocument);
     connect(m_imageListBar, &ImageListBar::imageCloseRequested, this, &MainWindow::closeDocument);
