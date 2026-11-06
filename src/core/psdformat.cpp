@@ -1,6 +1,7 @@
 #include "core/psdformat.h"
 
 #include "core/document.h"
+#include "core/textframe.h"
 
 #include <QBuffer>
 #include <QFile>
@@ -234,6 +235,7 @@ struct Record {
     bool effects = false;
     bool vectorMask = false;
     bool text = false;
+    QByteArray pwmText;    // our own text-layer block
     // Group visibility and opacity applied:
     bool effectiveVisible = true;
     float effectiveOpacity = 1.0f;
@@ -337,6 +339,10 @@ bool parseLayerInfo(Cursor &c, qint64 end, bool psb, std::vector<Record> &record
                 r.vectorMask = true;
             } else if (key == "TySh" || key == "tySh") {
                 r.text = true;
+            } else if (key == "pwmT" && len > 0 && len < 64 * 1024 * 1024) {
+                QByteArray json = b.bytes(int(len));
+                while (json.endsWith('\0')) json.chop(1);   // padding
+                if (b.ok()) r.pwmText = json;
             } else {
                 static const QSet<QByteArray> adjustments = {
                     "SoCo", "GdFl", "PtFl", "brit", "levl", "curv", "expA", "vibA", "hue ",
@@ -794,7 +800,7 @@ bool readFrom(const uchar *data, qint64 size, ImageData &out, QString *error) {
         if (r.channel(-2) || r.channel(-3)) masked << r.name;
         if (r.clipping) clipped << r.name;
         if (r.vectorMask) vectorMasks << r.name;
-        if (r.text) texts << r.name;
+        if (r.text && r.pwmText.isEmpty()) texts << r.name;
         if (r.inGroup) inGroups << r.name;
         BlendMode m;
         if (!blendModeFromKey(r.blendKey, &m)) unknownModes << QStringLiteral("%1 (%2)").arg(r.name, photoshopModeName(r.blendKey));
@@ -825,6 +831,7 @@ bool readFrom(const uchar *data, qint64 size, ImageData &out, QString *error) {
         if (!decodeLayer(data, r, mode, depth, psb, canvas, layer, &wasCropped)) failed = true;
         if (wasCropped) cropped = true;
         layer.name = r.name;
+        layer.textFrame = r.pwmText;
         layer.visible = r.effectiveVisible;
         layer.opacity = qBound(0.0f, r.effectiveOpacity, 1.0f);
         layer.locked = (r.protection & 0x80000000u) || (r.protection & 0x02);
@@ -1190,6 +1197,11 @@ bool write(QIODevice *device, const std::vector<Layer> &layers, const QSize &siz
             for (QChar ch : name) appendU16(uni, ch.unicode());
         }
         taggedBlock(extra, "luni", uni);
+        if (auto text = layer.textFrame()) {
+            TextFrame placed = *text;
+            placed.box.translate(layer.textShift());
+            taggedBlock(extra, "pwmT", placed.serialize());
+        }
         if (layer.isLocked()) {
             QByteArray lock(4, '\0');
             qToBigEndian(quint32(0x80000000u), reinterpret_cast<uchar *>(lock.data()));

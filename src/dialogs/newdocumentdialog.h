@@ -1,34 +1,36 @@
 #pragma once
 #include <QDialog>
-#include <QSpinBox>
-#include <QComboBox>
 #include <QColor>
-#include <QPushButton>
-#include <QCheckBox>
-#include <QLabel>
 
+class QComboBox;
+class QPushButton;
+class QLabel;
+class QDialogButtonBox;
+class SizeFields;
+
+// File > New: size in pixels or as a print size (mm, cm, in) at a
+// resolution, screen and paper presets, background color.
 class NewDocumentDialog : public QDialog {
     Q_OBJECT
 public:
     explicit NewDocumentDialog(QWidget *parent = nullptr);
     int imageWidth() const;
     int imageHeight() const;
-    int resolution() const;
+    double resolution() const;   // pixels per inch
     QColor backgroundColor() const { return m_bgColor; }
-private slots:
+    SizeFields *sizeFields() const { return m_fields; }
+    QComboBox *presetCombo() const { return m_presetCombo; }
+
+private:
     void onPresetChanged(int index);
     void onChooseColor();
-    void onWidthChanged(int value);
-    void onHeightChanged(int value);
-private:
-    QSpinBox *m_widthSpin;
-    QSpinBox *m_heightSpin;
-    QSpinBox *m_resolutionSpin;
+    bool matchesPreset() const;
+
+    SizeFields *m_fields;
     QComboBox *m_presetCombo;
-    QCheckBox *m_aspectRatio;
     QPushButton *m_colorBtn;
-    QLabel *m_sizeInfoLabel;
+    QLabel *m_colorLabel;
+    QDialogButtonBox *m_buttons;
     QColor m_bgColor = Qt::white;
-    double m_ratio;
-    bool m_updating = false;
+    bool m_applyingPreset = false;
 };

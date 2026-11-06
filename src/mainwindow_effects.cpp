@@ -59,6 +59,7 @@
 
 void MainWindow::runPluginEffect(PluginEffect *effect) {
     if (!effect || !m_document) return;
+    if (!m_document || !convertTextLayersFor(targetLayerIndices())) return;
     auto *layer = m_document->activeLayer();
     if (!layer) return;
 
@@ -85,6 +86,7 @@ void MainWindow::runPluginEffect(PluginEffect *effect) {
 }
 
 void MainWindow::applyEffect(int effectIndex) {
+    if (!m_document || !convertTextLayersFor(targetLayerIndices())) return;
     auto *layer = m_document->activeLayer();
     if (!layer) return;
 
@@ -588,6 +590,7 @@ void MainWindow::applyEffect(int effectIndex) {
 // ---- Adjustments ----
 
 void MainWindow::applyAdjustment(int adjustmentIndex) {
+    if (!m_document || !convertTextLayersFor(targetLayerIndices())) return;
     auto *layer = m_document->activeLayer();
     if (!layer) return;
 

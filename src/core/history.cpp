@@ -112,6 +112,32 @@ void LayerAddCommand::redo() {
         m_doc->insertLayerDirect(m_index, std::make_shared<Layer>(*m_savedLayer));
 }
 
+// LayerReplaceCommand
+LayerReplaceCommand::LayerReplaceCommand(Document *doc, int index, std::shared_ptr<const Layer> before,
+                                         std::shared_ptr<const Layer> after, const QString &desc)
+    : m_doc(doc), m_index(index), m_before(std::move(before)), m_after(std::move(after)),
+      m_description(desc) {}
+
+void LayerReplaceCommand::apply(const std::shared_ptr<const Layer> &from, const std::shared_ptr<const Layer> &to) {
+    if (from && !to) {
+        m_doc->removeLayerDirect(m_index);
+        m_doc->setActiveLayer(qBound(0, m_index - 1, m_doc->layerCount() - 1));
+    } else if (!from && to) {
+        m_doc->insertLayerDirect(m_index, std::make_shared<Layer>(*to));
+    } else if (from && to) {
+        m_doc->replaceLayerDirect(m_index, std::make_shared<Layer>(*to));
+    }
+    m_doc->setModified(true);
+}
+
+void LayerReplaceCommand::undo() { apply(m_after, m_before); }
+void LayerReplaceCommand::redo() { apply(m_before, m_after); }
+
+void LayerReplaceCommand::forEachImage(const std::function<void(const QImage &)> &visit) const {
+    if (m_before) visit(m_before->image());
+    if (m_after) visit(m_after->image());
+}
+
 // LayerRemoveCommand
 LayerRemoveCommand::LayerRemoveCommand(Document *doc, int index, const QString &desc)
     : m_doc(doc), m_index(index), m_description(desc) {
@@ -158,6 +184,7 @@ DocumentSnapshotCommand::State DocumentSnapshotCommand::capture(Document *doc) {
     s.width = doc->width();
     s.height = doc->height();
     s.activeLayer = doc->activeLayerIndex();
+    s.dpi = doc->dpi();
     s.layers = doc->snapshotLayers();
     s.selection = doc->selection();
     return s;
@@ -168,6 +195,7 @@ void DocumentSnapshotCommand::restore(Document *doc, const State &state) {
     copy.reserve(state.layers.size());
     for (const auto &l : state.layers)
         copy.push_back(std::make_shared<Layer>(*l));
+    doc->setDpi(state.dpi);
     doc->restoreFromSnapshot(std::move(copy), state.width, state.height, state.activeLayer);
     doc->selection() = state.selection;
     emit doc->selectionChanged();
@@ -225,6 +253,7 @@ void LayerPropertyCommand::redo() { if (m_hasAfter) apply(m_after); }
 HistoryManager::HistoryManager(QObject *parent) : QObject(parent) {}
 
 void HistoryManager::push(std::unique_ptr<HistoryCommand> cmd) {
+    finishPendingEdit();   // an unfinished text edit comes first
     m_redoStack.clear();
     m_undoStack.push_back(std::move(cmd));
     trim();
@@ -298,7 +327,20 @@ qint64 HistoryManager::configuredMemoryBudget() {
     return mb > 0 ? qint64(mb) * 1024 * 1024 : defaultMemoryBudget();
 }
 
+void HistoryManager::setBeforeChange(std::function<void()> finishPendingEdit) {
+    m_beforeChange = std::move(finishPendingEdit);
+}
+
+void HistoryManager::finishPendingEdit() {
+    if (!m_beforeChange || m_finishing) return;
+    m_finishing = true;
+    auto finish = m_beforeChange;   // the call usually clears m_beforeChange
+    finish();
+    m_finishing = false;
+}
+
 void HistoryManager::undo() {
+    finishPendingEdit();
     if (m_undoStack.empty()) return;
     auto cmd = std::move(m_undoStack.back());
     m_undoStack.pop_back();
@@ -308,6 +350,7 @@ void HistoryManager::undo() {
 }
 
 void HistoryManager::redo() {
+    finishPendingEdit();
     if (m_redoStack.empty()) return;
     auto cmd = std::move(m_redoStack.back());
     m_redoStack.pop_back();
@@ -317,6 +360,7 @@ void HistoryManager::redo() {
 }
 
 void HistoryManager::goToIndex(int index) {
+    finishPendingEdit();
     const int total = static_cast<int>(m_undoStack.size() + m_redoStack.size());
     index = std::max(0, std::min(index, total));
     // currentIndex() == m_undoStack.size(); undo to shrink it, redo to grow it.

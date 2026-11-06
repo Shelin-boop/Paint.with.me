@@ -5,6 +5,7 @@ class RecolorTool : public Tool {
 public:
     ToolType type() const override { return ToolType::Recolor; }
     QString name() const override { return "Recolor"; }
+    bool changesLayerPixels(const Document *) const override { return true; }
     QCursor cursor() const override { return Qt::CrossCursor; }
 
     void mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;

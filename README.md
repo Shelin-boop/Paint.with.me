@@ -18,6 +18,8 @@ built natively in C++17 and Qt 6. No Wine, no .NET runtime.
 - Keep layered work in common formats only, no format of its own.
 - A portable AppImage that adds itself to the start menu.
 - New tools Paint.NET does not have: a smudge tool and a blur brush.
+- Text in frames that stays editable until you turn it into pixels.
+- Sizes in millimeters, centimeters or inches at a chosen resolution.
 
 ## Install
 
@@ -85,7 +87,7 @@ on Kubuntu).
 | Paint.NET `.pdn` | yes | no | kept |
 | PNG, JPEG, BMP, TIFF, WebP | yes | yes | flattened |
 | GIF | yes | no | flattened |
-| PDF | no | File > Export as PDF... | one page, or one page per layer |
+| PDF | pictures in it: File > Extract Picture from PDF... | File > Export as PDF... | one page, or one page per layer |
 
 To keep your layers, save as `.psd`. Krita and GIMP open it with every layer's
 name, position, opacity, visibility and blend mode, and the resolution (dpi)
@@ -101,6 +103,11 @@ applied), layer masks are applied to their layer, 16-bit and CMYK documents
 are converted to 8-bit RGB. Adjustment layers, layer styles and vector masks
 are not supported yet. After opening, a message lists anything that changed.
 
+Text layers are saved in a `.psd` as their pixels plus a small block of
+Paint.with.me's own with the text, so Paint.with.me can edit them again. Other
+programs skip that block and show the text layer as an ordinary pixel layer
+(checked with GIMP 2.10 and psd-tools).
+
 Saving writes a new file first and replaces the old one only when it is
 complete, so a crash or power loss while saving cannot damage it. Autosave
 (every minute, in the background) keeps the layers too.
@@ -111,6 +118,14 @@ px at 600 dpi gives a 322.8 x 222.3 mm page). Choose lossless pictures (every
 pixel exact) or JPEG, the whole image or one page per layer, and transparency
 or a white background.
 
+**File > Extract Picture from PDF...** (or opening or dropping a PDF) lists
+the pictures inside a PDF in the order its pages show them, with the first one
+chosen. Open it as a new image at the resolution it has on the page, copy it to
+the clipboard, or add it as a layer. It reads JPEG and the common lossless
+encodings, gray, RGB, CMYK and indexed colors and transparency. It does not
+draw whole pages, and it cannot read pictures stored as JPEG 2000, JBIG2 or
+CCITT fax, nor protected (encrypted) PDFs.
+
 ## Roadmap
 
 1. Rebrand and English-only interface (done)
@@ -120,6 +135,7 @@ or a white background.
 5. A memory-efficient undo history (done)
 6. Code cleanup, native Wayland (done)
 7. Smudge tool and blur brush (done)
+8. Editable text frames, print sizes in mm/cm/in with dpi, pictures from PDFs (done)
 
 ## Build from source
 

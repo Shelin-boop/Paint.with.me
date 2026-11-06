@@ -74,6 +74,8 @@ signals:
     void fillSelectionRequested();
     void selectionContextMenuRequested(const QPoint &globalPos);
     void tabletDetected();   // emitted the first time a stylus is used
+    // A tool that paints was used on a text layer and nothing happened.
+    void textLayerBlocked(const QString &layerName);
 
 protected:
     bool event(QEvent *event) override;   // claim ShortcutOverride while a tool types
@@ -86,6 +88,10 @@ protected:
     void keyReleaseEvent(QKeyEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
     void tabletEvent(QTabletEvent *event) override;
+    void inputMethodEvent(QInputMethodEvent *event) override;
+public:
+    QVariant inputMethodQuery(Qt::InputMethodQuery query) const override;
+protected:
 
 private:
     void drawCheckerboard(QPainter &painter, const QRect &rect);
@@ -110,6 +116,7 @@ private:
     // user pan turns it off; resetToDefaultView turns it back on.
     bool m_autoCenter = true;
 
+    bool m_blockedPress = false;   // this press reached a text layer with a painting tool
     bool m_isPanning = false;
     bool m_spaceDown = false;   // Space held: pan-drag with any tool (Paint.NET)
     QPoint m_lastPanPos;

@@ -750,9 +750,13 @@ static void retainedPainting() {
             const int failBefore = failures;
             CHECK(doc->flatten() == reference.flatten());
             CHECK(doc->primaryColor() == reference.primaryColor());
-            CHECK(doc->activeLayer()->image().size() == image.size());
-            CHECK(doc->activeLayer()->offset() == QPoint(-50,-40));
-            CHECK(doc->activeLayer()->image().pixelColor(0,0) == before.pixelColor(0,0));
+            // Text goes into a new text layer above; the pasted layer below it
+            // must keep its retained bitmap all the same.
+            const Layer *pasted = type == ToolType::Text ? doc->layerAt(1) : doc->activeLayer();
+            if (type == ToolType::Text) CHECK(doc->layerCount() == 3 && doc->activeLayer()->isTextLayer());
+            CHECK(pasted->image().size() == image.size());
+            CHECK(pasted->offset() == QPoint(-50,-40));
+            CHECK(pasted->image().pixelColor(0,0) == before.pixelColor(0,0));
             if (failures != failBefore) std::cerr << "  retained tool " << int(type) << " selected=" << selected << "\n";
         }
     }
@@ -881,16 +885,20 @@ static void typingTextPaste() {
     QMouseEvent press(QEvent::MouseButtonPress,QPointF(80,80),QPointF(80,80),Qt::LeftButton,Qt::LeftButton,Qt::NoModifier);
     tool->mousePressEvent(QPointF(80,80),&press,*canvas);
     CHECK(tool->wantsKeyInput());
-    const QImage before = doc->activeLayer()->image();
+    const QImage before = doc->layerAt(0)->image();
     QApplication::clipboard()->setText(path);
     noPrompt(w,"paste");
-    CHECK(canvas->currentTool() == tool); CHECK(doc->layerCount() == 1);
-    CHECK(doc->activeLayer()->image() == before);
-    QKeyEvent enter(QEvent::KeyPress,Qt::Key_Return,Qt::NoModifier);
-    tool->keyPressEvent(&enter,*canvas);
+    // Pasting while typing types the clipboard text; no image is pasted. The
+    // frame has its own layer.
+    CHECK(canvas->currentTool() == tool); CHECK(doc->layerCount() == 2);
+    CHECK(doc->layerAt(0)->image() == before);
+    CHECK(static_cast<TextTool *>(tool)->plainText() == path);
+    QKeyEvent esc(QEvent::KeyPress,Qt::Key_Escape,Qt::NoModifier);
+    tool->keyPressEvent(&esc,*canvas);
     CHECK(!tool->wantsKeyInput());
-    CHECK(doc->activeLayer()->image() != before);
+    CHECK(doc->layerAt(1)->isTextLayer());
     CHECK(doc->history().currentIndex() == 1);
+    doc->setModified(false);
 }
 static void pendingToolPaste() {
     for (ToolType type : {ToolType::Line, ToolType::Shape}) {

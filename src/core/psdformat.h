@@ -16,7 +16,8 @@ class QIODevice;
 //
 // Kept: every pixel layer with its name, position, opacity, visibility, lock
 // and blend mode (where Photoshop has the same mode), the resolution and the
-// selected layer. Written like Krita does: 8-bit RGB, each layer cropped to
+// selected layer. Text layers are written as their pixels plus a private
+// block with the text, so Paint.with.me can edit them again. Written like Krita does: 8-bit RGB, each layer cropped to
 // its content, PackBits (RLE) compression, a combined picture with
 // transparency for programs that do not read layers. Layers reaching past the
 // canvas keep those pixels.
@@ -37,6 +38,9 @@ struct LayerData {
     bool locked = false;
     float opacity = 1.0f;
     BlendMode blendMode = BlendMode::Normal;
+    // Paint.with.me's own block "pwmT": the text of a text layer
+    // (TextFrame::serialize()). Other programs skip it and show the pixels.
+    QByteArray textFrame;
 };
 
 struct ImageData {

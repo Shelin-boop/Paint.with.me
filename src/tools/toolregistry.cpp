@@ -75,8 +75,9 @@ const std::vector<ToolInfo> &toolInfos() {
          "Replaces a color with the active color where you paint.",
          "Left click to replace the secondary color with the primary."},
         {ToolType::Text, "text", "Text", "T", 8, 0,
-         "Adds text on the image.",
-         "Click to place text on the canvas."},
+         "Adds text in frames that stay editable until turned into pixels.",
+         "Drag to open a text frame, or click to start one. Click a text to edit it; "
+         "drag its border to move it. Esc or a click outside finishes."},
         {ToolType::Line, "line-curve", "Line / Curve", "O", 8, 1,
          "Draws lines and curves.",
          "Click and drag to draw a line. Hold Shift to constrain the angle."},

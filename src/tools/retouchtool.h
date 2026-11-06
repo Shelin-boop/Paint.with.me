@@ -13,6 +13,7 @@
 // them, soft selection edges included.
 class RetouchTool : public Tool {
 public:
+    bool changesLayerPixels(const class Document *) const override { return true; }
     void mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;
     void mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;
     void mouseReleaseEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;

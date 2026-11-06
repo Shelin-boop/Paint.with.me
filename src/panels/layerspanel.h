@@ -43,7 +43,8 @@ private slots:
     void syncOrderFromList();
     void showLayerContextMenu(const QPoint &pos);
     void mergeWithChoice(int topIndex);
-    QIcon makeThumbnail(const QImage &image) const;
+    // `text`: a text layer, marked with a T.
+    QIcon makeThumbnail(const QImage &image, bool text = false) const;
 
 private:
     Document *m_document = nullptr;

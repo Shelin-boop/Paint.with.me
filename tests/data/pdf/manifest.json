@@ -1,0 +1,230 @@
+{
+ "broken-xref.pdf": [
+  {
+   "dpi": 150,
+   "height": 30,
+   "page": 1,
+   "png": "img2pdf-rgb-0.png",
+   "tolerance": 0,
+   "width": 40
+  }
+ ],
+ "cmyk-raw.pdf": [
+  {
+   "dpi": 100,
+   "height": 10,
+   "page": 1,
+   "png": "cmyk-raw-0.png",
+   "tolerance": 1,
+   "width": 20
+  }
+ ],
+ "encrypted.pdf": {
+  "error": true
+ },
+ "form-separation.pdf": [
+  {
+   "dpi": 100,
+   "height": 20,
+   "page": 1,
+   "png": "form-separation-0.png",
+   "tolerance": 1,
+   "width": 20
+  }
+ ],
+ "img2pdf-bilevel.pdf": [
+  {
+   "dpi": 300,
+   "height": 21,
+   "page": 1,
+   "png": "img2pdf-bilevel-0.png",
+   "tolerance": 0,
+   "width": 37
+  }
+ ],
+ "img2pdf-cmyk-jpeg.pdf": [
+  {
+   "dpi": 96,
+   "height": 30,
+   "page": 1,
+   "png": "img2pdf-cmyk-jpeg-0.png",
+   "tolerance": 12,
+   "width": 40
+  }
+ ],
+ "img2pdf-gray.pdf": [
+  {
+   "dpi": 300,
+   "height": 30,
+   "page": 1,
+   "png": "img2pdf-gray-0.png",
+   "tolerance": 0,
+   "width": 40
+  }
+ ],
+ "img2pdf-indexed.pdf": [
+  {
+   "dpi": 200,
+   "height": 30,
+   "page": 1,
+   "png": "img2pdf-indexed-0.png",
+   "tolerance": 0,
+   "width": 40
+  }
+ ],
+ "img2pdf-jpeg.pdf": [
+  {
+   "dpi": 72,
+   "height": 32,
+   "page": 1,
+   "png": "img2pdf-jpeg-0.png",
+   "tolerance": 6,
+   "width": 48
+  }
+ ],
+ "img2pdf-rgb.pdf": [
+  {
+   "dpi": 150,
+   "height": 30,
+   "page": 1,
+   "png": "img2pdf-rgb-0.png",
+   "tolerance": 0,
+   "width": 40
+  }
+ ],
+ "incremental.pdf": [
+  {
+   "dpi": 300,
+   "height": 20,
+   "page": 1,
+   "png": "incremental-0.png",
+   "tolerance": 0,
+   "width": 30
+  }
+ ],
+ "jpx.pdf": [
+  {
+   "dpi": 100,
+   "height": 40,
+   "page": 1,
+   "problem": true,
+   "width": 50
+  },
+  {
+   "dpi": 100,
+   "height": 10,
+   "page": 1,
+   "png": "jpx-1.png",
+   "tolerance": 0,
+   "width": 10
+  }
+ ],
+ "lzw-a85-rl-hex.pdf": [
+  {
+   "dpi": 100,
+   "height": 17,
+   "page": 1,
+   "png": "lzw-a85-rl-hex-0.png",
+   "tolerance": 0,
+   "width": 33
+  },
+  {
+   "dpi": 100,
+   "height": 15,
+   "page": 1,
+   "png": "lzw-a85-rl-hex-1.png",
+   "tolerance": 0,
+   "width": 25
+  }
+ ],
+ "masks.pdf": [
+  {
+   "dpi": 100,
+   "height": 16,
+   "page": 1,
+   "png": "masks-0.png",
+   "tolerance": 0,
+   "width": 16
+  },
+  {
+   "dpi": 100,
+   "height": 8,
+   "page": 1,
+   "png": "masks-1.png",
+   "tolerance": 0,
+   "width": 16
+  }
+ ],
+ "objstm.pdf": [
+  {
+   "dpi": 36,
+   "height": 8,
+   "page": 1,
+   "png": "reportlab-pages-0.png",
+   "tolerance": 0,
+   "width": 8
+  },
+  {
+   "dpi": 300,
+   "height": 40,
+   "page": 1,
+   "png": "reportlab-pages-1.png",
+   "tolerance": 0,
+   "width": 60
+  },
+  {
+   "dpi": 30,
+   "height": 50,
+   "page": 2,
+   "png": "reportlab-pages-2.png",
+   "tolerance": 0,
+   "width": 30
+  }
+ ],
+ "reportlab-pages.pdf": [
+  {
+   "dpi": 36,
+   "height": 8,
+   "page": 1,
+   "png": "reportlab-pages-0.png",
+   "tolerance": 0,
+   "width": 8
+  },
+  {
+   "dpi": 300,
+   "height": 40,
+   "page": 1,
+   "png": "reportlab-pages-1.png",
+   "tolerance": 0,
+   "width": 60
+  },
+  {
+   "dpi": 30,
+   "height": 50,
+   "page": 2,
+   "png": "reportlab-pages-2.png",
+   "tolerance": 0,
+   "width": 30
+  }
+ ],
+ "rgb16.pdf": [
+  {
+   "dpi": 100,
+   "height": 9,
+   "page": 1,
+   "png": "rgb16-0.png",
+   "tolerance": 0,
+   "width": 12
+  }
+ ],
+ "smask.pdf": [
+  {
+   "dpi": 300,
+   "height": 20,
+   "page": 1,
+   "png": "smask-0.png",
+   "tolerance": 0,
+   "width": 30
+  }
+ ]
+}

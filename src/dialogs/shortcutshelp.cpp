@@ -43,7 +43,39 @@ QString html() {
                "<tr><td><b>Ctrl+Z &nbsp; Ctrl+Y</b></td><td>Undo, redo</td></tr>"
                "<tr><td><b>Ctrl+F</b></td><td>Repeat the last effect</td></tr>"
                "<tr><td><b>Alt+PgUp &nbsp; Alt+PgDown</b></td><td>Layer above, below</td></tr>"
-               "</table>")
+               "<tr><td colspan='2'><i>Typing in a text frame</i></td></tr>"
+               "<tr><td><b>Enter &nbsp; Shift+Enter</b></td><td>New paragraph, new line</td></tr>"
+               "<tr><td><b>Ctrl+B &nbsp; Ctrl+I &nbsp; Ctrl+U</b></td><td>Bold, italic, underline</td></tr>"
+               "<tr><td><b>Ctrl+A &nbsp; Ctrl+C &nbsp; Ctrl+X &nbsp; Ctrl+V</b></td>"
+               "<td>Select all, copy, cut, paste text</td></tr>"
+               "<tr><td><b>Ctrl+Z &nbsp; Ctrl+Y</b></td><td>Undo, redo typing</td></tr>"
+               "<tr><td><b>Esc &nbsp; Ctrl+Enter</b></td><td>Finish the frame</td></tr>"
+               "</table>"
+
+               "<h3>Text frames</h3>"
+               "<p>With the Text tool (T), drag to open a frame: the text wraps inside it. A click "
+               "without dragging starts a frame that grows with the text. Each frame is a layer of "
+               "its own, marked with a T in the Layers panel. Click its text to edit it again; drag "
+               "its border to move it, its handles to resize it. While typing, the tool bar's font, "
+               "size, style and alignment and the primary color change the selected text.</p>"
+               "<p>Font sizes are points at the image's resolution (1 pt = 1/72 inch), so 12 pt "
+               "prints 12 pt high. Painting tools and effects leave text layers alone until "
+               "Layers &gt; Convert Text to Pixels. A .psd keeps the text editable for "
+               "Paint.with.me; other programs show the same layer as pixels.</p>"
+
+               "<h3>Print size and resolution</h3>"
+               "<p>New, Resize and Canvas Size take sizes in pixels, millimeters, centimeters or "
+               "inches, and a resolution in pixels per inch (dpi) or per centimeter. The resolution "
+               "keeps whichever size you typed last, pixels or print size, so \u201c10 x 15 cm at "
+               "300 dpi\u201d comes out the same in any order. The choice is shown below the "
+               "resolution and can be changed.</p>"
+
+               "<h3>Pictures from a PDF</h3>"
+               "<p>File &gt; Extract Picture from PDF (or opening or dropping a PDF) shows the "
+               "pictures inside it in the order the pages show them, the first one chosen. Open it "
+               "as an image (with the resolution it has on the page), copy it to the clipboard, or "
+               "add it as a layer. Pages are not drawn; pictures stored as JPEG 2000, JBIG2 or "
+               "CCITT fax, and protected (encrypted) PDFs cannot be read.</p>")
         .arg(cycling, single);
 }
 

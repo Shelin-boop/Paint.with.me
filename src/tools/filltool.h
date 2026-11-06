@@ -6,6 +6,7 @@ class FillTool : public Tool {
 public:
     ToolType type() const override { return ToolType::Fill; }
     QString name() const override { return "Paint Bucket"; }
+    bool changesLayerPixels(const Document *) const override { return true; }
     QCursor cursor() const override;
 
     void mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;

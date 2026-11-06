@@ -11,6 +11,7 @@ class GradientTool : public Tool {
 public:
     ToolType type() const override { return ToolType::Gradient; }
     QString name() const override { return "Gradient"; }
+    bool changesLayerPixels(const Document *) const override { return true; }
 
     void mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;
     void mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;

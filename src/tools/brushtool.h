@@ -7,6 +7,7 @@ class BrushTool : public Tool {
 public:
     ToolType type() const override { return ToolType::Brush; }
     QString name() const override { return "Paintbrush"; }
+    bool changesLayerPixels(const Document *) const override { return true; }
     QCursor cursor() const override { return Qt::CrossCursor; }
 
     void mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;

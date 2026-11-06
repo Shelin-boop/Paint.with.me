@@ -9,6 +9,8 @@
 #include <QKeyEvent>
 #include <QEvent>
 #include <QTabletEvent>
+#include <QInputMethod>
+#include <QGuiApplication>
 #include <QSettings>
 #include <cmath>
 #include "appinfo.h"
@@ -32,7 +34,8 @@ bool CanvasWidget::event(QEvent *event)
         auto *ke = static_cast<QKeyEvent *>(event);
         const bool ctrlAlt = ke->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier);
         if ((m_currentTool->wantsKeyInput() && !ctrlAlt)
-            || m_currentTool->wantsCommitKey(ke->key())) {
+            || m_currentTool->wantsCommitKey(ke->key())
+            || m_currentTool->wantsShortcut(ke)) {
             event->accept();
             return true;
         }
@@ -46,12 +49,17 @@ CanvasWidget::CanvasWidget(QWidget *parent)
     setMouseTracking(true);
     setFocusPolicy(Qt::StrongFocus);
     setAttribute(Qt::WA_TabletTracking);
+    // Typing into a text frame accepts input methods (dead keys, compose,
+    // CJK); inputMethodQuery() says when that is on.
+    setAttribute(Qt::WA_InputMethodEnabled);
 
     connect(&m_marchingTimer, &QTimer::timeout, this, &CanvasWidget::updateMarchingAnts);
     m_marchingTimer.start(150);
 }
 
 void CanvasWidget::setDocument(Document *doc) {
+    // An unfinished edit (text frame, line) belongs to the image it was made in.
+    if (m_currentTool && doc != m_document) m_currentTool->deactivate(*this);
     m_previewImage = QImage();
     m_document = doc;
     if (doc) {
@@ -565,6 +573,17 @@ void CanvasWidget::mousePressEvent(QMouseEvent *event) {
             m_currentTool->setStylus(false);
             m_currentTool->setTilt(QPointF());
         }
+        // Painting tools leave text layers alone: they are turned into
+        // pixels first (Layers > Convert Text to Pixels).
+        if (m_currentTool->changesLayerPixels(m_document)) {
+            const Layer *layer = m_document->activeLayer();
+            if (layer && layer->isTextLayer()) {
+                m_blockedPress = true;
+                emit textLayerBlocked(layer->name());
+                return;
+            }
+        }
+        m_blockedPress = false;
         QPointF canvasPos = widgetToCanvas(event->position());
         m_snapActive = startsPerspectiveSnap(event);
         if (m_snapActive) {
@@ -573,6 +592,8 @@ void CanvasWidget::mousePressEvent(QMouseEvent *event) {
         }
         m_currentTool->mousePressEvent(canvasPos, event, *this);
         if (!m_currentTool->updatesCanvasRegion()) m_cacheValid = false;
+        if (m_currentTool->type() == ToolType::Text)   // typing may have started or stopped
+            QGuiApplication::inputMethod()->update(Qt::ImEnabled | Qt::ImCursorRectangle);
         update();
     }
 }
@@ -630,6 +651,11 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent *event) {
     if (fromPen && !m_penInContact)
         return;
 
+    if (m_blockedPress) return;
+    if (m_currentTool && m_document && event->buttons() == Qt::NoButton && !m_spaceDown
+        && m_currentTool->type() == ToolType::Text)
+        setCursor(m_currentTool->cursorAt(canvasPos, *this));   // handles, frame border, text
+
     if (m_currentTool && m_document) {
         if (m_snapActive && (event->buttons() & (Qt::LeftButton | Qt::RightButton)))
             canvasPos = perspectiveSnapped(canvasPos);
@@ -646,6 +672,10 @@ void CanvasWidget::mouseReleaseEvent(QMouseEvent *event) {
         return;
     }
 
+    if (m_blockedPress) {
+        m_blockedPress = false;
+        return;
+    }
     if (m_currentTool && m_document) {
         QPointF canvasPos = widgetToCanvas(event->position());
         if (m_snapActive) {
@@ -681,7 +711,8 @@ void CanvasWidget::keyPressEvent(QKeyEvent *event) {
         event->accept();
         return;
     }
-    if (event->key() == Qt::Key_Delete && m_document && m_document->selection().hasSelection()) {
+    if (event->key() == Qt::Key_Delete && m_document && m_document->selection().hasSelection()
+        && !(m_currentTool && m_currentTool->wantsKeyInput())) {
         emit deleteSelectionRequested();
         event->accept();
         return;
@@ -698,10 +729,30 @@ void CanvasWidget::keyPressEvent(QKeyEvent *event) {
 
     if (m_currentTool) {
         m_currentTool->keyPressEvent(event, *this);
-        m_cacheValid = false;
+        if (m_currentTool->type() == ToolType::Text)
+            QGuiApplication::inputMethod()->update(Qt::ImEnabled | Qt::ImCursorRectangle);
+        if (!m_currentTool->updatesCanvasRegion()) m_cacheValid = false;
         update();  // reflect tool state (e.g. text being typed) immediately
     }
     QWidget::keyPressEvent(event);
+}
+
+void CanvasWidget::inputMethodEvent(QInputMethodEvent *event) {
+    if (m_currentTool && m_currentTool->wantsKeyInput()) {
+        m_currentTool->inputMethodEvent(event, *this);
+        update();
+        return;
+    }
+    QWidget::inputMethodEvent(event);
+}
+
+QVariant CanvasWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
+    if (query == Qt::ImEnabled) return m_currentTool && m_currentTool->wantsKeyInput();
+    if (m_currentTool && m_currentTool->wantsKeyInput()) {
+        const QVariant v = m_currentTool->inputMethodQuery(query, *this);
+        if (v.isValid()) return v;
+    }
+    return QWidget::inputMethodQuery(query);
 }
 
 void CanvasWidget::keyReleaseEvent(QKeyEvent *event) {
