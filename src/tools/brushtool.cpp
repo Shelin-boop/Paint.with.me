@@ -1,7 +1,6 @@
 #include "brushtool.h"
 #include "canvas/canvaswidget.h"
 #include "core/document.h"
-#include "core/hatchpatterns.h"
 #include "core/layer.h"
 #include <QPainter>
 #include <cmath>
@@ -37,7 +36,9 @@ void BrushTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, Ca
     m_compositedOpacity = -1;
     m_selectionKey = -1;
     m_strokeColor = col;
-    drawBrushDab(canvasPos - layer->offset(), m_strokeColor);
+    m_strokePeak = strokeUsesPeakCoverage();
+    m_lastPressure = m_pressure;
+    drawBrushDab(dabAt(canvasPos - layer->offset(), m_pressure), m_strokeColor);
     canvas.updateCanvasRegion(compositeStroke(doc, layer, m_strokeColor).translated(layer->offset()));
 }
 
@@ -89,61 +90,18 @@ void BrushTool::mouseReleaseEvent(const QPointF &, QMouseEvent *event, CanvasWid
 }
 
 void BrushTool::drawBrushStroke(const QPointF &from, const QPointF &to, const QColor &color) {
-    double dx = to.x() - from.x();
-    double dy = to.y() - from.y();
-    double dist = std::sqrt(dx * dx + dy * dy);
-    double spacing = std::max(1.0, m_brushSize * (m_spacing / 100.0));
-    int steps = std::max(1, static_cast<int>(dist / spacing));
-
-    for (int i = 1; i <= steps; ++i) {
-        double t = (double)i / steps;
-        QPointF pos(from.x() + dx * t, from.y() + dy * t);
-        drawBrushDab(pos, color);
-    }
+    forEachDab(from, to, m_lastPressure, m_pressure,
+               [&](const Dab &dab) { drawBrushDab(dab, color); });
+    m_lastPressure = m_pressure;
 }
 
-void BrushTool::drawBrushDab(const QPointF &pos, const QColor &color) {
-    QPainter painter(&m_strokeBuffer);
-    if (m_antialiased) painter.setRenderHint(QPainter::Antialiasing);
-    painter.setPen(Qt::NoPen);
-
-    // Draw the dab opaque; opacity is applied when the buffer is composited.
+void BrushTool::drawBrushDab(const Dab &dab, const QColor &color) {
+    // Draw the dab opaque; the tool opacity is applied when the buffer is
+    // composited. Pressure sets the dab's size (Paint.NET), opacity or both.
     QColor c = color;
     c.setAlphaF(1.0);
-
-    // Paint.NET model: stylus pressure varies the dab SIZE (0..brush size), not
-    // the opacity. A mouse reports full pressure, so it stamps the full size.
-    const double p = m_pressureSensitivity ? m_pressure : 1.0;
-    const double radius = (m_brushSize / 2.0) * p;
-    if (radius < 0.4) return;   // effectively no pressure = no mark
-
-    // Include the rasterizer's antialias fringe, including fractional centres.
-    m_dirtyRect = m_dirtyRect.united(QRectF(pos.x() - radius - 2, pos.y() - radius - 2,
-                                          2 * radius + 4, 2 * radius + 4).toAlignedRect()
-                                    .intersected(m_strokeBuffer.rect()));
-
-    if (m_fillStyle > 0) {
-        // Patterned brush (Fill Style): stamp the hatch — pattern lines in the
-        // draw colour, transparent between them — with a hard edge.
-        painter.setBrush(Hatch::brush(m_fillStyle, c, QColor(Qt::transparent)));
-        painter.drawEllipse(pos, radius, radius);
-        return;
-    }
-
-    if (m_hardness >= 95) {
-        painter.setBrush(c);
-        painter.drawEllipse(pos, radius, radius);
-    } else {
-        QRadialGradient gradient(pos, radius);
-        double hardRatio = m_hardness / 100.0;
-        gradient.setColorAt(0, c);
-        gradient.setColorAt(hardRatio, c);
-        QColor transparent = c;
-        transparent.setAlpha(0);
-        gradient.setColorAt(1, transparent);
-        painter.setBrush(gradient);
-        painter.drawEllipse(pos, radius, radius);
-    }
+    m_dirtyRect = m_dirtyRect.united(paintDab(m_strokeBuffer, dab, c, m_hardness, m_fillStyle,
+                                              m_antialiased, m_strokePeak, m_dabScratch));
 }
 
 QRect BrushTool::compositeStroke(Document *doc, Layer *layer, const QColor &color) {

@@ -30,6 +30,7 @@ set(CORE_SOURCES
     src/core/psdformat.cpp
     src/core/pdfexport.cpp
     src/core/perspective.cpp
+    src/core/pensettings.cpp
     src/core/layer.cpp
     src/core/selection.cpp
     src/core/history.cpp
@@ -142,6 +143,8 @@ set(DIALOGS_SOURCES
     src/dialogs/previewdialog.cpp
     src/dialogs/saveconfigdialog.cpp
     src/dialogs/pdfexportdialog.cpp
+    src/dialogs/shortcutshelp.cpp
+    src/dialogs/penwidgets.cpp
 )
 
 set(PLUGINS_SOURCES

@@ -11,6 +11,10 @@
 #include "tools/recolortool.h"
 #include "tools/clonestamptool.h"
 #include "referencebrush.h"
+#include "core/pensettings.h"
+#include <QTabletEvent>
+#include <QPointingDevice>
+#include <QTemporaryDir>
 
 static int failures = 0;
 #define CHECK(c) do { if (!(c)) { ++failures; fprintf(stderr, "FAIL line %d: %s\n", __LINE__, #c); } } while (0)
@@ -69,6 +73,129 @@ static void differential() {
         a.history().redo(); CHECK(a.activeLayer()->image()==final);
     }
 }
+
+// ---- Pen extras: pressure curve, pressure on opacity, tilt ----
+static int maxAlpha(const QImage &img) {
+    int m = 0;
+    for (int y = 0; y < img.height(); ++y)
+        for (int x = 0; x < img.width(); ++x) m = std::max(m, qAlpha(img.pixel(x, y)));
+    return m;
+}
+static QRect paintedRect(const QImage &img, int threshold = 0) {
+    QRect r;
+    for (int y = 0; y < img.height(); ++y)
+        for (int x = 0; x < img.width(); ++x)
+            if (qAlpha(img.pixel(x, y)) > threshold) r |= QRect(x, y, 1, 1);
+    return r;
+}
+// Draws a stroke with `tool` on a transparent 200 x 100 image and returns it.
+static QImage penStroke(Tool &tool, bool stylus, double pressure, QPointF from, QPointF to,
+                        double endPressure = -1) {
+    Document doc(200, 100);
+    doc.activeLayer()->clear(Qt::transparent);
+    doc.setPrimaryColor(Qt::black);
+    CanvasWidget canvas;
+    canvas.setDocument(&doc);
+    tool.setStylus(stylus);
+    tool.setPressure(pressure);
+    send(tool, canvas, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+    if (endPressure >= 0) tool.setPressure(endPressure);
+    send(tool, canvas, QEvent::MouseMove, to, Qt::NoButton, Qt::LeftButton);
+    send(tool, canvas, QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton);
+    return doc.activeLayer()->image().copy();
+}
+static void penExtras() {
+    // The curve: straight at 0, soft lifts light pressure, firm lowers it.
+    CHECK(std::fabs(Pen::mapPressure(0.5, 0) - 0.5) < 1e-9);
+    CHECK(Pen::mapPressure(0.5, -100) > 0.8 && Pen::mapPressure(0.5, 100) < 0.1);
+    CHECK(Pen::mapPressure(0.0, 60) == 0.0 && std::fabs(Pen::mapPressure(1.0, -60) - 1.0) < 1e-9);
+    CHECK(std::fabs(Pen::curveExponent(50) - 2.0) < 1e-9);
+    // Tilt: none = round; 60 deg to the right = half as wide across, along x.
+    CHECK(Pen::tipForTilt(QPointF()).roundness == 1.0);
+    const Pen::TipShape right = Pen::tipForTilt(QPointF(60, 0));
+    CHECK(std::fabs(right.roundness - 0.5) < 1e-6 && std::fabs(right.angle) < 1e-6);
+    CHECK(std::fabs(Pen::tipForTilt(QPointF(0, 45)).angle - 90.0) < 1e-6);
+
+    // Pressure on opacity: a light pen stroke stays light, however many dabs
+    // overlap, and keeps the full size.
+    BrushTool brush;
+    brush.setBrushSize(20);
+    brush.setSpacing(5);   // many overlapping dabs
+    brush.setPressureTarget(PressureTarget::Opacity);
+    QImage light = penStroke(brush, true, 0.3, {30, 50}, {170, 50});
+    CHECK(std::abs(maxAlpha(light) - 77) <= 2);
+    CHECK(paintedRect(light, 0).height() >= 19);
+    // The same with a mouse: full pressure, full opacity.
+    CHECK(maxAlpha(penStroke(brush, false, 0.3, {30, 50}, {170, 50})) == 255);
+    // Size and opacity together: thinner and lighter.
+    brush.setPressureTarget(PressureTarget::SizeAndOpacity);
+    QImage both = penStroke(brush, true, 0.5, {30, 50}, {170, 50});
+    CHECK(std::abs(maxAlpha(both) - 128) <= 2 && paintedRect(both, 0).height() <= 13);
+    // Size only (Paint.NET): full opacity, thinner.
+    brush.setPressureTarget(PressureTarget::Size);
+    QImage thin = penStroke(brush, true, 0.5, {30, 50}, {170, 50});
+    CHECK(maxAlpha(thin) == 255 && paintedRect(thin, 0).height() <= 13);
+    // Pressure goes smoothly along a segment: thin at the start, wide at the end.
+    QImage swell = penStroke(brush, true, 0.2, {20, 50}, {180, 50}, 1.0);
+    auto columnHeight = [](const QImage &img, int x) {
+        int n = 0;
+        for (int y = 0; y < img.height(); ++y) if (qAlpha(img.pixel(x, y)) > 128) ++n;
+        return n;
+    };
+    CHECK(columnHeight(swell, 40) < columnHeight(swell, 100));
+    CHECK(columnHeight(swell, 100) < columnHeight(swell, 170));
+
+    // Tilt flattens the tip when chosen: a pen tilted to the right makes a dab
+    // as wide as before along x but half as tall.
+    Pen::settings().tiltFlattens = true;
+    brush.setTilt(QPointF(60, 0));
+    QImage dab = penStroke(brush, true, 1.0, {100, 50}, {100, 50});
+    const QRect flat = paintedRect(dab, 128);
+    CHECK(flat.width() >= 18 && flat.height() <= 12);
+    // A mouse ignores tilt.
+    const QRect mouseDab = paintedRect(penStroke(brush, false, 1.0, {100, 50}, {100, 50}), 128);
+    CHECK(mouseDab.height() >= 18);
+    Pen::settings().tiltFlattens = false;
+    CHECK(paintedRect(penStroke(brush, true, 1.0, {100, 50}, {100, 50}), 128).height() >= 18);
+    brush.setTilt(QPointF());
+
+    // The eraser follows pressure on opacity too: half pressure leaves half alpha.
+    {
+        Document doc(200, 100);
+        doc.activeLayer()->clear(Qt::black);
+        CanvasWidget canvas;
+        canvas.setDocument(&doc);
+        EraserTool eraser;
+        eraser.setBrushSize(20);
+        eraser.setSpacing(5);
+        eraser.setPressureTarget(PressureTarget::Opacity);
+        eraser.setStylus(true);
+        eraser.setPressure(0.5);
+        send(eraser, canvas, QEvent::MouseButtonPress, {30, 50}, Qt::LeftButton, Qt::LeftButton);
+        send(eraser, canvas, QEvent::MouseMove, {170, 50}, Qt::NoButton, Qt::LeftButton);
+        send(eraser, canvas, QEvent::MouseButtonRelease, {170, 50}, Qt::LeftButton, Qt::NoButton);
+        CHECK(std::abs(qAlpha(doc.activeLayer()->image().pixel(100, 50)) - 128) <= 2);
+    }
+
+    // The canvas applies the curve to the pen's pressure and passes the tilt on.
+    {
+        Document doc(200, 100);
+        CanvasWidget canvas;
+        canvas.resize(300, 200);
+        canvas.setDocument(&doc);
+        BrushTool tool;
+        canvas.setCurrentTool(&tool);
+        Pen::settings().pressureCurve = 50;   // exponent 2
+        QTabletEvent move(QEvent::TabletMove, QPointingDevice::primaryPointingDevice(),
+                          QPointF(50, 50), QPointF(50, 50), 0.5, 20.0f, -10.0f, 0.0f, 0.0, 0.0f,
+                          Qt::NoModifier, Qt::NoButton, Qt::NoButton);
+        QApplication::sendEvent(&canvas, &move);
+        CHECK(std::fabs(tool.pressure() - 0.25) < 1e-6);
+        CHECK(tool.stylus() && tool.tilt() == QPointF(20, -10));
+        Pen::settings().pressureCurve = 0;
+    }
+}
+
 static double benchmark(int w, int h, int mode, bool paint, bool selected = false) {
     Document doc(w,h); CanvasWidget canvas; BrushTool brush;
     canvas.resize(512,512); canvas.setDocument(&doc); canvas.setShowRulers(false);
@@ -225,8 +352,12 @@ static void regionalToolsDifferential() {
 }
 
 int main(int argc,char **argv) {
+    // Settings (pen settings) go to a temporary folder, not the real ~/.config.
+    QTemporaryDir config;
+    qputenv("XDG_CONFIG_HOME", config.path().toUtf8());
     QApplication app(argc,argv);
     differential();
+    penExtras();
     renderDifferential();
     largeDifferential();
     regionalToolsDifferential();

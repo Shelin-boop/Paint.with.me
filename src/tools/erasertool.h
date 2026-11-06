@@ -14,7 +14,7 @@ public:
 
 private:
     void eraseStroke(const QPointF &from, const QPointF &to);
-    void eraseDab(const QPointF &pos);
+    void eraseDab(const Dab &dab);
     void compositeErase(class Document *doc, class Layer *layer, CanvasWidget &canvas);
 public:
     bool updatesCanvasRegion() const override { return true; }
@@ -27,4 +27,6 @@ private:
     QImage m_beforeImage;
     QImage m_strokeBuffer;
     QRect m_dirtyRect;   // dabs added since the last composite (document pixels)
+    bool m_strokePeak = false;   // pressure on opacity: keep the peak coverage
+    QImage m_dabScratch;
 };

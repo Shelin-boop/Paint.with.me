@@ -12,6 +12,7 @@
 #include <QSettings>
 #include <cmath>
 #include "appinfo.h"
+#include "core/pensettings.h"
 
 bool CanvasWidget::event(QEvent *event)
 {
@@ -561,6 +562,8 @@ void CanvasWidget::mousePressEvent(QMouseEvent *event) {
         if (event->source() == Qt::MouseEventNotSynthesized && !m_penInContact) {
             m_pressure = 1.0;
             m_currentTool->setPressure(1.0);
+            m_currentTool->setStylus(false);
+            m_currentTool->setTilt(QPointF());
         }
         QPointF canvasPos = widgetToCanvas(event->position());
         m_snapActive = startsPerspectiveSnap(event);
@@ -726,9 +729,13 @@ void CanvasWidget::tabletEvent(QTabletEvent *event) {
     // Record pressure, then ignore so Qt still synthesises the compatibility
     // mouse press/move/release that actually drive the tool. Accepting here would
     // swallow those and the stylus would update pressure but never draw.
-    m_pressure = event->pressure() > 0.0 ? event->pressure() : m_pressure;
-    if (m_currentTool)
+    // The pressure curve from Settings > Tools applies here, for all tools.
+    m_pressure = event->pressure() > 0.0 ? Pen::mapPressure(event->pressure()) : m_pressure;
+    if (m_currentTool) {
         m_currentTool->setPressure(m_pressure);
+        m_currentTool->setTilt(QPointF(event->xTilt(), event->yTilt()));
+        m_currentTool->setStylus(true);
+    }
     if (!m_tabletSeen) {
         m_tabletSeen = true;
         emit tabletDetected();   // reveal the Pressure toggle, like Paint.NET

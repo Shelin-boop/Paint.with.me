@@ -10,11 +10,16 @@
 #include <QCheckBox>
 #include <QSlider>
 #include <QLabel>
+#include <QMessageBox>
 #include <QPushButton>
 #include <QSettings>
 #include "appinfo.h"
 #include "displayserver.h"
 #include "core/history.h"
+#include "core/pensettings.h"
+#include "dialogs/penwidgets.h"
+#include "dialogs/shortcutshelp.h"
+#include <QScrollArea>
 #include <QGroupBox>
 #include <QGuiApplication>
 #include <QSignalBlocker>
@@ -42,10 +47,8 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_pages->addWidget(buildUserInterfacePage());
     m_pages->addWidget(buildCanvasPage());
     m_pages->addWidget(buildHistoryPage());
-    m_pages->addWidget(buildPlaceholderPage(
-        QStringLiteral("Brush width ( [ and ] to adjust )")));
-    m_pages->addWidget(buildPlaceholderPage(
-        QStringLiteral("Tip: F5–F8 show/hide the Tools, History, ")));
+    m_pages->addWidget(buildToolsPage());
+    m_pages->addWidget(buildHelpPage());
     body->addWidget(m_pages, 1);
 
     connect(m_categories, &QListWidget::currentRowChanged,
@@ -116,7 +119,7 @@ QWidget *SettingsDialog::buildUserInterfacePage() {
         followPanels->setToolTip(QStringLiteral("On Wayland the desktop places windows, not the app."));
     }
 
-    // ---- Window system: XWayland or native Wayland ----
+    // ---- Window system: native Wayland or XWayland ----
     const bool waylandSession = !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY");
     auto *windowGroup = new QGroupBox(QStringLiteral("Window System"));
     auto *windowLayout = new QVBoxLayout(windowGroup);
@@ -125,27 +128,39 @@ QWidget *SettingsDialog::buildUserInterfacePage() {
     current->setObjectName("windowSystem");
     windowLayout->addWidget(current);
 
-    auto *native = new QCheckBox(QStringLiteral("Run natively on Wayland (experimental)"));
-    native->setObjectName("nativeWayland");
-    native->setToolTip(QStringLiteral(
-        "Sharper with fractional display scaling, and pen input goes to Wayland directly. "
-        "Floating panels are then placed by the desktop, not by the app."));
-    native->setChecked(DisplayServer::nativeWaylandEnabled());
-    native->setEnabled(waylandSession);
-    windowLayout->addWidget(native);
+    auto *choiceRow = new QHBoxLayout;
+    choiceRow->addWidget(new QLabel(QStringLiteral("In a Wayland session, use:")));
+    auto *choice = new QComboBox;
+    choice->setObjectName("windowSystemChoice");
+    choice->addItem(QStringLiteral("Wayland (native, recommended)"), true);
+    choice->addItem(QStringLiteral("XWayland (for compatibility)"), false);
+    choice->setToolTip(QStringLiteral(
+        "Native Wayland is sharper with fractional display scaling, and the desktop places "
+        "floating panels. XWayland runs the app as an X11 program, for setups where "
+        "native Wayland causes trouble."));
+    choice->setCurrentIndex(DisplayServer::nativeWaylandEnabled() ? 0 : 1);
+    choice->setEnabled(waylandSession);
+    choiceRow->addWidget(choice);
+    choiceRow->addStretch();
+    windowLayout->addLayout(choiceRow);
 
     auto *note = new QLabel;
-    note->setObjectName("nativeWaylandNote");
+    note->setObjectName("windowSystemNote");
     note->setWordWrap(true);
     if (!waylandSession)
         note->setText(QStringLiteral("Only applies in a Wayland session."));
     else if (DisplayServer::platformForcedAtStartup())
         note->setText(QStringLiteral("This time QT_QPA_PLATFORM or -platform decided."));
     else
-        note->setText(QStringLiteral("Applies the next time Paint.with.me starts."));
+        note->setText(QStringLiteral("A change needs a restart of Paint.with.me."));
     windowLayout->addWidget(note);
-    connect(native, &QCheckBox::toggled, this, [](bool checked) {
-        DisplayServer::setNativeWaylandEnabled(checked);
+    connect(choice, &QComboBox::currentIndexChanged, this, [this, choice](int) {
+        const bool native = choice->currentData().toBool();
+        DisplayServer::setNativeWaylandEnabled(native);
+        if (DisplayServer::platformForcedAtStartup()
+            || DisplayServer::runningAsChosen(QGuiApplication::platformName(), native))
+            return;
+        askForRestart(native ? QStringLiteral("native Wayland") : QStringLiteral("XWayland"));
     });
     layout->addWidget(windowGroup);
 
@@ -231,13 +246,134 @@ void SettingsDialog::setHistoryUsage(qint64 bytes, int steps) {
                                 .arg(steps).arg(double(bytes) / (1024.0 * 1024.0), 0, 'f', 1));
 }
 
-QWidget *SettingsDialog::buildPlaceholderPage(const QString &text) {
+void SettingsDialog::askForRestart(const QString &windowSystem) {
+    QMessageBox box(this);
+    box.setObjectName("restartQuestion");
+    box.setIcon(QMessageBox::Information);
+    box.setWindowTitle(QStringLiteral("Restart Required"));
+    box.setText(QStringLiteral("Paint.with.me uses %1 after a restart.").arg(windowSystem));
+    box.setInformativeText(QStringLiteral(
+        "Restart now? You are asked to save unsaved changes first, and saved images "
+        "open again."));
+    QPushButton *now = box.addButton(QStringLiteral("Restart Now"), QMessageBox::AcceptRole);
+    box.addButton(QStringLiteral("Later"), QMessageBox::RejectRole);
+    box.setDefaultButton(now);
+    box.exec();
+    if (box.clickedButton() != now) return;
+    m_restartRequested = true;
+    accept();
+}
+
+QWidget *SettingsDialog::buildToolsPage() {
     auto *page = new QWidget;
     auto *layout = new QVBoxLayout(page);
-    auto *label = new QLabel(text);
-    label->setWordWrap(true);
-    label->setAlignment(Qt::AlignTop);
-    layout->addWidget(label);
-    layout->addStretch();
+
+    // ---- Drawing ----
+    auto *drawing = new QGroupBox(QStringLiteral("Drawing"));
+    auto *drawingLayout = new QVBoxLayout(drawing);
+    auto *antialias = new QCheckBox(QStringLiteral("Smooth edges (antialiasing)"));
+    antialias->setObjectName("antialiasing");
+    antialias->setToolTip(QStringLiteral(
+        "Smooths the edges of brush strokes, shapes, lines, fills, gradients and text. "
+        "Turn it off for hard pixel edges, for example in pixel art."));
+    antialias->setChecked(QSettings(AppInfo::kId, AppInfo::kId).value("tools/antialiasing", true).toBool());
+    connect(antialias, &QCheckBox::toggled, this, [this](bool on) {
+        QSettings(AppInfo::kId, AppInfo::kId).setValue("tools/antialiasing", on);
+        emit toolSettingsChanged();
+    });
+    drawingLayout->addWidget(antialias);
+    auto *keys = new QLabel(QStringLiteral("[ and ] change the brush width; with Ctrl in bigger steps."));
+    keys->setWordWrap(true);
+    drawingLayout->addWidget(keys);
+    layout->addWidget(drawing);
+
+    // ---- Pen and tablet ----
+    auto *pen = new QGroupBox(QStringLiteral("Pen and Tablet"));
+    auto *penLayout = new QVBoxLayout(pen);
+    auto *curveRow = new QHBoxLayout;
+    auto *curveControls = new QVBoxLayout;
+    curveControls->addWidget(new QLabel(QStringLiteral("Pressure response:")));
+    auto *sliderRow = new QHBoxLayout;
+    sliderRow->addWidget(new QLabel(QStringLiteral("Soft")));
+    auto *curveSlider = new QSlider(Qt::Horizontal);
+    curveSlider->setObjectName("pressureCurve");
+    curveSlider->setRange(-100, 100);
+    curveSlider->setPageStep(10);
+    curveSlider->setValue(Pen::settings().pressureCurve);
+    curveSlider->setToolTip(QStringLiteral(
+        "Soft: a light touch already paints strongly. Firm: you need to press harder."));
+    sliderRow->addWidget(curveSlider, 1);
+    sliderRow->addWidget(new QLabel(QStringLiteral("Firm")));
+    curveControls->addLayout(sliderRow);
+    auto *resetCurve = new QPushButton(QStringLiteral("As the Pen Reports It"));
+    resetCurve->setObjectName("pressureCurveReset");
+    resetCurve->setToolTip(QStringLiteral("A straight curve: no change to the pen's pressure."));
+    auto *resetRow = new QHBoxLayout;
+    resetRow->addWidget(resetCurve);
+    resetRow->addStretch();
+    curveControls->addLayout(resetRow);
+    curveControls->addStretch();
+    curveRow->addLayout(curveControls, 1);
+    auto *curveView = new PressureCurveView;
+    curveView->setCurve(Pen::settings().pressureCurve);
+    curveView->setFixedSize(96, 96);
+    curveRow->addWidget(curveView);
+    penLayout->addLayout(curveRow);
+    connect(curveSlider, &QSlider::valueChanged, this, [this, curveView](int value) {
+        Pen::settings().pressureCurve = value;
+        Pen::saveSettings();
+        curveView->setCurve(value);
+        emit toolSettingsChanged();
+    });
+    connect(resetCurve, &QPushButton::clicked, curveSlider, [curveSlider]() { curveSlider->setValue(0); });
+
+    auto *tilt = new QCheckBox(QStringLiteral("Tilting the pen flattens the brush tip (brush and eraser)"));
+    tilt->setObjectName("tiltFlattens");
+    tilt->setToolTip(QStringLiteral(
+        "Like the side of a pencil: the more you tilt the pen, the narrower the tip gets "
+        "across the tilt. Needs a pen that reports tilt."));
+    tilt->setChecked(Pen::settings().tiltFlattens);
+    connect(tilt, &QCheckBox::toggled, this, [this](bool on) {
+        Pen::settings().tiltFlattens = on;
+        Pen::saveSettings();
+        emit toolSettingsChanged();
+    });
+    penLayout->addWidget(tilt);
+    auto *perTool = new QLabel(QStringLiteral(
+        "Whether pressure changes the size, the opacity or both is chosen for each tool in "
+        "the tool bar (Pressure); it appears there once a pen has been used."));
+    perTool->setWordWrap(true);
+    penLayout->addWidget(perTool);
+
+    auto *pad = new PenTestPad;
+    penLayout->addWidget(pad, 1);
+    auto *readingRow = new QHBoxLayout;
+    auto *reading = new QLabel(QStringLiteral("No pen seen yet."));
+    reading->setObjectName("penReading");
+    readingRow->addWidget(reading, 1);
+    auto *clearPad = new QPushButton(QStringLiteral("Clear"));
+    readingRow->addWidget(clearPad);
+    penLayout->addLayout(readingRow);
+    connect(clearPad, &QPushButton::clicked, pad, [pad]() { pad->clear(); });
+    pad->onPenReading = [reading](double raw, double mapped, QPointF tiltDegrees) {
+        reading->setText(QStringLiteral("Pressure %1, after the curve %2. Tilt %3 deg across, %4 deg down.")
+                             .arg(raw, 0, 'f', 2).arg(mapped, 0, 'f', 2)
+                             .arg(tiltDegrees.x(), 0, 'f', 0).arg(tiltDegrees.y(), 0, 'f', 0));
+    };
+    layout->addWidget(pen, 1);
     return page;
+}
+
+QWidget *SettingsDialog::buildHelpPage() {
+    auto *label = new QLabel(ShortcutsHelp::html());
+    label->setObjectName("shortcutsHelp");
+    label->setTextFormat(Qt::RichText);
+    label->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    label->setWordWrap(true);
+    label->setMargin(6);
+    auto *scroll = new QScrollArea;
+    scroll->setWidgetResizable(true);
+    scroll->setFrameShape(QFrame::NoFrame);
+    scroll->setWidget(label);
+    return scroll;
 }

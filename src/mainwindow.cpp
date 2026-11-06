@@ -230,6 +230,28 @@ void MainWindow::saveUiState() {
 
 void MainWindow::createTools() {
     for (const ToolInfo &info : toolInfos()) m_tools.push_back(createTool(info.type));
+    applyToolSettings();
+}
+
+void MainWindow::applyToolSettings() {
+    // Antialiasing is one switch for all tools (Settings > Tools).
+    const bool antialias = QSettings(AppInfo::kId, AppInfo::kId).value("tools/antialiasing", true).toBool();
+    for (auto &tool : m_tools) tool->setAntialiased(antialias);
+    if (m_canvas) m_canvas->update();
+}
+
+void MainWindow::restartApplication() {
+    // Saved images open again in the new instance; unsaved changes are asked
+    // about first, as when quitting. Cancelling that cancels the restart.
+    QStringList files;
+    for (Document *doc : m_documents)
+        if (!doc->filePath().isEmpty()) files << doc->filePath();
+    m_restartFiles = files;
+    m_restartRequested = true;
+    if (!close()) {
+        m_restartRequested = false;
+        m_restartFiles.clear();
+    }
 }
 
 void MainWindow::applyTheme() {
@@ -273,8 +295,11 @@ void MainWindow::showSettingsDialog() {
         for (Document *doc : m_documents) doc->history().setMemoryBudget(budget);
         showUsage();
     });
+    connect(&dlg, &SettingsDialog::toolSettingsChanged, this, &MainWindow::applyToolSettings);
     showUsage();
     dlg.exec();
+    if (dlg.restartRequested())
+        QTimer::singleShot(0, this, &MainWindow::restartApplication);
 }
 
 void MainWindow::selectTool(ToolType type) {
@@ -336,7 +361,7 @@ void MainWindow::onZoomChanged(double zoom) {
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
-    if (maybeSave()) {
+    if (maybeSaveAll()) {
         saveUiState();
         m_autosaveJob.waitForFinished();   // let a running autosave finish first
         clearAutosave();   // clean exit -> discard the recovery snapshot

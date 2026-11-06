@@ -19,7 +19,7 @@ int main(int argc, char *argv[]) {
         }
     }
 
-    // On a Wayland desktop: XWayland, or natively when chosen in Settings.
+    // On a Wayland desktop: natively, or XWayland when chosen in Settings.
     // QT_QPA_PLATFORM or -platform, when given, always wins.
     DisplayServer::applyAtStartup(argc, argv);
 
@@ -60,5 +60,10 @@ int main(int argc, char *argv[]) {
             window.openFile(path);
     }
 
-    return app.exec();
+    const int result = app.exec();
+    // Settings > User Interface > window system, "Restart Now": the window
+    // has closed (after asking about unsaved changes); start again.
+    if (window.restartRequested() && !DisplayServer::relaunch(window.restartFiles()))
+        std::fprintf(stderr, "Paint.with.me could not start itself again.\n");
+    return result;
 }

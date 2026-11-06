@@ -21,6 +21,7 @@
 #include "core/document.h"
 #include "mainwindow.h"
 #include "panels/toolspanel.h"
+#include "panels/imagelistbar.h"
 #include "toolicons.h"
 #include "tools/brushpreset.h"
 #include "tools/brushtool.h"
@@ -132,7 +133,7 @@ static void presets() {
     brush.setSpacing(15);
     brush.setOpacity(80);
     brush.setBlendMode(3);
-    brush.setAntialiased(false);
+    brush.setPressureTarget(PressureTarget::SizeAndOpacity);
     const BrushPreset p = BrushPreset::capture(brush, "Big soft");
     CHECK(!p.id.isEmpty() && p.tool == ToolType::Brush && p.size == 1400 && p.hardness == 12);
     CHECK(BrushPreset::defaultName(brush) == "Paintbrush 1400 px");
@@ -144,7 +145,12 @@ static void presets() {
     BrushTool other;
     back.applyTo(other);
     CHECK(other.brushSize() == 1400 && other.hardness() == 12 && other.opacity() == 80
-          && other.blendMode() == 3 && !other.antialiased());
+          && other.blendMode() == 3 && other.pressureTarget() == PressureTarget::SizeAndOpacity);
+    // Presets from before pressure targets: size, as then.
+    QJsonObject old = p.toJson();
+    old.remove("pressureTarget");
+    old["antialiased"] = false;
+    CHECK(BrushPreset::fromJson(old, &back) && back.pressureTarget == PressureTarget::Size);
 
     QJsonObject bad = p.toJson();
     bad["tool"] = "no-such-tool";
@@ -401,6 +407,32 @@ static void mainWindowLayout() {
     clearPanelSettings();
 }
 
+// The open-images strip: thumbnails as wide as the image's shape, centred
+// on the window, with room above and below.
+static void imageList() {
+    std::printf("== Image list ==\n");
+    CHECK(ImageListBar::thumbnailSize(QSize(800, 600)) == QSize(59, 44));
+    CHECK(ImageListBar::thumbnailSize(QSize(100, 1000)) == QSize(26, 44));
+    CHECK(ImageListBar::thumbnailSize(QSize(5000, 100)) == QSize(88, 44));
+    MainWindow window;
+    window.resize(1600, 900);
+    window.show();
+    settle();
+    auto *bar = window.findChild<ImageListBar *>();
+    CHECK(bar != nullptr);
+    if (!bar) return;
+    QList<QToolButton *> thumbs;
+    for (QToolButton *b : bar->findChildren<QToolButton *>())
+        if (b->isVisible()) thumbs << b;
+    CHECK(thumbs.size() == 1);
+    if (thumbs.size() != 1) return;
+    const QRect r(thumbs[0]->mapTo(&window, QPoint(0, 0)), thumbs[0]->size());
+    CHECK(std::abs(r.center().x() - window.width() / 2) <= 3);
+    CHECK(thumbs[0]->iconSize().height() == 44);
+    const QRect barRect(bar->mapTo(&window, QPoint(0, 0)), bar->size());
+    CHECK(r.top() - barRect.top() >= 4 && barRect.bottom() - r.bottom() >= 4);
+}
+
 int main(int argc, char **argv) {
     QTemporaryDir settings;
     for (const char *name : {"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"}) {
@@ -415,6 +447,7 @@ int main(int argc, char **argv) {
     cellOrder();
     standalonePanel();
     mainWindowLayout();
+    imageList();
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }

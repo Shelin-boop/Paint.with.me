@@ -41,12 +41,23 @@ public:
     // Open a file into the image list (used for command-line arguments).
     void openFile(const QString &filePath);
 
+    // Restart asked for (Settings, after a change of window system) and the
+    // window closed: main() starts the app again with these files.
+    bool restartRequested() const { return m_restartRequested; }
+    QStringList restartFiles() const { return m_restartFiles; }
+    // Closes like quitting (asking about unsaved changes), then restarts.
+    void restartApplication();
+    // Applies Settings > Tools to all tools (antialiasing).
+    void applyToolSettings();
+
 protected:
     void closeEvent(QCloseEvent *event) override;
     void changeEvent(QEvent *event) override;   // follow minimize/restore
     void moveEvent(QMoveEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
 private:
+    bool m_restartRequested = false;
+    QStringList m_restartFiles;
     void syncUtilityWindowsToMainState();
 protected:
     void dragEnterEvent(QDragEnterEvent *event) override;
@@ -168,6 +179,7 @@ private:
     // Returns true if it is safe to discard the current document (saved, or the
     // user chose to discard / had no unsaved changes); false to cancel.
     bool maybeSave();
+    bool maybeSaveAll();   // asks about every modified image; false = cancelled
     bool maybeSaveDocument(Document *doc);
     void loadDocumentInto(const QString &filePath);
     void wireDocumentSignals();

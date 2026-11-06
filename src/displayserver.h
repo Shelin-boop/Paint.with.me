@@ -1,16 +1,18 @@
 #pragma once
 
 #include <QByteArray>
+#include <QProcessEnvironment>
 #include <QString>
+#include <QStringList>
 
-// Which window system the app runs on inside a Wayland session: X11 through
-// XWayland, or natively on Wayland. Decided in main() before Qt starts, from
-// the setting "display/nativeWayland" (Settings > User Interface); a change
-// applies at the next start.
+// Which window system the app runs on inside a Wayland session: natively on
+// Wayland (the default since 2026-11-06, after a test on KDE Plasma), or X11
+// through XWayland for compatibility. Decided in main() before Qt starts, from
+// the setting "display/windowSystem" ("wayland" or "xwayland", Settings > User
+// Interface); a change applies at the next start, which Settings offers to do.
 //
-// XWayland stays the default until native Wayland has been tried on KDE
-// Plasma. Natively, the app cannot place its own windows (Wayland leaves that
-// to the desktop), so "Keep floating panels attached" does nothing there.
+// Natively, the app cannot place its own windows (Wayland leaves that to the
+// desktop), so "Keep floating panels attached" does nothing there.
 namespace DisplayServer {
 
 struct Environment {
@@ -32,8 +34,29 @@ void applyAtStartup(int argc, char **argv);
 // outside the app, so the setting has no effect this time.
 bool platformForcedAtStartup();
 
-bool nativeWaylandEnabled();
+bool nativeWaylandEnabled();   // true unless XWayland was chosen
 void setNativeWaylandEnabled(bool on);
+
+// Whether the running app already uses what the setting asks for, so a
+// restart would change nothing. qtPlatform is QGuiApplication::platformName().
+bool runningAsChosen(const QString &qtPlatform, bool nativeWayland);
+
+// Starting the app again (after a change of window system): the program, its
+// arguments (files to reopen) and its environment.
+struct Relaunch {
+    QString program;
+    QStringList arguments;
+    QProcessEnvironment environment;
+};
+// From an AppImage the program is the .AppImage file ($APPIMAGE), not the
+// binary inside its mount, which disappears when this instance exits. The
+// variables this instance set itself (QT_QPA_PLATFORM, unless it came from
+// outside) and the AppImage's own ones are removed, so the new instance
+// decides afresh.
+Relaunch relaunchCommand(const QString &applicationFile, const QStringList &files,
+                         const QProcessEnvironment &environment, bool platformForced);
+// Starts it detached; false if it could not be started.
+bool relaunch(const QStringList &files);
 
 // For people: "Wayland (native)", "X11 through XWayland", "X11", ...
 // qtPlatform is QGuiApplication::platformName().

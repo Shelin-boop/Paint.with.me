@@ -1,5 +1,7 @@
 #include "displayserver.h"
 
+#include <QCoreApplication>
+#include <QProcess>
 #include <QSettings>
 #include <QtGlobal>
 
@@ -8,7 +10,10 @@
 namespace DisplayServer {
 
 namespace {
-constexpr const char *kSettingKey = "display/nativeWayland";
+constexpr const char *kSettingKey = "display/windowSystem";
+// Opt-in switch of the first test builds (native Wayland was not yet the
+// default); dropped so everyone gets the new default.
+constexpr const char *kOldSettingKey = "display/nativeWayland";
 bool g_forced = false;
 }  // namespace
 
@@ -37,6 +42,7 @@ QByteArray platformFor(const Environment &env, bool nativeWayland) {
 }
 
 void applyAtStartup(int argc, char **argv) {
+    QSettings(AppInfo::kId, AppInfo::kId).remove(kOldSettingKey);
     const Environment env = Environment::fromSystem(argc, argv);
     g_forced = env.platformForced;
     const QByteArray platform = platformFor(env, nativeWaylandEnabled());
@@ -48,12 +54,40 @@ bool platformForcedAtStartup() { return g_forced; }
 bool nativeWaylandEnabled() {
     // Readable before the QApplication exists: the names are given here.
     QSettings settings(AppInfo::kId, AppInfo::kId);
-    return settings.value(kSettingKey, false).toBool();
+    return settings.value(kSettingKey).toString() != QLatin1String("xwayland");
 }
 
 void setNativeWaylandEnabled(bool on) {
     QSettings settings(AppInfo::kId, AppInfo::kId);
-    settings.setValue(kSettingKey, on);
+    settings.setValue(kSettingKey, on ? QStringLiteral("wayland") : QStringLiteral("xwayland"));
+}
+
+bool runningAsChosen(const QString &qtPlatform, bool nativeWayland) {
+    return nativeWayland ? qtPlatform.startsWith(QLatin1String("wayland"))
+                         : qtPlatform == QLatin1String("xcb");
+}
+
+Relaunch relaunchCommand(const QString &applicationFile, const QStringList &files,
+                         const QProcessEnvironment &environment, bool platformForced) {
+    Relaunch r;
+    const QString appImage = environment.value(QStringLiteral("APPIMAGE"));
+    r.program = appImage.isEmpty() ? applicationFile : appImage;
+    r.arguments = files;
+    r.environment = environment;
+    if (!platformForced) r.environment.remove(QStringLiteral("QT_QPA_PLATFORM"));
+    for (const char *name : {"APPIMAGE", "APPDIR", "ARGV0", "OWD"})
+        r.environment.remove(QString::fromLatin1(name));
+    return r;
+}
+
+bool relaunch(const QStringList &files) {
+    const Relaunch r = relaunchCommand(QCoreApplication::applicationFilePath(), files,
+                                       QProcessEnvironment::systemEnvironment(), g_forced);
+    QProcess process;
+    process.setProgram(r.program);
+    process.setArguments(r.arguments);
+    process.setProcessEnvironment(r.environment);
+    return process.startDetached();
 }
 
 QString describe(const QString &qtPlatform, bool waylandSession) {
