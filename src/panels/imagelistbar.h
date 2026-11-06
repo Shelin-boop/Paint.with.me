@@ -7,7 +7,7 @@ class QHBoxLayout;
 class QSpacerItem;
 class Document;
 
-// The open-image thumbnail strip in the toolbar, centred on the window.
+// The open-image thumbnail strip in the toolbar, centered on the window.
 // Behaves like browser tabs: one thumbnail per open image (as wide as the
 // image's shape needs), click to switch, middle-click to close.
 class ImageListBar : public QWidget {
@@ -34,7 +34,7 @@ private:
     int thumbnailsWidth() const;
 
     QHBoxLayout *m_layout;
-    QSpacerItem *m_lead;   // space before the thumbnails, to centre them
+    QSpacerItem *m_lead;   // space before the thumbnails, to center them
     QVector<Document*> m_docs;
     int m_active = 0;
 };
