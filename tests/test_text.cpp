@@ -339,9 +339,15 @@ static void moveAndResizeFrame() {
     const QRect after = ink(s.doc.flatten());
     CHECK(after.topLeft() - before.topLeft() == QPoint(60, 30));
     CHECK(s.tool.isEditing());
-    // The right-middle handle sets a wider frame: fewer lines.
+    // The right-middle handle sets a wider frame: fewer lines. The frame is
+    // as tall as its text needs (fonts differ between systems), so the handle
+    // is found on the frame as drawn.
     const QRect frame = ink(s.doc.flatten());
-    const QPointF handle(260, 30 + 40 + (120 - 40) / 2.0);
+    TextFrame placed = *s.doc.activeLayer()->textFrame();
+    placed.box.translate(s.doc.activeLayer()->textShift());
+    const QRectF drawnFrame = placed.frameRect();
+    CHECK(std::abs(drawnFrame.right() - 260) < 0.5);
+    const QPointF handle(drawnFrame.right(), drawnFrame.center().y());
     press(s.tool, s.canvas, handle);
     move(s.tool, s.canvas, handle + QPointF(200, 0));
     release(s.tool, s.canvas, handle + QPointF(200, 0));
