@@ -64,6 +64,9 @@ public:
     // Redraws the reset/swap icons for the current colour scheme. They are
     // painted pixmaps, so a stylesheet change cannot recolour them.
     void refreshIcons();
+    // The RGB, HSV and hex controls ("More >>") shown or not.
+    bool isExpanded() const { return m_expanded; }
+    void setExpanded(bool expanded);
 
     // Palette serialization, exposed as static helpers so they can be unit
     // tested without a file dialog. One colour per line, 8-digit AARRGGBB hex.
@@ -127,4 +130,6 @@ private:
     QWidget *m_hsvWidget = nullptr;
 
     bool m_updating = false;
+    class QPushButton *m_moreButton = nullptr;
+    bool m_expanded = false;
 };

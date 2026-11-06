@@ -2496,6 +2496,25 @@ int main(int argc, char **argv) {
                            : "<< Less collapses the docked panel back");
             printf("    (%s: %d -> %d -> %d)\n", what, before, expanded, after);
         }
+
+        // The choice is remembered: a new panel opens the way the last one was left.
+        {
+            Document doc(64, 64);
+            auto *first = new ColorsPanel;
+            first->setDocument(&doc);
+            auto *more = first->findChild<QPushButton *>("colorsMore");
+            CHECK(more && !first->isExpanded(), "Colors panel starts reduced");
+            if (more) more->click();
+            CHECK(first->isExpanded(), "More >> expands");
+            delete first;
+            ColorsPanel second;
+            CHECK(second.isExpanded(), "a new Colors panel stays expanded after More >>");
+            auto *less = second.findChild<QPushButton *>("colorsMore");
+            CHECK(less && less->text() == "<< Less", "and its button reads << Less");
+            if (less) less->click();
+            ColorsPanel third;
+            CHECK(!third.isExpanded(), "and reduced again after << Less");
+        }
     }
 
     // ---------- COLORS PANEL: PALETTE SERIALIZATION ROUND-TRIPS ----------

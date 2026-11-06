@@ -1,4 +1,6 @@
 #include "colorspanel.h"
+#include <QSettings>
+#include "appinfo.h"
 #include <QTimer>
 #include <QDockWidget>
 #include <QMainWindow>
@@ -168,7 +170,7 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
     layout->setContentsMargins(4, 2, 4, 2);
     layout->setSpacing(2);
 
-    // Combo Primaire/Secondaire + bouton Plus
+    // Primary/Secondary choice and the More >> button
     auto *headerLayout = new QHBoxLayout;
     headerLayout->setContentsMargins(0, 0, 0, 0);
     m_slotCombo = new QComboBox;
@@ -179,7 +181,9 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
     headerLayout->addWidget(primaryCombo);
     headerLayout->addStretch();
     auto *moreBtn = new QPushButton(QStringLiteral("More >>"));
+    moreBtn->setObjectName("colorsMore");
     moreBtn->setFixedHeight(20);
+    m_moreButton = moreBtn;
     headerLayout->addWidget(moreBtn);
     layout->addLayout(headerLayout);
 
@@ -326,15 +330,22 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
     connect(m_colorWheel, &ColorWheelWidget::colorChanged, this, &ColorsPanel::onWheelColorChanged);
     connect(m_hexEdit, &QLineEdit::editingFinished, this, &ColorsPanel::onHexChanged);
 
-    // "<< Moins" / "Plus >>" collapses the advanced controls (RGB/HSV/hex).
-    connect(moreBtn, &QPushButton::clicked, this, [this, moreBtn]() {
-        bool show = !m_slidersWidget->isVisible();
-        m_slidersWidget->setVisible(show);
-        m_hsvWidget->setVisible(show);
-        m_hexWidget->setVisible(show);
-        moreBtn->setText(show ? QStringLiteral("<< Less") : QStringLiteral("More >>"));
+    // "More >>" / "<< Less" shows or hides the advanced controls (RGB, HSV,
+    // hex). The choice is remembered for the next start.
+    connect(moreBtn, &QPushButton::clicked, this, [this]() {
+        setExpanded(!m_expanded);
+        QSettings(AppInfo::kId, AppInfo::kId).setValue("colorsPanel/expanded", m_expanded);
         shrinkToFit();
     });
+    setExpanded(QSettings(AppInfo::kId, AppInfo::kId).value("colorsPanel/expanded", false).toBool());
+}
+
+void ColorsPanel::setExpanded(bool expanded) {
+    m_expanded = expanded;
+    m_slidersWidget->setVisible(expanded);
+    m_hsvWidget->setVisible(expanded);
+    m_hexWidget->setVisible(expanded);
+    m_moreButton->setText(expanded ? QStringLiteral("<< Less") : QStringLiteral("More >>"));
 }
 
 void ColorsPanel::shrinkToFit() {
