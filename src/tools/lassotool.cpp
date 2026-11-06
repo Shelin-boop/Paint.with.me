@@ -48,9 +48,7 @@ void LassoTool::drawOverlay(QPainter &painter, const CanvasWidget &canvas) {
     if (!m_selecting || m_lasso.size() < 2) return;
 
     painter.save();
-    int rs = canvas.rulerSize();
-    painter.translate(rs + canvas.pan().x(), rs + canvas.pan().y());
-    painter.scale(canvas.zoom(), canvas.zoom());
+    painter.setTransform(canvas.canvasTransform(), true);   // image coordinates, turned view included
 
     QPen pen(Qt::white, 1.0 / canvas.zoom());
     painter.setPen(pen);

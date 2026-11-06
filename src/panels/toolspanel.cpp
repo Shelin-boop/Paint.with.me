@@ -79,11 +79,7 @@ ToolsPanel::ToolsPanel(const QVector<ToolEntry> &tools, QWidget *parent)
         QToolButton *btn = makeButton();
         btn->setIcon(ToolIcons::forTool(t.type));
         btn->setCheckable(true);
-        // Rich tooltip: bold name + shortcut, then a one-line description.
-        QString tip = QStringLiteral("<b>") + t.name + QStringLiteral("</b>");
-        if (!t.shortcut.isEmpty()) tip += QStringLiteral(" (") + t.shortcut + QLatin1Char(')');
-        if (!t.description.isEmpty()) tip += QStringLiteral("<br>") + t.description;
-        btn->setToolTip(tip);
+        btn->setToolTip(toolTipFor(t));
         btn->setProperty("toolTypeInt", static_cast<int>(t.type));
         const ToolType type = t.type;
         connect(btn, &QToolButton::clicked, this, [this, type]() { emit toolClicked(type); });
@@ -106,6 +102,22 @@ ToolsPanel::ToolsPanel(const QVector<ToolEntry> &tools, QWidget *parent)
     m_separator->hide();
 
     loadSettings();
+}
+
+QString ToolsPanel::toolTipFor(const ToolEntry &t) {
+    // Rich tooltip: bold name + shortcut, then a one-line description.
+    QString tip = QStringLiteral("<b>") + t.name + QStringLiteral("</b>");
+    if (!t.shortcut.isEmpty()) tip += QStringLiteral(" (") + t.shortcut.toHtmlEscaped() + QLatin1Char(')');
+    if (!t.description.isEmpty()) tip += QStringLiteral("<br>") + t.description;
+    return tip;
+}
+
+void ToolsPanel::setToolKeys(const QMap<ToolType, QString> &keys) {
+    for (ToolEntry &t : m_tools) {
+        if (!keys.contains(t.type)) continue;
+        t.shortcut = keys.value(t.type);
+        if (QToolButton *btn = toolButton(t.type)) btn->setToolTip(toolTipFor(t));
+    }
 }
 
 QToolButton *ToolsPanel::makeButton() {

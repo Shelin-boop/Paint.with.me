@@ -340,6 +340,14 @@ int main(int argc, char **argv) {
     };
     stroke(0.30, true);
 
+    // The same stroke with the view turned (View > Rotate View).
+    std::printf("\nThe same with the view rotated by 30 degrees\n");
+    canvas->setRotation(30);
+    busyFor(300);
+    stroke(0.55, true);
+    canvas->setRotation(0);
+    busyFor(300);
+
     // ---- Undo ----
     std::printf("\nUndo the stroke (Edit > Undo)\n");
     {

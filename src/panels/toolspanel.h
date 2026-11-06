@@ -1,5 +1,7 @@
 #pragma once
 
+#include <QMap>
+
 #include <QPoint>
 #include <QString>
 #include <QStringList>
@@ -59,6 +61,10 @@ public:
     QVector<QToolButton *> pinnedButtons() const { return m_pinButtons; }
 
     void setCurrentTool(ToolType type) { m_currentTool = type; }
+    // Keys shown in the tools' tooltips ("B", "" for none).
+    void setToolKeys(const QMap<ToolType, QString> &keys);
+    // Rebuilds the pinned buttons (their tooltips show the commands' keys).
+    void refreshPins() { pinsChanged(); }
     // Redraws the icons that depend on the light or dark color scheme.
     void refreshIcons();
     void setHorizontal(bool horizontal);
@@ -124,6 +130,7 @@ protected:
 
 private:
     QToolButton *makeButton();
+    static QString toolTipFor(const ToolEntry &t);
     const Command *command(const QString &id) const;
     void rebuildPinnedButtons();
     void relayout();

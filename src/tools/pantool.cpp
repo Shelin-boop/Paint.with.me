@@ -14,7 +14,7 @@ void PanTool::mousePressEvent(const QPointF &, QMouseEvent *event, CanvasWidget 
 void PanTool::mouseMoveEvent(const QPointF &, QMouseEvent *event, CanvasWidget &canvas) {
     if (m_panning && (event->buttons() & Qt::LeftButton)) {
         QPoint delta = event->pos() - m_lastPos;
-        canvas.setPan(canvas.pan() + QPointF(delta));
+        canvas.panBy(QPointF(delta));   // follows the hand also in a turned view
         m_lastPos = event->pos();
     }
 }

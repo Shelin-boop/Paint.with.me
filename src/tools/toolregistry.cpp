@@ -130,3 +130,17 @@ std::unique_ptr<Tool> createTool(ToolType type) {
     }
     return nullptr;
 }
+
+bool isPaintingTool(ToolType type) {
+    switch (type) {
+    case ToolType::Brush:
+    case ToolType::Pencil:
+    case ToolType::CloneStamp:
+    case ToolType::Recolor:
+    case ToolType::Smudge:
+    case ToolType::BlurBrush:
+        return true;
+    default:
+        return false;
+    }
+}

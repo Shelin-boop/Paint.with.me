@@ -24,10 +24,13 @@
 #include <QGuiApplication>
 #include <QSignalBlocker>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
+#include "dialogs/keyboardpage.h"
 
-SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
+SettingsDialog::SettingsDialog(QWidget *parent, Shortcuts *shortcuts)
+    : QDialog(parent), m_shortcuts(shortcuts) {
     setWindowTitle(QStringLiteral("Settings"));
-    resize(560, 400);
+    resize(680, 540);   // room for the Keyboard page's list
 
     auto *root = new QVBoxLayout(this);
     auto *body = new QHBoxLayout;
@@ -39,6 +42,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_categories->addItem(QStringLiteral("Canvas"));
     m_categories->addItem(QStringLiteral("Undo History"));
     m_categories->addItem(QStringLiteral("Tools"));
+    m_categories->addItem(QStringLiteral("Keyboard"));
     m_categories->addItem(QStringLiteral("Help"));
     body->addWidget(m_categories);
 
@@ -48,6 +52,7 @@ SettingsDialog::SettingsDialog(QWidget *parent) : QDialog(parent) {
     m_pages->addWidget(buildCanvasPage());
     m_pages->addWidget(buildHistoryPage());
     m_pages->addWidget(buildToolsPage());
+    m_pages->addWidget(buildKeyboardPage());
     m_pages->addWidget(buildHelpPage());
     body->addWidget(m_pages, 1);
 
@@ -187,8 +192,39 @@ QWidget *SettingsDialog::buildCanvasPage() {
     });
     layout->addWidget(m_checkerSlider);
 
+    // Rotate Left / Right (View > Rotate View, keys 4 and 6) turn the view
+    // by this much.
+    layout->addSpacing(12);
+    auto *stepRow = new QHBoxLayout;
+    stepRow->addWidget(new QLabel(QStringLiteral("Rotate view by")));
+    auto *step = new QDoubleSpinBox;
+    step->setObjectName(QStringLiteral("rotationStep"));
+    step->setRange(0.1, 180.0);
+    step->setDecimals(1);
+    step->setSingleStep(5.0);
+    step->setSuffix(QStringLiteral("\u00B0"));
+    step->setValue(qBound(0.1, s.value("view/rotationStep", 15.0).toDouble(), 180.0));
+    step->setToolTip(QStringLiteral("How far View > Rotate View > Rotate Left and Rotate Right turn the view. "
+                                    "Only the view turns; the image does not change."));
+    connect(step, qOverload<double>(&QDoubleSpinBox::valueChanged), this, [this](double v) {
+        QSettings(AppInfo::kId, AppInfo::kId).setValue("view/rotationStep", v);
+        emit canvasSettingsChanged();
+    });
+    stepRow->addWidget(step);
+    stepRow->addWidget(new QLabel(QStringLiteral("per step (Rotate Left, Rotate Right)")));
+    stepRow->addStretch();
+    layout->addLayout(stepRow);
+
     layout->addStretch();
     return page;
+}
+
+QWidget *SettingsDialog::buildKeyboardPage() {
+    if (m_shortcuts) return new KeyboardPage(m_shortcuts);
+    auto *label = new QLabel(QStringLiteral("Keys can be changed here when Settings is opened from the main window."));
+    label->setWordWrap(true);
+    label->setAlignment(Qt::AlignTop | Qt::AlignLeft);
+    return label;
 }
 
 QWidget *SettingsDialog::buildHistoryPage() {
@@ -365,7 +401,7 @@ QWidget *SettingsDialog::buildToolsPage() {
 }
 
 QWidget *SettingsDialog::buildHelpPage() {
-    auto *label = new QLabel(ShortcutsHelp::html());
+    auto *label = new QLabel(ShortcutsHelp::html(m_shortcuts));
     label->setObjectName("shortcutsHelp");
     label->setTextFormat(Qt::RichText);
     label->setAlignment(Qt::AlignTop | Qt::AlignLeft);

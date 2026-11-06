@@ -89,7 +89,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          cmake --build build -j --target pwm_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_panel_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests
+          cmake --build build -j --target pwm_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_panel_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests
           export LD_LIBRARY_PATH="$QT_ROOT/lib:$LD_LIBRARY_PATH"
           ./build/pwm_integration_tests
           ./build/pwm_tests
@@ -99,6 +99,8 @@ jobs:
           ./build/pwm_panel_tests
           ./build/pwm_units_tests
           ./build/pwm_text_tests
+          ./build/pwm_rotation_tests
+          ./build/pwm_shortcuts_tests
           # With this Qt, CMYK JPEGs arrive as CMYK (Qt 6.8 and newer).
           ./build/pwm_pdfpictures_tests
 

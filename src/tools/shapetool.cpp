@@ -309,10 +309,7 @@ void ShapeTool::drawOverlay(QPainter &painter, const CanvasWidget &canvas) {
     // Build the canvas→widget affine, then compose rotation-about-centre on top, so
     // a path built in canvas coords renders rotated and zoomed in widget space —
     // and the pen width scales with the zoom, matching the committed raster.
-    const double z = canvas.zoom();
-    const QPointF b = canvas.canvasToWidget(QPointF(0, 0));
-    const QTransform toWidget(z, 0, 0, z, b.x(), b.y());
-    const QTransform full = rotationTransform(rect, angle) * toWidget;
+    const QTransform full = rotationTransform(rect, angle) * canvas.canvasTransform();   // turned view too
 
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing);

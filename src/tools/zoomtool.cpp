@@ -46,43 +46,25 @@ void ZoomTool::mouseReleaseEvent(const QPointF &canvasPos, QMouseEvent *event, C
     // A dragged rectangle (in widget pixels) big enough to mean "zoom here"
     // maximises that region, like Paint.NET. Anything smaller is a plain click.
     if (wasDragging && event->button() == Qt::LeftButton) {
-        const QPointF a = canvas.canvasToWidget(m_startCanvas);
-        const QPointF b = canvas.canvasToWidget(canvasPos);
-        const QRectF box = QRectF(a, b).normalized();
-        if (box.width() > 8 && box.height() > 8) {
-            const QRectF rectCanvas = QRectF(m_startCanvas, canvasPos).normalized();
-            const int rs = canvas.rulerSize();
-            const double vw = canvas.width() - rs, vh = canvas.height() - rs;
-            const double z = std::min(vw / std::max(1.0, rectCanvas.width()),
-                                      vh / std::max(1.0, rectCanvas.height()));
-            canvas.setZoom(z);
-            // Centre the chosen region in the viewport.
-            const QPointF centreCanvas = rectCanvas.center();
-            const QPointF want(rs + vw / 2.0, rs + vh / 2.0);
-            const QPointF haveNoPan = centreCanvas * canvas.zoom() + QPointF(rs, rs);
-            canvas.setPan(want - haveNoPan);
-            canvas.update();
+        const QRectF rectCanvas = QRectF(m_startCanvas, canvasPos).normalized();
+        if (rectCanvas.width() * canvas.zoom() > 8 && rectCanvas.height() * canvas.zoom() > 8) {
+            canvas.zoomToRect(rectCanvas.toAlignedRect());   // fills the view, turned or not
             return;
         }
     }
 
     // Plain click: left zooms in, right zooms out, point under cursor fixed.
     if (event->button() == Qt::LeftButton || event->button() == Qt::RightButton) {
-        QPointF oldCanvas = canvas.widgetToCanvas(event->position());
-        double factor = (event->button() == Qt::LeftButton) ? 1.5 : (1.0 / 1.5);
-        canvas.setZoom(canvas.zoom() * factor);
-        QPointF newWidget = canvas.canvasToWidget(oldCanvas);
-        canvas.setPan(canvas.pan() + (event->position() - newWidget));
+        const double factor = (event->button() == Qt::LeftButton) ? 1.5 : (1.0 / 1.5);
+        canvas.zoomAt(event->position(), canvas.zoom() * factor);
     }
 }
 
 void ZoomTool::drawOverlay(QPainter &painter, const CanvasWidget &canvas) {
     if (!m_dragging) return;
-    const QPointF a = canvas.canvasToWidget(m_startCanvas);
-    const QPointF b = canvas.canvasToWidget(m_currentCanvas);
-    const QRectF box = QRectF(a, b).normalized();
-    if (box.width() < 2 && box.height() < 2) return;
+    const QRectF box = QRectF(m_startCanvas, m_currentCanvas).normalized();
+    if (box.width() * canvas.zoom() < 2 && box.height() * canvas.zoom() < 2) return;
     painter.setPen(QPen(QColor(0, 120, 215), 1, Qt::DashLine));
     painter.setBrush(QColor(0, 120, 215, 40));
-    painter.drawRect(box);
+    painter.drawPolygon(canvas.canvasTransform().map(QPolygonF(box)));   // turns with the view
 }

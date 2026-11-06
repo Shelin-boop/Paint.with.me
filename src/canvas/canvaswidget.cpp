@@ -16,6 +16,12 @@
 #include "appinfo.h"
 #include "core/pensettings.h"
 
+// The key combination of a key event as a shortcut would see it: keypad
+// digits count as digits.
+static QKeySequence pressedKey(const QKeyEvent *event) {
+    return QKeySequence(QKeyCombination(event->modifiers() & ~Qt::KeypadModifier, Qt::Key(event->key())));
+}
+
 bool CanvasWidget::event(QEvent *event)
 {
     // Track when the stylus is within range of the tablet. While it hovers there
@@ -36,6 +42,14 @@ bool CanvasWidget::event(QEvent *event)
         if ((m_currentTool->wantsKeyInput() && !ctrlAlt)
             || m_currentTool->wantsCommitKey(ke->key())
             || m_currentTool->wantsShortcut(ke)) {
+            event->accept();
+            return true;
+        }
+        // The held keys reach keyPressEvent whatever they are.
+        const QKeySequence pressed = pressedKey(ke);
+        if (!m_currentTool->wantsKeyInput()
+            && ((!m_panKey.isEmpty() && pressed == m_panKey) || (!m_rotateKey.isEmpty() && pressed == m_rotateKey)
+                || (!m_pickKey.isEmpty() && pressed == m_pickKey))) {
             event->accept();
             return true;
         }
@@ -93,13 +107,19 @@ bool CanvasWidget::showRulers() const {
     return m_showRulers;
 }
 
+void CanvasWidget::setZoomCentered(double zoom) {
+    const bool followWindow = m_autoCenter;
+    zoomAt(viewCenter(), zoom);
+    m_autoCenter = followWindow;
+}
+
 void CanvasWidget::zoomIn() {
     double newZoom = m_zoom;
     if (m_zoom < 1.0) newZoom = m_zoom * 1.5;
     else if (m_zoom < 2.0) newZoom = m_zoom + 0.25;
     else if (m_zoom < 8.0) newZoom = m_zoom + 1.0;
     else newZoom = m_zoom * 1.5;
-    setZoom(newZoom);
+    setZoomCentered(newZoom);
 }
 
 void CanvasWidget::zoomOut() {
@@ -108,15 +128,13 @@ void CanvasWidget::zoomOut() {
     else if (m_zoom > 2.0) newZoom = m_zoom - 1.0;
     else if (m_zoom > 1.0) newZoom = m_zoom - 0.25;
     else newZoom = m_zoom / 1.5;
-    setZoom(newZoom);
+    setZoomCentered(newZoom);
 }
 
 void CanvasWidget::zoomToFit() {
     if (!m_document) return;
     int rs = m_showRulers ? 20 : 0;
-    double zx = (double)(width() - 20 - rs) / m_document->width();
-    double zy = (double)(height() - 20 - rs) / m_document->height();
-    setZoom(std::min(zx, zy));
+    setZoom(fitZoomFor(QSizeF(m_document->size()), 10.0));
     m_pan = QPointF(
         (width() - rs - m_document->width() * m_zoom) / 2.0,
         (height() - rs - m_document->height() * m_zoom) / 2.0
@@ -128,9 +146,7 @@ void CanvasWidget::zoomToRect(const QRect &canvasRect) {
     if (!m_document || canvasRect.isEmpty()) return;
     const int rs = m_showRulers ? 20 : 0;
     const double margin = 24.0;
-    const double zx = (width() - rs - margin * 2) / canvasRect.width();
-    const double zy = (height() - rs - margin * 2) / canvasRect.height();
-    setZoom(std::min(zx, zy));
+    setZoom(fitZoomFor(QSizeF(canvasRect.size()), margin));
     // Centre the rectangle in the viewport.
     m_pan = QPointF(
         (width() - rs - canvasRect.width() * m_zoom) / 2.0 - canvasRect.x() * m_zoom,
@@ -171,11 +187,7 @@ void CanvasWidget::centerView() {
 void CanvasWidget::resetToDefaultView() {
     if (!m_document) return;
 
-    const int rs = m_showRulers ? 20 : 0;
-    const qreal margin = 40.0;
-    const qreal availableWidth = std::max(1.0, width() - rs - margin * 2.0);
-    const qreal availableHeight = std::max(1.0, height() - rs - margin * 2.0);
-    const qreal fitZoom = std::min(availableWidth / m_document->width(), availableHeight / m_document->height());
+    const qreal fitZoom = fitZoomFor(QSizeF(m_document->size()), 40.0);
 
     setZoom(std::min(1.0, fitZoom));
     m_autoCenter = true;   // follow the window again until the user pans
@@ -184,12 +196,101 @@ void CanvasWidget::resetToDefaultView() {
 
 QPointF CanvasWidget::widgetToCanvas(const QPointF &widgetPos) const {
     int rs = m_showRulers ? 20 : 0;
-    return (widgetPos - QPointF(rs, rs) - m_pan) / m_zoom;
+    const QPointF view = m_rotation == 0.0 ? widgetPos : viewRotation().inverted().map(widgetPos);
+    return (view - QPointF(rs, rs) - m_pan) / m_zoom;
 }
 
 QPointF CanvasWidget::canvasToWidget(const QPointF &canvasPos) const {
     int rs = m_showRulers ? 20 : 0;
-    return canvasPos * m_zoom + m_pan + QPointF(rs, rs);
+    const QPointF view = canvasPos * m_zoom + m_pan + QPointF(rs, rs);
+    return m_rotation == 0.0 ? view : viewRotation().map(view);
+}
+
+QPointF CanvasWidget::viewCenter() const {
+    const int rs = m_showRulers ? 20 : 0;
+    return QPointF(rs + (width() - rs) / 2.0, rs + (height() - rs) / 2.0);
+}
+
+QTransform CanvasWidget::viewRotation() const {
+    if (m_rotation == 0.0) return QTransform();
+    const QPointF c = viewCenter();
+    QTransform t;
+    t.translate(c.x(), c.y());
+    t.rotate(m_rotation);
+    t.translate(-c.x(), -c.y());
+    return t;
+}
+
+QTransform CanvasWidget::canvasTransform() const {
+    const int rs = m_showRulers ? 20 : 0;
+    QTransform base(m_zoom, 0, 0, m_zoom, m_pan.x() + rs, m_pan.y() + rs);
+    return m_rotation == 0.0 ? base : base * viewRotation();
+}
+
+void CanvasWidget::setRotation(double degrees) {
+    if (!std::isfinite(degrees)) return;
+    double d = std::fmod(degrees, 360.0);
+    if (d <= -180.0) d += 360.0;
+    if (d > 180.0) d -= 360.0;
+    if (std::abs(d) < 1e-9) d = 0.0;
+    if (d == m_rotation) return;
+    m_rotation = d;
+    emit rotationChanged(m_rotation);
+    update();
+}
+
+void CanvasWidget::panBy(const QPointF &widgetDelta) {
+    // The pan lives in the unturned view: turn the drag back first.
+    const QPointF delta = m_rotation == 0.0 ? widgetDelta : QTransform().rotate(-m_rotation).map(widgetDelta);
+    m_pan += delta;
+    m_autoCenter = false;   // the user placed the view; leave it alone
+    update();
+}
+
+void CanvasWidget::zoomAt(const QPointF &widgetPos, double zoom) {
+    const QPointF anchor = widgetToCanvas(widgetPos);
+    setZoom(zoom);
+    panBy(widgetPos - canvasToWidget(anchor));
+}
+
+double CanvasWidget::fitZoomFor(const QSizeF &size, double margin) const {
+    // The size the image takes on screen at zoom 1 once turned.
+    const double a = qDegreesToRadians(m_rotation);
+    const double c = std::abs(std::cos(a)), sn = std::abs(std::sin(a));
+    const double w = size.width() * c + size.height() * sn;
+    const double h = size.width() * sn + size.height() * c;
+    const int rs = m_showRulers ? 20 : 0;
+    const double availW = std::max(1.0, width() - rs - margin * 2.0);
+    const double availH = std::max(1.0, height() - rs - margin * 2.0);
+    return std::min(availW / std::max(1.0, w), availH / std::max(1.0, h));
+}
+
+void CanvasWidget::setHoldKeys(const QKeySequence &pan, const QKeySequence &rotate,
+                               const QKeySequence &colorPicker) {
+    endHolds();
+    m_panKey = pan;
+    m_rotateKey = rotate;
+    m_pickKey = colorPicker;
+}
+
+void CanvasWidget::endHolds() {
+    if (m_spaceDown || m_rotateKeyDown) {
+        m_spaceDown = false;
+        m_rotateKeyDown = false;
+        m_isRotating = false;
+        if (!m_isPanning && m_currentTool) setCursor(m_currentTool->cursor());
+    }
+    if (m_pickKeyDown || m_pickReleasePending) {
+        m_pickKeyDown = false;
+        m_pickReleasePending = false;
+        emit colorPickerHeld(false);
+    }
+}
+
+void CanvasWidget::focusOutEvent(QFocusEvent *event) {
+    // The key-up goes to another widget now; a hold must not stick.
+    endHolds();
+    QWidget::focusOutEvent(event);
 }
 
 void CanvasWidget::updateCanvas() {
@@ -235,8 +336,7 @@ void CanvasWidget::updateCanvasRegion(const QRect &documentRect) {
     // The caller says this area holds all changes since the last update, so
     // the cache plus the queued areas match the document as it is now.
     if (m_cacheValid) m_cacheSignature = renderSignature();
-    const QRectF widgetRect(canvasToWidget(dirty.topLeft()),
-                            QSizeF(dirty.size()) * m_zoom);
+    const QRectF widgetRect = canvasTransform().mapRect(QRectF(dirty));
     update(widgetRect.toAlignedRect().adjusted(-2, -2, 2, 2));
 }
 
@@ -256,6 +356,14 @@ void CanvasWidget::paintEvent(QPaintEvent *) {
     QRectF canvasRect(m_pan.x() + rs, m_pan.y() + rs,
                       m_document->width() * m_zoom,
                       m_document->height() * m_zoom);
+
+    // A turned view: the image, its checkerboard, grid, border and selection
+    // are drawn unturned through a turned painter; guides and tool marks use
+    // canvasToWidget(), which turns by itself.
+    if (m_rotation != 0.0) {
+        painter.setTransform(viewRotation());
+        painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
+    }
 
     // Checkerboard for transparency
     drawCheckerboard(painter, canvasRect.toRect());
@@ -324,17 +432,16 @@ void CanvasWidget::paintEvent(QPaintEvent *) {
         drawSelectionMarching(painter);
     }
 
+    painter.resetTransform();
+
     // Perspective guides (over the image, under the tool's own marks).
     const QVector<QPointF> &vanishing = m_document->vanishingPoints();
     if (!vanishing.isEmpty()
         && (Perspective::settings().visible
             || (m_currentTool && m_currentTool->type() == ToolType::Perspective))) {
-        QTransform toWidget;
-        toWidget.translate(m_pan.x() + rs, m_pan.y() + rs);
-        toWidget.scale(m_zoom, m_zoom);
         Perspective::drawGuides(painter, vanishing, Perspective::settings().rays,
                                 QRectF(0, 0, m_document->width(), m_document->height()),
-                                toWidget, 1.0, 110);
+                                canvasTransform(), 1.0, 110);
     }
 
     // Tool overlay
@@ -363,6 +470,16 @@ void CanvasWidget::paintEvent(QPaintEvent *) {
         painter.drawLine(rulerSize, rulerSize, width(), rulerSize);
         painter.drawLine(rulerSize, rulerSize, rulerSize, height());
         painter.drawRect(QRect(0, 0, rulerSize, rulerSize));
+
+        // A turned view has no straight scale along the screen's edges.
+        if (m_rotation != 0.0) {
+            painter.setPen(textCol);
+            painter.drawText(QRect(rulerSize + 6, 0, width() - rulerSize - 12, rulerSize),
+                             Qt::AlignVCenter | Qt::AlignLeft,
+                             QStringLiteral("View rotated %1\u00b0 (rulers show no scale while rotated)")
+                                 .arg(QString::number(m_rotation, 'f', m_rotation == std::round(m_rotation) ? 0 : 1)));
+            return;
+        }
 
         // Pixels-per-unit for the chosen measurement unit.
         const double pxPerUnit = (m_unit == Unit::Inches)      ? dpi()
@@ -465,7 +582,9 @@ void CanvasWidget::drawCheckerboard(QPainter &painter, const QRect &rect) {
     painter.setClipRect(rect);
     // At 1:1/high zoom most of a large document can be offscreen. Never walk
     // all those invisible checker squares for a local brush update.
-    const QRect visible = rect.intersected(this->rect());
+    const QRect onScreen = m_rotation == 0.0 ? this->rect()
+                                             : viewRotation().inverted().mapRect(QRectF(this->rect())).toAlignedRect();
+    const QRect visible = rect.intersected(onScreen);
     int startX = visible.left() - (visible.left() % (gridSize * 2));
     int startY = visible.top() - (visible.top() % (gridSize * 2));
 
@@ -524,9 +643,15 @@ void CanvasWidget::updateMarchingAnts() {
 }
 
 void CanvasWidget::mousePressEvent(QMouseEvent *event) {
+    m_buttonsDown = event->buttons();
     // Pan with the middle button, or with the left button while Space is held —
     // Paint.NET's shortcut. Alt is deliberately NOT a pan modifier: it is the
     // selection-subtract key and the two would collide.
+    if (event->button() == Qt::LeftButton && m_rotateKeyDown) {
+        m_isRotating = true;   // turning the view by dragging around its middle
+        m_lastRotatePos = event->position();
+        return;
+    }
     if (event->button() == Qt::MiddleButton
         || (event->button() == Qt::LeftButton && m_spaceDown)) {
         m_isPanning = true;
@@ -632,12 +757,18 @@ QPointF CanvasWidget::perspectiveSnapped(const QPointF &canvasPos) {
 }
 
 void CanvasWidget::mouseMoveEvent(QMouseEvent *event) {
+    if (m_isRotating) {
+        const QPointF c = viewCenter();
+        const QPointF a = m_lastRotatePos - c, b = event->position() - c;
+        if (QLineF(QPointF(), a).length() > 4 && QLineF(QPointF(), b).length() > 4)
+            rotateBy(qRadiansToDegrees(std::atan2(b.y(), b.x()) - std::atan2(a.y(), a.x())));
+        m_lastRotatePos = event->position();
+        return;
+    }
     if (m_isPanning) {
         QPoint delta = event->pos() - m_lastPanPos;
-        m_pan += QPointF(delta);
-        m_autoCenter = false;   // the user placed the view; leave it alone
         m_lastPanPos = event->pos();
-        update();
+        panBy(QPointF(delta));
         return;
     }
 
@@ -666,6 +797,20 @@ void CanvasWidget::mouseMoveEvent(QMouseEvent *event) {
 }
 
 void CanvasWidget::mouseReleaseEvent(QMouseEvent *event) {
+    m_buttonsDown = event->buttons();
+    handleMouseRelease(event);
+    // The Color Picker key came up during the pick: back now it is done.
+    if (m_pickReleasePending && event->buttons() == Qt::NoButton) {
+        m_pickReleasePending = false;
+        emit colorPickerHeld(false);
+    }
+}
+
+void CanvasWidget::handleMouseRelease(QMouseEvent *event) {
+    if (m_isRotating && event->button() == Qt::LeftButton) {
+        m_isRotating = false;
+        return;
+    }
     if (m_isPanning && (event->button() == Qt::MiddleButton || event->button() == Qt::LeftButton)) {
         m_isPanning = false;
         setCursor(Qt::ArrowCursor);
@@ -690,21 +835,35 @@ void CanvasWidget::mouseReleaseEvent(QMouseEvent *event) {
 }
 
 void CanvasWidget::wheelEvent(QWheelEvent *event) {
-    QPointF oldCanvasPos = widgetToCanvas(event->position());
     double factor = event->angleDelta().y() > 0 ? 1.15 : 1.0 / 1.15;
-    setZoom(m_zoom * factor);
-
-    QPointF newWidgetPos = canvasToWidget(oldCanvasPos);
-    m_pan += event->position() - newWidgetPos;
-    m_autoCenter = false;   // wheel zoom anchors on the cursor; keep that anchor
-    update();
+    zoomAt(event->position(), m_zoom * factor);   // anchored on the cursor
 }
 
 void CanvasWidget::keyPressEvent(QKeyEvent *event) {
-    // Space arms pan-drag for any tool (unless the Text tool is capturing keys).
-    if (event->key() == Qt::Key_Space && !event->isAutoRepeat()
-        && !(m_currentTool && m_currentTool->wantsKeyInput())) {
-        if (!m_spaceDown) {
+    // Held keys (Settings > Keyboard; Space and Shift+Space by default) arm
+    // dragging to pan or to turn the view, for any tool (not while the Text
+    // tool is typing).
+    const bool typing = m_currentTool && m_currentTool->wantsKeyInput();
+    const QKeySequence pressed = pressedKey(event);
+    if (!typing && !m_pickKey.isEmpty() && pressed == m_pickKey) {
+        if (!event->isAutoRepeat() && !m_pickKeyDown) {
+            m_pickKeyDown = true;
+            if (!m_pickReleasePending) emit colorPickerHeld(true);
+            m_pickReleasePending = false;
+        }
+        event->accept();
+        return;
+    }
+    if (!typing && !m_rotateKey.isEmpty() && pressed == m_rotateKey) {
+        if (!event->isAutoRepeat() && !m_rotateKeyDown) {
+            m_rotateKeyDown = true;
+            setCursor(Qt::SizeAllCursor);
+        }
+        event->accept();
+        return;
+    }
+    if (!typing && !m_panKey.isEmpty() && pressed == m_panKey) {
+        if (!event->isAutoRepeat() && !m_spaceDown) {
             m_spaceDown = true;
             if (!m_isPanning) setCursor(Qt::OpenHandCursor);
         }
@@ -756,7 +915,24 @@ QVariant CanvasWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
 }
 
 void CanvasWidget::keyReleaseEvent(QKeyEvent *event) {
-    if (event->key() == Qt::Key_Space && !event->isAutoRepeat() && m_spaceDown) {
+    // A hold ends when its key comes up, whatever modifiers are still down.
+    auto mainKey = [](const QKeySequence &seq) { return seq.isEmpty() ? 0 : int(seq[0].key()); };
+    if (!event->isAutoRepeat() && m_pickKeyDown && event->key() == mainKey(m_pickKey)) {
+        m_pickKeyDown = false;
+        // Picking still under way (button or pen down): back once it ends.
+        if (m_buttonsDown != Qt::NoButton) m_pickReleasePending = true;
+        else emit colorPickerHeld(false);
+        event->accept();
+        return;
+    }
+    if (!event->isAutoRepeat() && m_rotateKeyDown && event->key() == mainKey(m_rotateKey)) {
+        m_rotateKeyDown = false;
+        m_isRotating = false;
+        if (m_currentTool) setCursor(m_currentTool->cursor());
+        event->accept();
+        return;
+    }
+    if (!event->isAutoRepeat() && m_spaceDown && event->key() == mainKey(m_panKey)) {
         m_spaceDown = false;
         if (!m_isPanning && m_currentTool) setCursor(m_currentTool->cursor());
         event->accept();
@@ -786,7 +962,10 @@ void CanvasWidget::tabletEvent(QTabletEvent *event) {
     m_pressure = event->pressure() > 0.0 ? Pen::mapPressure(event->pressure()) : m_pressure;
     if (m_currentTool) {
         m_currentTool->setPressure(m_pressure);
-        m_currentTool->setTilt(QPointF(event->xTilt(), event->yTilt()));
+        // Tilt is measured on screen; the brush tip lies in the image, which
+        // is turned by the view rotation.
+        const QPointF tilt(event->xTilt(), event->yTilt());
+        m_currentTool->setTilt(m_rotation == 0.0 ? tilt : QTransform().rotate(-m_rotation).map(tilt));
         m_currentTool->setStylus(true);
     }
     if (!m_tabletSeen) {

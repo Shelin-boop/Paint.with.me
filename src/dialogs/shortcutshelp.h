@@ -2,8 +2,11 @@
 
 #include <QString>
 
+class Shortcuts;
+
 // The keyboard shortcuts as a small HTML table, for Help > Keyboard Shortcuts
-// and the Help page in Settings. The tool keys come from the tool registry.
+// and the Help page in Settings: the keys as they are now (Settings >
+// Keyboard), or the defaults without `shortcuts`.
 namespace ShortcutsHelp {
-QString html();
+QString html(const Shortcuts *shortcuts = nullptr);
 }

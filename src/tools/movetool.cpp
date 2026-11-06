@@ -273,10 +273,8 @@ void MoveTool::drawOverlay(QPainter &painter, const CanvasWidget &canvas) {
     painter.save();
     painter.setPen(QPen(Qt::white, 1));
     painter.setBrush(QColor(35, 120, 255));
-    for (const QRectF &handle : SelHandles::rects(rect, canvas.zoom())) {
-        const QPointF tl = canvas.canvasToWidget(handle.topLeft());
-        const QPointF br = canvas.canvasToWidget(handle.bottomRight());
-        painter.drawRect(QRectF(tl, br).normalized());
-    }
+    const QTransform toWidget = canvas.canvasTransform();   // handles turn with the view
+    for (const QRectF &handle : SelHandles::rects(rect, canvas.zoom()))
+        painter.drawPolygon(toWidget.map(QPolygonF(handle)));
     painter.restore();
 }

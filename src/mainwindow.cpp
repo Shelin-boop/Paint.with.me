@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "shortcuts.h"
 #include "tools/texttool.h"
 #include "plugins/pluginmanager.h"
 #include "dialogs/pastedialog.h"
@@ -77,6 +78,7 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     createTools();
     createToolsPanel();
     createDockPanels();
+    m_shortcuts = new Shortcuts(this);   // filled by createMenus() and createKeyboardShortcuts()
     createMenus();
     // Every menu command can be pinned to the Tools panel.
     m_toolsPanel->setCommands(ToolsPanel::commandsFromMenuBar(menuBar(), {m_recentFilesMenu}));
@@ -291,7 +293,7 @@ void MainWindow::applyTheme() {
 }
 
 void MainWindow::showSettingsDialog() {
-    SettingsDialog dlg(this);
+    SettingsDialog dlg(this, m_shortcuts);
     connect(&dlg, &SettingsDialog::colorSchemeChanged, this, [this, &dlg]() {
         applyTheme();
         dlg.setStyleSheet(Theme::styleSheet());
@@ -323,6 +325,7 @@ void MainWindow::selectTool(ToolType type) {
     for (auto &tool : m_tools) {
         if (tool->type() == type) {
             m_currentTool = tool.get();
+            if (isPaintingTool(type)) m_lastPaintTool = type;
             m_canvas->setCurrentTool(m_currentTool);
             m_canvas->setCursor(m_currentTool->cursor());
             m_toolOptionsPanel->setTool(m_currentTool);
