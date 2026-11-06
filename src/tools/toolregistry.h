@@ -21,7 +21,7 @@ struct ToolInfo {
 
 // Every tool in Paint.NET's documented order, which the tool list, the
 // one-row Tools panel and shortcut cycling follow. Not in Paint.NET: the
-// Perspective tool, last.
+// Perspective, Smudge and Blur Brush tools, last.
 const std::vector<ToolInfo> &toolInfos();
 const ToolInfo &toolInfo(ToolType type);
 std::unique_ptr<Tool> createTool(ToolType type);

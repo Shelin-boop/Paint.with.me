@@ -21,6 +21,8 @@
 #include "core/document.h"
 #include "mainwindow.h"
 #include "panels/toolspanel.h"
+#include <QLabel>
+#include "panels/tooloptionspanel.h"
 #include "panels/imagelistbar.h"
 #include <functional>
 #include "commandicons.h"
@@ -124,7 +126,7 @@ static void toolKeys() {
         CHECK(tool && tool->type() == info.type);
         CHECK(&toolInfo(info.type) == &info);
     }
-    CHECK(types.size() == int(ToolType::Perspective) + 1);
+    CHECK(types.size() == int(ToolType::BlurBrush) + 1);   // BlurBrush: the last ToolType
 }
 
 static void presets() {
@@ -336,6 +338,25 @@ static void mainWindowLayout() {
     CHECK(keyV != nullptr);
     if (keyV) keyV->trigger();
     CHECK(canvasForKeys->currentTool()->type() == ToolType::Perspective);
+    // U: Smudge, then Blur Brush, then Smudge again.
+    QAction *keyU = nullptr;
+    for (QAction *a : window.findChildren<QAction *>())
+        if (a->shortcut() == QKeySequence("U")) keyU = a;
+    CHECK(keyU != nullptr);
+    if (keyU) {
+        keyU->trigger();
+        CHECK(canvasForKeys->currentTool()->type() == ToolType::Smudge);
+        keyU->trigger();
+        CHECK(canvasForKeys->currentTool()->type() == ToolType::BlurBrush);
+        keyU->trigger();
+        CHECK(canvasForKeys->currentTool()->type() == ToolType::Smudge);
+        auto *strengthLabel = window.findChild<ToolOptionsPanel *>();
+        bool strength = false;
+        if (strengthLabel)
+            for (QLabel *l : strengthLabel->findChildren<QLabel *>())
+                if (l->text() == "Strength:" && l->isVisible()) strength = true;
+        CHECK(strength);
+    }
 
     // Pin commands from the real menus and a brush preset.
     CHECK(panel != nullptr);

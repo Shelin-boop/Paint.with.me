@@ -612,7 +612,9 @@ void ToolOptionsPanel::updateFromTool() {
 
     // Show only the controls that apply to this tool.
     const ToolType t = m_tool->type();
-    const bool isBrushLike = (t == ToolType::Brush || t == ToolType::Eraser || t == ToolType::CloneStamp);
+    const bool isRetouch = (t == ToolType::Smudge || t == ToolType::BlurBrush);
+    const bool isBrushLike = (t == ToolType::Brush || t == ToolType::Eraser || t == ToolType::CloneStamp
+                              || isRetouch);
     const bool hasTolerance = (t == ToolType::Fill || t == ToolType::MagicWand || t == ToolType::Recolor);
     // Pencil is always one pixel in Paint.NET, so it gets no width control.
     const bool hasSize = isBrushLike || t == ToolType::Shape || t == ToolType::Line
@@ -630,6 +632,8 @@ void ToolOptionsPanel::updateFromTool() {
     m_hardnessGroup->setVisible(hasHardness);
     m_spacingGroup->setVisible(isBrushLike);
     m_toleranceGroup->setVisible(hasTolerance);
+    // The smudge tool and blur brush call their opacity "Strength".
+    m_opacityLabel->setText(isRetouch ? QStringLiteral("Strength:") : QStringLiteral("Opacity:"));
     m_opacityLabel->setVisible(hasOpacity);
     m_opacitySpin->setVisible(hasOpacity);
     m_fillLabel->setVisible(hasFill);

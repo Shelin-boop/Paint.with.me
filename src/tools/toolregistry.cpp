@@ -14,6 +14,7 @@
 #include "tools/pantool.h"
 #include "tools/penciltool.h"
 #include "tools/perspectivetool.h"
+#include "tools/retouchtool.h"
 #include "tools/recolortool.h"
 #include "tools/selectiontool.h"
 #include "tools/shapetool.h"
@@ -85,6 +86,12 @@ const std::vector<ToolInfo> &toolInfos() {
         {ToolType::Perspective, "perspective", "Perspective", "V", 9, 1,
          "Places vanishing points: guide lines for drawing in perspective, which strokes can follow.",
          "Click to place a vanishing point (up to 3, also outside the image). Drag to move, right click to remove."},
+        {ToolType::Smudge, "smudge", "Smudge", "U", 10, 0,
+         "Drags color like a finger through wet paint.",
+         "Drag to smudge. Strength sets how far the color is carried."},
+        {ToolType::BlurBrush, "blur-brush", "Blur Brush", "U", 10, 1,
+         "Softens what you paint over.",
+         "Drag to blur. Go over a spot again to blur it more."},
     };
     return tools;
 }
@@ -117,6 +124,8 @@ std::unique_ptr<Tool> createTool(ToolType type) {
     case ToolType::Line:             return std::make_unique<LineTool>();
     case ToolType::Shape:            return std::make_unique<ShapeTool>();
     case ToolType::Perspective:      return std::make_unique<PerspectiveTool>();
+    case ToolType::Smudge:           return std::make_unique<SmudgeTool>();
+    case ToolType::BlurBrush:        return std::make_unique<BlurBrushTool>();
     }
     return nullptr;
 }

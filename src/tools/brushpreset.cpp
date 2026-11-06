@@ -12,6 +12,8 @@ bool BrushPreset::supports(ToolType type) {
     case ToolType::Pencil:
     case ToolType::CloneStamp:
     case ToolType::Recolor:
+    case ToolType::Smudge:
+    case ToolType::BlurBrush:
         return true;
     default:
         return false;

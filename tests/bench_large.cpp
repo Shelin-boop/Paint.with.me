@@ -33,6 +33,8 @@
 #include <vector>
 
 #include "mainwindow.h"
+#include <QToolButton>
+#include "panels/toolspanel.h"
 #include "canvas/canvaswidget.h"
 #include "core/document.h"
 #include "core/layer.h"
@@ -370,6 +372,23 @@ int main(int argc, char **argv) {
     row("  held by the undo steps", doc->history().memoryUsed() / 1048576.0, "MB");
     row("  undo memory limit (1/8 of this computer's memory)", doc->history().memoryBudget() / 1048576.0, "MB");
     row("peak", peakMb(), "MB");
+
+    // ---- Smudge tool and blur brush ----
+    if (auto *toolsPanel = window.findChild<ToolsPanel *>()) {
+        for (ToolType type : {ToolType::Smudge, ToolType::BlurBrush}) {
+            QToolButton *button = toolsPanel->toolButton(type);
+            if (!button) continue;
+            button->click();
+            busyFor(200);
+            Tool *tool = canvas->currentTool();
+            if (!tool || tool->type() != type) continue;
+            for (double size : {100.0, 400.0}) {
+                tool->setBrushSize(size);
+                std::printf("\n%s with a %.0f px brush (40 mouse moves)\n", qPrintable(tool->name()), size);
+                stroke(0.25, true);
+            }
+        }
+    }
 
     // ---- Autosave ----
     if (autosave) {
