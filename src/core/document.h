@@ -24,8 +24,11 @@ public:
     int width() const { return m_width; }
     int height() const { return m_height; }
     QSize size() const { return QSize(m_width, m_height); }
-    void resize(int width, int height);
-    void resizeCanvas(int width, int height, int anchorX = 0, int anchorY = 0);
+    // Both are one undo step that also records the resolution: `dpi` > 0
+    // sets a new one (pixels per inch), 0 keeps it. Resize with the same
+    // pixel size and a new dpi only changes the resolution.
+    void resize(int width, int height, double dpi = 0);
+    void resizeCanvas(int width, int height, int anchorX = 0, int anchorY = 0, double dpi = 0);
 
     // Layers
     int layerCount() const { return static_cast<int>(m_layers.size()); }
@@ -49,6 +52,13 @@ public:
     void insertLayerDirect(int index, std::shared_ptr<Layer> layer);
     void removeLayerDirect(int index);
     void moveLayerDirect(int fromIndex, int toIndex);
+    void replaceLayerDirect(int index, std::shared_ptr<Layer> layer);
+
+    // Text layers. One undo step: the text layer at `index` becomes an
+    // ordinary layer that can be painted on; false if it is not a text layer.
+    bool convertTextToPixels(int index);
+    // Indices of the text layers among `indices`.
+    QVector<int> textLayersAmong(const QVector<int> &indices) const;
 
     // Full-document snapshot support (for undo/redo of structural ops)
     std::vector<std::shared_ptr<Layer>> snapshotLayers() const;

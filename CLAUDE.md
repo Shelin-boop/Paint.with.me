@@ -38,6 +38,19 @@ Claude sessions and milestones, not in hours of human work.
   win.
 - Antialiasing is one setting for all tools (Settings > Tools,
   `tools/antialiasing`), not a tool bar switch.
+- Text (2026-11-06): the Text tool makes text frames, each a text layer that
+  stays editable until Layers > Convert Text to Pixels. Font sizes are points
+  at the image's dpi (1 pt = 1/72 in). Painting tools are kept off text layers
+  (status message); menu commands that change pixels ask to convert first.
+- Sizes (2026-11-06): New, Resize and Canvas Size take pixels or a print size
+  in mm, cm or in, and a resolution in px/in or px/cm; a new resolution keeps
+  whichever was typed last (pixels or print size). Units are remembered
+  (`units/length`, `units/resolution`); default cm on metric locales.
+- PDF (2026-11-06): File > Extract Picture from PDF (also File > Open and
+  drag and drop of a .pdf) takes pictures out, first one chosen; pages are not
+  rendered.
+- The AppImage carries a PNG `.DirIcon`, so file managers can show its icon
+  (Dolphin: Configure Dolphin > Previews > "AppImage").
 - Clean up code that is badly structured, as part of the work.
 - Default panel layout (owner's choice, 2026-11-05): Tools above Colors on the
   left, History above Layers on the right. The Tools panel widens to 3 or 4
@@ -60,16 +73,12 @@ Claude sessions and milestones, not in hours of human work.
 7. Smudge tool and blur brush. Done 2026-11-06, together with pen extras,
    icons for the Image, Layers, Adjustments and Effects commands, a filled
    Settings > Tools page and a bigger, centered open-images strip.
+8. Editable text frames, print sizes with units and dpi, Extract Picture
+   from PDF, AppImage file icon. Done 2026-11-06.
 
 ### Ideas for later (owner's list; ask which comes next)
 
-- Text frames that stay editable until converted to pixels (owner,
-  2026-11-06): drag open a box of any size, type into it with all system
-  fonts, the usual formatting (bold, italic, underline, size, color) and
-  alignment (left, center, right, justified), edit it again later, and turn
-  it into ordinary pixels only when chosen. Probably a special kind of layer
-  that keeps the text and draws it, saved in `.psd` as a text layer if
-  possible (otherwise as pixels with a note).
+- (empty: text frames were done on 2026-11-06)
 
 ## Rules
 
@@ -86,14 +95,14 @@ Claude sessions and milestones, not in hours of human work.
 - Keep `tests/data/pdn/LICENSE-pypdn` with the pypdn test files.
 - Write documentation and UI text in American English. Dates as yyyy-mm-dd,
   times in 24-hour format, SI units. Menus use "..." (three dots), not "…".
-- Every change keeps all nine test suites passing; new behavior gets a test.
+- Every change keeps all twelve test suites passing; new behavior gets a test.
 
 ## Build and test
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests
+cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
@@ -121,6 +130,9 @@ icons; Settings pages; smudge and blur strokes):
 PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_panel_tests
 PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_paste_tests
 PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_brush_tests
+PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_units_tests        # New, Resize, Canvas Size
+PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_text_tests         # a text frame being edited
+PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_pdfpictures_tests  # the PDF picture dialog
 ```
 
 Note: `cmake --build build` builds only the app; build the test targets
@@ -179,6 +191,14 @@ explicitly (the command above), or old test programs run.
 | Tool icons, drawn in code (no image files) | `src/toolicons.cpp` |
 | App icon (SVG source and PNG sizes) | `packaging/icons/` |
 | Plugin C ABI (kept compatible with paint.software) | `src/plugins/plugin_api.h` |
+| Units, print sizes (mm, cm, in, dpi, px/cm) | `src/core/units.cpp`; shared fields `src/dialogs/sizefields.cpp` |
+| New, Resize, Canvas Size dialogs | `src/dialogs/newdocumentdialog.cpp`, `resizedialog.cpp`, `canvassizedialog.cpp` |
+| Text frames: model, layout at 72 dpi, drawing, JSON | `src/core/textframe.cpp` |
+| Text layers in a layer (valid while pixels unchanged) | `Layer::textFrame`, `setText`, `convertTextToPixels` |
+| Text tool: frames, caret, keys, input methods, format | `src/tools/texttool.cpp` |
+| Text-layer undo steps; finishing open edits first | `LayerReplaceCommand`, `HistoryManager::setBeforeChange` / `finishPendingEdit` |
+| Asking before pixel commands change text layers | `MainWindow::convertTextLayersFor` |
+| Pictures inside PDFs (own reader) and its dialog | `src/core/pdfpictures.cpp`, `src/dialogs/pdfpicturedialog.cpp` |
 | Tests (custom harness, not QTest) | `tests/` |
 
 ### Adding a tool
@@ -234,6 +254,26 @@ mouse move. `tests/test_brush.cpp` compares such tools against a full redraw.
   file.psd`, or GIMP's `file-psd-load` in `gimp-console -i -b`.
 - Never write to a file directly: `QSaveFile`, so a failed save leaves the old
   file intact.
+- Text layers: pixels as usual plus a private tagged block `pwmT` (JSON from
+  `TextFrame::serialize`); the reader attaches it after the pixels are set.
+  Other programs skip it (checked: psd-tools, GIMP 2.10).
+- PDF pictures: `tests/data/pdf/` (`make_fixtures.py` makes them with img2pdf,
+  ReportLab, pikepdf and qpdf; `manifest.json` lists the expected pictures).
+  Cross-check with poppler: `pdfimages -list file.pdf`. CMYK JPEGs: Qt 6.4
+  gives RGB, Qt 6.8+ gives CMYK8888; both resolve the Adobe inversion, so a
+  PDF's `Decode [1 0 ...]` is not applied again (tested on Qt 6.12 by the
+  AppImage workflow).
+
+### Text layers
+
+- A layer's text counts only while `QImage::cacheKey()` equals the key of the
+  drawing (`Layer::textFrame`): any pixel change makes it ordinary pixels, and
+  undo that brings the drawing back brings the text back.
+- The tool finds its layer by object, not index. While a frame is open,
+  `HistoryManager::setBeforeChange` makes every Document change (and undo,
+  redo, push) first record the text step, so steps stay in order.
+- Image > Resize keeps text (scaled fonts) when proportions stay; Canvas Size
+  and Crop move it; Rotate, Flip and Merge Down turn it into pixels.
 
 ### Undo
 
@@ -247,7 +287,7 @@ mouse move. `tests/test_brush.cpp` compares such tools against a full redraw.
 - The AppImage ships Qt's Wayland plugins (`EXTRA_PLATFORM_PLUGINS` from the
   Qt in use, plus `waylandcompositor` in `EXTRA_QT_MODULES` for the plugin
   folders). Its smoke test starts it in a headless Weston with
-  `QT_QPA_PLATFORM=wayland`; CI runs seven suites natively there too.
+  `QT_QPA_PLATFORM=wayland`; CI runs ten suites natively there too.
 - On Wayland the app cannot place its own windows: "Keep floating panels
   attached" is disabled, and `repositionFloatingUtilityWindows` does nothing.
 - "Restart Now" closes like quitting (every unsaved image is asked about),

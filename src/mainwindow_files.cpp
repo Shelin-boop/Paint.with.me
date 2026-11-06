@@ -40,6 +40,10 @@
 #include <QStandardPaths>
 #include <QFutureWatcher>
 #include <QtConcurrent/QtConcurrentRun>
+#include "core/pdfpictures.h"
+#include "dialogs/pdfpicturedialog.h"
+#include <QClipboard>
+#include <QTimer>
 #include "appinfo.h"
 #include <QMenu>
 
@@ -51,6 +55,8 @@ void MainWindow::wireDocumentSignals() {
 
     connect(m_document, &Document::documentChanged, this, &MainWindow::updateTitle);
     connect(m_document, &Document::documentChanged, this, &MainWindow::updateImageList);
+    connect(m_document, &Document::primaryColorChanged, this, &MainWindow::onPrimaryColorChanged,
+            Qt::UniqueConnection);
     connect(m_document, &Document::sizeChanged, this, [this](int w, int h) {
         m_sizeLabel->setText(QString("%1 × %2").arg(w).arg(h));
     });
@@ -166,9 +172,10 @@ void MainWindow::newDocument() {
 
 void MainWindow::openDocument() {
     QStringList files = QFileDialog::getOpenFileNames(this, QStringLiteral("Open an image"),
-        QString(), "All supported formats (*.psd *.psb *.pdn *.png *.jpg *.jpeg *.bmp *.gif *.tif *.tiff *.webp);;"
+        QString(), "All supported formats (*.psd *.psb *.pdn *.png *.jpg *.jpeg *.bmp *.gif *.tif *.tiff *.webp *.pdf);;"
                    "Photoshop (*.psd *.psb);;"
                    "Paint.NET (*.pdn);;"
+                   "PDF, pictures in it (*.pdf);;"
                    "Images (*.png *.jpg *.jpeg *.bmp *.gif *.tif *.tiff *.webp);;All Files (*)");
     for (const QString &f : files)
         loadDocumentInto(f);
@@ -178,6 +185,72 @@ QString MainWindow::autosaveDir() const {
     QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (base.isEmpty()) base = QDir::homePath() + "/." + AppInfo::kId;
     return base + "/recovery";
+}
+
+void MainWindow::extractPictureFromPdf(const QString &givenPath) {
+    QString path = givenPath;
+    if (path.isEmpty()) {
+        path = QFileDialog::getOpenFileName(this, QStringLiteral("Extract Picture from PDF"), QString(),
+                                            QStringLiteral("PDF documents (*.pdf);;All Files (*)"));
+        if (path.isEmpty()) return;
+    }
+    const QString name = QFileInfo(path).fileName();
+    PdfPictures pdf;
+    QApplication::setOverrideCursor(Qt::WaitCursor);
+    const bool opened = pdf.open(path);
+    QApplication::restoreOverrideCursor();
+    if (!opened) {
+        QMessageBox box(QMessageBox::Warning, QStringLiteral("Extract Picture from PDF"),
+                        QStringLiteral("\u201c%1\u201d could not be read.").arg(name), QMessageBox::Ok, this);
+        box.setObjectName(QStringLiteral("pdfPictureError"));
+        box.setInformativeText(pdf.error());
+        box.exec();
+        return;
+    }
+    if (pdf.pictures().isEmpty()) {
+        QMessageBox box(QMessageBox::Information, QStringLiteral("Extract Picture from PDF"),
+                        QStringLiteral("No pictures were found in \u201c%1\u201d.").arg(name), QMessageBox::Ok, this);
+        box.setObjectName(QStringLiteral("pdfPictureError"));
+        box.setInformativeText(QStringLiteral(
+            "Its pages may hold only text and drawings. Paint.with.me takes the pictures out of a PDF; "
+            "it does not draw whole pages."));
+        box.exec();
+        return;
+    }
+    PdfPictureDialog dialog(pdf, name, this);
+    dialog.setObjectName(QStringLiteral("pdfPictureDialog"));
+    if (dialog.exec() != QDialog::Accepted) return;
+    const QImage image = dialog.currentImage();
+    if (image.isNull()) return;
+    const double dpi = dialog.currentDpi();
+    const QString label = QStringLiteral("%1, picture %2").arg(QFileInfo(path).completeBaseName())
+                              .arg(dialog.currentIndex() + 1);
+    switch (dialog.action()) {
+    case PdfPictureDialog::Action::OpenAsImage: {
+        auto *doc = new Document(image.width(), image.height(), this);
+        doc->activeLayer()->setImage(image);
+        doc->activeLayer()->setName(label);
+        if (dpi > 0) doc->setDpi(dpi);
+        doc->setModified(false);
+        addDocument(doc);
+        statusBar()->showMessage(QStringLiteral("Opened %1: %2 x %3 pixels%4.").arg(label).arg(image.width())
+                                     .arg(image.height())
+                                     .arg(dpi > 0 ? QStringLiteral(" at %1 dpi").arg(dpi) : QString()), 8000);
+        break;
+    }
+    case PdfPictureDialog::Action::CopyToClipboard:
+        QApplication::clipboard()->setImage(image.convertToFormat(QImage::Format_ARGB32));
+        statusBar()->showMessage(QStringLiteral("Copied %1 to the clipboard (%2 x %3 pixels).").arg(label)
+                                     .arg(image.width()).arg(image.height()), 8000);
+        break;
+    case PdfPictureDialog::Action::AddAsLayer:
+        if (!m_document) return;
+        m_document->addLayer(image, label);
+        m_canvas->updateCanvas();
+        break;
+    case PdfPictureDialog::Action::None:
+        break;
+    }
 }
 
 void MainWindow::performAutosave() {
@@ -294,6 +367,11 @@ void MainWindow::openFile(const QString &filePath) {
 }
 
 void MainWindow::loadDocumentInto(const QString &filePath) {
+    // A PDF is not drawn as a page: its pictures can be taken out.
+    if (QFileInfo(filePath).suffix().compare(QLatin1String("pdf"), Qt::CaseInsensitive) == 0) {
+        extractPictureFromPdf(filePath);
+        return;
+    }
     // If it's already open, just switch to it.
     for (int i = 0; i < m_documents.size(); ++i) {
         if (m_documents[i]->filePath() == filePath) {
@@ -522,7 +600,7 @@ void MainWindow::dragEnterEvent(QDragEnterEvent *event)
             QString suffix = QFileInfo(filePath).suffix().toLower();
             if (suffix == "png" || suffix == "jpg" || suffix == "jpeg" || 
                 suffix == "bmp" || suffix == "gif" || suffix == "tiff" || suffix == "webp" ||
-                suffix == "pdn") {
+                suffix == "pdn" || suffix == "pdf") {
                 event->acceptProposedAction();
                 return;
             }
@@ -544,6 +622,12 @@ void MainWindow::dropEvent(QDropEvent *event)
         if (QFileInfo(filePath).suffix().compare("pdn", Qt::CaseInsensitive) == 0) {
             openFile(filePath);
             event->acceptProposedAction();
+            return;
+        }
+        if (QFileInfo(filePath).suffix().compare("pdf", Qt::CaseInsensitive) == 0) {
+            event->acceptProposedAction();
+            // After the drop has finished, so the window manager is not kept waiting.
+            QTimer::singleShot(0, this, [this, filePath]() { extractPictureFromPdf(filePath); });
             return;
         }
     }

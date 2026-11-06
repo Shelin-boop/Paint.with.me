@@ -1,58 +1,26 @@
 #pragma once
 #include <QDialog>
-#include <QSpinBox>
-#include <QDoubleSpinBox>
-#include <QCheckBox>
-#include <QComboBox>
-#include <QRadioButton>
-#include <QLabel>
 
+class QComboBox;
+class QDialogButtonBox;
+class SizeFields;
+
+// Image > Resize: scales every layer to a new pixel size. The size can be
+// given in pixels, as a percentage, or as a print size (mm, cm, in) at a
+// resolution.
 class ResizeDialog : public QDialog {
     Q_OBJECT
 public:
-    explicit ResizeDialog(int currentWidth, int currentHeight, int dpi = 96, QWidget *parent = nullptr);
+    explicit ResizeDialog(int currentWidth, int currentHeight, double dpi = 96.0, QWidget *parent = nullptr);
 
     int newWidth() const;
     int newHeight() const;
     int resampleMethod() const;
-    int resolution() const;
-
-private slots:
-    void onPixelWidthChanged(int value);
-    void onPixelHeightChanged(int value);
-    void onPercentChanged(double value);
-    void onPrintWidthChanged(double value);
-    void onPrintHeightChanged(double value);
-    void onResolutionChanged(int value);
-    void onModeChanged();
+    double resolution() const;   // pixels per inch
+    SizeFields *sizeFields() const { return m_fields; }
 
 private:
-    void updateNewSizeLabel();
-    void syncFromPixels();
-
-    // Pixel size
-    QRadioButton *m_absoluteRB;
-    QSpinBox *m_pixelWidthSpin;
-    QSpinBox *m_pixelHeightSpin;
-
-    // Percentage
-    QRadioButton *m_percentRB;
-    QDoubleSpinBox *m_percentSpin;
-
-    // Print size
-    QDoubleSpinBox *m_printWidthSpin;
-    QDoubleSpinBox *m_printHeightSpin;
-
-    // Resolution
-    QSpinBox *m_resolutionSpin;
-
-    // Common
-    QCheckBox *m_aspectRatio;
+    SizeFields *m_fields;
     QComboBox *m_resampleCombo;
-    QLabel *m_newSizeLabel;
-
-    int m_origWidth;
-    int m_origHeight;
-    double m_ratio;
-    bool m_updating = false;
+    QDialogButtonBox *m_buttons;
 };

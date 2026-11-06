@@ -6,6 +6,7 @@ class CloneStampTool : public Tool {
 public:
     ToolType type() const override { return ToolType::CloneStamp; }
     QString name() const override { return "Clone Stamp"; }
+    bool changesLayerPixels(const Document *) const override { return true; }
 
     void mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;
     void mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) override;

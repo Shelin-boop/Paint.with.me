@@ -5,6 +5,10 @@
 #include <QTransform>
 #include <cmath>
 
+bool MoveTool::changesLayerPixels(const Document *doc) const {
+    return doc && doc->selection().hasSelection();
+}
+
 void MoveTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, CanvasWidget &canvas) {
     // Left drags move/resize; a right drag rotates the lifted content (Paint.NET).
     if (event->button() != Qt::LeftButton && event->button() != Qt::RightButton) return;

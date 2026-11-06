@@ -3,6 +3,9 @@
 #include <QImage>
 #include <QString>
 #include <QPainter>
+#include <memory>
+
+struct TextFrame;
 
 enum class BlendMode {
     Normal,
@@ -97,6 +100,27 @@ public:
     static QString blendModeName(BlendMode mode);
     static QList<BlendMode> allBlendModes();
 
+    // ---- Text layers ----
+    // A text layer keeps its text next to the pixels it was drawn as. It
+    // counts only while the image is exactly that drawing (the same
+    // QImage::cacheKey()); any other change to the pixels makes it an
+    // ordinary layer, so stale text can never be drawn over painted pixels.
+    // Undo steps that bring the drawing back bring the text back too.
+    std::shared_ptr<const TextFrame> textFrame() const;
+    bool isTextLayer() const { return textFrame() != nullptr; }
+    // How far the layer moved since its text was drawn (Move tool, Canvas
+    // Size, Crop): the frame's box is that much further on.
+    QPoint textShift() const { return m_offset - m_textOffset; }
+    // Shows `rendered`, drawn from `text` with its top-left corner at
+    // document pixel `origin`, as this layer.
+    void setText(std::shared_ptr<const TextFrame> text, const QImage &rendered, const QPoint &origin);
+    // The pixels already are the drawing of `text` (opening a file).
+    void adoptText(std::shared_ptr<const TextFrame> text);
+    // Turns a text layer into an ordinary layer covering at least the
+    // canvas (so painting next to the text is not cut off). Pixels shown
+    // stay the same. No-op for other layers.
+    void convertTextToPixels(const QSize &canvasSize);
+
 private:
     void compositeReduced(QPainter &painter, QImage &dest, const QPoint &destOrigin,
                           const QRect &limit, int shift) const;
@@ -111,6 +135,9 @@ private:
     BlendMode m_blendMode = BlendMode::Normal;
     QPoint m_offset{0, 0};
     bool m_retainsOffCanvasPixels = false;
+    std::shared_ptr<const TextFrame> m_text;
+    qint64 m_textKey = 0;     // cacheKey() of the drawing of m_text
+    QPoint m_textOffset;      // offset when m_text was drawn
     mutable qint64 m_boundsKey = 0;   // QImage::cacheKey() m_bounds belongs to
     mutable QRect m_bounds;
 };

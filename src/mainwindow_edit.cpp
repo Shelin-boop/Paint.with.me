@@ -31,6 +31,8 @@
 #include <QInputDialog>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QToolTip>
+#include "tools/texttool.h"
 #include <QApplication>
 #include <QMimeData>
 #include <QUrl>
@@ -241,6 +243,7 @@ void MainWindow::fillSelection() {
     // Paint.NET's "Fill Selection" (Backspace): flood the selected region — or the
     // whole active layer when nothing is selected — with the primary colour.
     if (!m_document) return;
+    if (!convertTextLayersFor({m_document->activeLayerIndex()})) return;
     auto *layer = m_document->activeLayer();
     if (!layer || layer->isLocked()) return;
 
@@ -321,6 +324,7 @@ void MainWindow::importLayerFromFile() {
 
 void MainWindow::flipActiveLayerHorizontal() {
     if (!m_document) return;
+    if (!convertTextLayersFor({m_document->activeLayerIndex()})) return;
     auto *layer = m_document->activeLayer();
     if (!layer || layer->isLocked()) return;
     QImage before = layer->image().copy();
@@ -331,6 +335,7 @@ void MainWindow::flipActiveLayerHorizontal() {
 
 void MainWindow::flipActiveLayerVertical() {
     if (!m_document) return;
+    if (!convertTextLayersFor({m_document->activeLayerIndex()})) return;
     auto *layer = m_document->activeLayer();
     if (!layer || layer->isLocked()) return;
     QImage before = layer->image().copy();
@@ -341,6 +346,7 @@ void MainWindow::flipActiveLayerVertical() {
 
 void MainWindow::showRotateZoomLayerDialog() {
     if (!m_document) return;
+    if (!convertTextLayersFor({m_document->activeLayerIndex()})) return;
     auto *layer = m_document->activeLayer();
     if (!layer || layer->isLocked()) return;
 
@@ -440,22 +446,19 @@ void MainWindow::featherSelection() {
 // ---- Image operations ----
 
 void MainWindow::resizeImage() {
-    ResizeDialog dlg(m_document->width(), m_document->height(), qRound(m_document->dpi()), this);
+    ResizeDialog dlg(m_document->width(), m_document->height(), m_document->dpi(), this);
     if (dlg.exec() == QDialog::Accepted) {
-        if (dlg.resolution() != qRound(m_document->dpi())) {
-            m_document->setDpi(dlg.resolution());
-            m_document->setModified(true);
-        }
-        m_document->resize(dlg.newWidth(), dlg.newHeight());
+        m_document->resize(dlg.newWidth(), dlg.newHeight(), dlg.resolution());
         m_sizeLabel->setText(QString("%1 × %2").arg(m_document->width()).arg(m_document->height()));
         m_canvas->updateCanvas();
     }
 }
 
 void MainWindow::canvasSize() {
-    CanvasSizeDialog dlg(m_document->width(), m_document->height(), this);
+    CanvasSizeDialog dlg(m_document->width(), m_document->height(), m_document->dpi(), this);
     if (dlg.exec() == QDialog::Accepted) {
-        m_document->resizeCanvas(dlg.newWidth(), dlg.newHeight(), dlg.anchorX(), dlg.anchorY());
+        m_document->resizeCanvas(dlg.newWidth(), dlg.newHeight(), dlg.anchorX(), dlg.anchorY(),
+                                 dlg.resolution());
         m_sizeLabel->setText(QString("%1 × %2").arg(m_document->width()).arg(m_document->height()));
         m_canvas->updateCanvas();
     }
@@ -464,6 +467,8 @@ void MainWindow::canvasSize() {
 void MainWindow::applyImageOperation(const QImage &result, const QString &description) {
     auto *layer = m_document->activeLayer();
     if (!layer) return;
+    if (!convertTextLayersFor({m_document->activeLayerIndex()})) return;
+    layer = m_document->activeLayer();
     QImage before = layer->image().copy();
     layer->setImage(result);
     m_document->pushImageEdit(m_document->activeLayerIndex(), before, description);
@@ -472,6 +477,7 @@ void MainWindow::applyImageOperation(const QImage &result, const QString &descri
 
 void MainWindow::applyImageOperationToTargetLayers(const std::function<QImage(const QImage &)> &operation, const QString &description) {
     if (!m_document) return;
+    if (!convertTextLayersFor(targetLayerIndices())) return;
 
     // Remember this operation (with its parameters bound) so "Repeat last effect"
     // can re-apply it without re-prompting.
@@ -545,6 +551,7 @@ void MainWindow::applySelectionFilterToTargetLayers(const std::function<QImage(c
 
 void MainWindow::transformSelectionContents(const std::function<QImage(const QImage &)> &operation, const QString &description) {
     if (!m_document || !m_document->selection().hasSelection()) return;
+    if (!convertTextLayersFor(targetLayerIndices())) return;
 
     const QRect selectionRect = m_document->selection().boundingRect();
     bool changed = false;
@@ -589,6 +596,7 @@ void MainWindow::transformSelectionContents(const std::function<QImage(const QIm
 
 void MainWindow::deleteSelectionContents() {
     if (!m_document || !m_document->selection().hasSelection()) return;
+    if (!convertTextLayersFor(targetLayerIndices())) return;
 
     bool changed = false;
     for (int index : targetLayerIndices()) {
@@ -667,6 +675,58 @@ void MainWindow::showSelectionContextMenu(const QPoint &globalPos) {
     menu.addAction(QStringLiteral("Invert Selection"), this, &MainWindow::invertSelection);
     menu.addAction(QStringLiteral("Deselect"), this, &MainWindow::deselectAll);
     menu.exec(globalPos);
+}
+
+bool MainWindow::convertTextLayersFor(const std::vector<int> &indices) {
+    if (!m_document) return false;
+    QVector<int> texts = m_document->textLayersAmong(QVector<int>(indices.begin(), indices.end()));
+    if (texts.isEmpty()) return true;
+    QStringList names;
+    for (int i : texts) names << QStringLiteral("\u201c%1\u201d").arg(m_document->layerAt(i)->name());
+    QMessageBox box(QMessageBox::Question, QStringLiteral("Text Layer"),
+                    texts.size() == 1
+                        ? QStringLiteral("%1 is a text layer.").arg(names.first())
+                        : QStringLiteral("%1 are text layers.").arg(names.join(QStringLiteral(", "))),
+                    QMessageBox::NoButton, this);
+    box.setObjectName(QStringLiteral("convertTextToPixels"));
+    box.setInformativeText(QStringLiteral(
+        "This command changes pixels. Turned into pixels, the text can no longer be "
+        "edited as text. Undo brings it back."));
+    QPushButton *convert = box.addButton(QStringLiteral("Convert to Pixels"), QMessageBox::AcceptRole);
+    box.addButton(QMessageBox::Cancel);
+    box.setDefaultButton(convert);
+    box.exec();
+    if (box.clickedButton() != convert) return false;
+    for (int i : texts) m_document->convertTextToPixels(i);
+    m_canvas->updateCanvas();
+    return true;
+}
+
+TextTool *MainWindow::textTool() const {
+    for (const auto &tool : m_tools)
+        if (tool->type() == ToolType::Text) return static_cast<TextTool *>(tool.get());
+    return nullptr;
+}
+
+void MainWindow::onPrimaryColorChanged(const QColor &color) {
+    TextTool *text = textTool();
+    if (text && text->isEditing() && text->editedDocument() == m_document) text->setColor(color);
+}
+
+void MainWindow::onTextLayerBlocked(const QString &layerName) {
+    const QString message = QStringLiteral(
+        "\u201c%1\u201d is a text layer. To paint on it, choose Layers > Convert Text to Pixels, "
+        "or add a new layer.").arg(layerName);
+    statusBar()->showMessage(message, 8000);
+    QToolTip::showText(QCursor::pos(), message, m_canvas);
+}
+
+void MainWindow::convertActiveTextToPixels() {
+    if (!m_document) return;
+    if (m_document->convertTextToPixels(m_document->activeLayerIndex())) {
+        m_canvas->updateCanvas();
+        statusBar()->showMessage(QStringLiteral("The text is now pixels. Undo makes it editable again."), 5000);
+    }
 }
 
 std::vector<int> MainWindow::targetLayerIndices() const {

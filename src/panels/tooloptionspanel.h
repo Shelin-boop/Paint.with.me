@@ -3,6 +3,7 @@
 #include <QWidget>
 #include <QSlider>
 #include <QSpinBox>
+#include <QDoubleSpinBox>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFontComboBox>
@@ -29,6 +30,9 @@ public:
     void setTabletPresent(bool present);
     // Shows the current perspective settings (changed elsewhere, e.g. View menu).
     void syncPerspectiveControls();
+    // Shows the Text tool's format (the format at the caret while a frame is
+    // being edited).
+    void syncTextControls();
 
 signals:
     void toolOptionsChanged();
@@ -63,7 +67,7 @@ private slots:
     void onCurveTypeChanged(int index);
     // Text tool.
     void onFontChanged(const QFont &font);
-    void onFontSizeChanged(int value);
+    void onFontSizeChanged(double value);
     void onTextStyleChanged();
 
 private:
@@ -152,7 +156,7 @@ private:
     // Text tool controls.
     QFontComboBox *m_fontCombo;
     QLabel *m_fontSizeLabel;
-    QSpinBox *m_fontSizeSpin;
+    QDoubleSpinBox *m_fontSizeSpin;
     QToolButton *m_boldBtn;
     QToolButton *m_italicBtn;
     QToolButton *m_underlineBtn;

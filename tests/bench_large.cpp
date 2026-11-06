@@ -450,6 +450,53 @@ int main(int argc, char **argv) {
         }
     }
 
+    // ---- Typing into a text frame ----
+    {
+        std::printf("\nType into a text frame (Text tool, 24 pt = 200 px at 600 dpi, 30 keys)\n");
+        QMetaObject::invokeMethod(&window, "selectTool", Qt::DirectConnection, Q_ARG(ToolType, ToolType::Text));
+        Tool *text = canvas->currentTool();
+        if (!text || text->type() != ToolType::Text) {
+            std::fprintf(stderr, "text tool is not active\n");
+            return 1;
+        }
+        doc->setActiveLayer(gLayers - 1);
+        busyFor(300);
+        const QPointF a(gSize * 0.2, gSize * 0.3), b(gSize * 0.8, gSize * 0.6);
+        QElapsedTimer t;
+        int before = paints.paints;
+        t.start();
+        QMouseEvent press = mouse(QEvent::MouseButtonPress, canvas->canvasToWidget(a), Qt::LeftButton, Qt::LeftButton);
+        QApplication::sendEvent(canvas, &press);
+        QMouseEvent drag = mouse(QEvent::MouseMove, canvas->canvasToWidget(b), Qt::NoButton, Qt::LeftButton);
+        QApplication::sendEvent(canvas, &drag);
+        QMouseEvent up = mouse(QEvent::MouseButtonRelease, canvas->canvasToWidget(b), Qt::LeftButton, Qt::NoButton);
+        QApplication::sendEvent(canvas, &up);
+        waitForPaint(paints, before);
+        row("open a frame (new text layer) until it shows", ms(t));
+        busyFor(500);
+        const QString words = QStringLiteral("The quick brown fox jumps over");
+        std::vector<double> keys;
+        for (QChar ch : words) {
+            before = paints.paints;
+            t.restart();
+            QKeyEvent k(QEvent::KeyPress, 0, Qt::NoModifier, QString(ch));
+            QApplication::sendEvent(canvas, &k);
+            waitForPaint(paints, before);
+            keys.push_back(ms(t));
+        }
+        row("each key until the letter shows, median", median(keys));
+        row("each key until the letter shows, slowest", *std::max_element(keys.begin(), keys.end()));
+        const Busy afterKeys = busyFor(1000);
+        row("  then busy (thumbnails ...)", afterKeys.total);
+        before = paints.paints;
+        t.restart();
+        QKeyEvent esc(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+        QApplication::sendEvent(canvas, &esc);
+        waitForPaint(paints, before);
+        row("Esc: finish the frame (one undo step)", ms(t) + busyFor(1000).total);
+        if (!doc->activeLayer()->isTextLayer()) std::printf("  ERROR: no text layer\n");
+    }
+
     doc->setModified(false);
     window.close();
     return 0;

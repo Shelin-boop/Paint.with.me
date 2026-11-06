@@ -1,117 +1,129 @@
 #include "newdocumentdialog.h"
-#include <QVBoxLayout>
-#include <QHBoxLayout>
-#include <QGridLayout>
-#include <QFormLayout>
-#include <QLabel>
-#include <QDialogButtonBox>
-#include <QGroupBox>
+#include "sizefields.h"
+
 #include <QColorDialog>
+#include <QComboBox>
+#include <QDialogButtonBox>
+#include <QHBoxLayout>
+#include <QLabel>
+#include <QPushButton>
+#include <QVBoxLayout>
+#include <cmath>
+
+namespace {
+
+struct Preset {
+    const char *label;
+    double width;
+    double height;
+    int unit;   // -1 = pixels, else Units::Length
+};
+
+// Paper sizes are portrait; "Swap" turns them to landscape.
+const Preset kPresets[] = {
+    {"640 x 480", 640, 480, -1},
+    {"800 x 600", 800, 600, -1},
+    {"1024 x 768", 1024, 768, -1},
+    {"1280 x 720 (HD)", 1280, 720, -1},
+    {"1920 x 1080 (Full HD)", 1920, 1080, -1},
+    {"2560 x 1440 (QHD)", 2560, 1440, -1},
+    {"3840 x 2160 (4K UHD)", 3840, 2160, -1},
+    {nullptr, 0, 0, 0},   // separator
+    {"A3 (297 x 420 mm)", 297, 420, int(Units::Length::Millimeter)},
+    {"A4 (210 x 297 mm)", 210, 297, int(Units::Length::Millimeter)},
+    {"A5 (148 x 210 mm)", 148, 210, int(Units::Length::Millimeter)},
+    {"A6 (105 x 148 mm)", 105, 148, int(Units::Length::Millimeter)},
+    {"US Letter (8.5 x 11 in)", 8.5, 11, int(Units::Length::Inch)},
+    {"US Legal (8.5 x 14 in)", 8.5, 14, int(Units::Length::Inch)},
+    {"Photo 10 x 15 cm", 10, 15, int(Units::Length::Centimeter)},
+    {"Photo 13 x 18 cm", 13, 18, int(Units::Length::Centimeter)},
+};
+
+}  // namespace
 
 NewDocumentDialog::NewDocumentDialog(QWidget *parent) : QDialog(parent) {
-    setWindowTitle("New");
-    setFixedWidth(360);
-    m_ratio = 800.0 / 600.0;
+    setWindowTitle(QStringLiteral("New"));
     auto *layout = new QVBoxLayout(this);
     layout->setSpacing(8);
 
-    // Préréglage
     auto *presetLayout = new QHBoxLayout;
     presetLayout->addWidget(new QLabel(QStringLiteral("Preset:")));
     m_presetCombo = new QComboBox;
-    m_presetCombo->addItem(QStringLiteral("Custom"));
-    m_presetCombo->addItem("640 \u00d7 480");
-    m_presetCombo->addItem("800 \u00d7 600");
-    m_presetCombo->addItem("1024 \u00d7 768");
-    m_presetCombo->addItem("1280 \u00d7 720 (HD)");
-    m_presetCombo->addItem("1920 \u00d7 1080 (Full HD)");
-    m_presetCombo->addItem("2560 \u00d7 1440 (2K)");
-    m_presetCombo->addItem("3840 \u00d7 2160 (4K)");
+    m_presetCombo->addItem(QStringLiteral("Custom"), -1);
+    for (int i = 0; i < int(std::size(kPresets)); ++i) {
+        if (!kPresets[i].label)
+            m_presetCombo->insertSeparator(m_presetCombo->count());
+        else
+            m_presetCombo->addItem(QString::fromLatin1(kPresets[i].label), i);
+    }
     m_presetCombo->setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     presetLayout->addWidget(m_presetCombo);
     layout->addLayout(presetLayout);
 
-    // Section taille
-    auto *sizeGroup = new QGroupBox(QStringLiteral("Image size"));
-    auto *sizeGrid = new QGridLayout(sizeGroup);
-    sizeGrid->setSpacing(4);
+    SizeFields::Options options;
+    options.percent = false;
+    options.keepAspect = false;
+    m_fields = new SizeFields(QSize(800, 600), 96.0, options);
+    layout->addWidget(m_fields);
 
-    sizeGrid->addWidget(new QLabel(QStringLiteral("Width:")), 0, 0);
-    m_widthSpin = new QSpinBox;
-    m_widthSpin->setRange(1, 65535);
-    m_widthSpin->setValue(800);
-    sizeGrid->addWidget(m_widthSpin, 0, 1);
-    sizeGrid->addWidget(new QLabel("pixels"), 0, 2);
-
-    sizeGrid->addWidget(new QLabel(QStringLiteral("Height:")), 1, 0);
-    m_heightSpin = new QSpinBox;
-    m_heightSpin->setRange(1, 65535);
-    m_heightSpin->setValue(600);
-    sizeGrid->addWidget(m_heightSpin, 1, 1);
-    sizeGrid->addWidget(new QLabel("pixels"), 1, 2);
-
-    sizeGrid->addWidget(new QLabel(QStringLiteral("Resolution:")), 2, 0);
-    m_resolutionSpin = new QSpinBox;
-    m_resolutionSpin->setRange(1, 9999);
-    m_resolutionSpin->setValue(96);
-    m_resolutionSpin->setSuffix(" dpi");
-    sizeGrid->addWidget(m_resolutionSpin, 2, 1);
-
-    m_aspectRatio = new QCheckBox(QStringLiteral("Maintain aspect ratio"));
-    sizeGrid->addWidget(m_aspectRatio, 3, 0, 1, 3);
-
-    layout->addWidget(sizeGroup);
-
-    // Couleur de fond
     auto *bgLayout = new QHBoxLayout;
     bgLayout->addWidget(new QLabel(QStringLiteral("Background:")));
     m_colorBtn = new QPushButton;
     m_colorBtn->setFixedSize(80, 24);
     m_colorBtn->setStyleSheet("background-color: white; border: 1px solid #aaa;");
     bgLayout->addWidget(m_colorBtn);
-    auto *colorLabel = new QLabel("White");
-    bgLayout->addWidget(colorLabel);
+    m_colorLabel = new QLabel(QStringLiteral("White"));
+    bgLayout->addWidget(m_colorLabel);
     bgLayout->addStretch();
     layout->addLayout(bgLayout);
 
-    // Infos taille
-    m_sizeInfoLabel = new QLabel;
-    m_sizeInfoLabel->setStyleSheet("color: #555; font-size: 11px;");
-    m_sizeInfoLabel->setText(QString("%1 \u00d7 %2 pixels").arg(800).arg(600));
-    layout->addWidget(m_sizeInfoLabel);
+    m_buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
+    connect(m_buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
+    connect(m_buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
+    layout->addWidget(m_buttons);
 
-    // OK / Annuler
-    auto *buttons = new QDialogButtonBox(QDialogButtonBox::Ok | QDialogButtonBox::Cancel);
-    connect(buttons, &QDialogButtonBox::accepted, this, &QDialog::accept);
-    connect(buttons, &QDialogButtonBox::rejected, this, &QDialog::reject);
-    layout->addWidget(buttons);
-
-    // Connections
-    connect(m_presetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this, &NewDocumentDialog::onPresetChanged);
+    connect(m_presetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), this,
+            &NewDocumentDialog::onPresetChanged);
     connect(m_colorBtn, &QPushButton::clicked, this, &NewDocumentDialog::onChooseColor);
-    connect(m_widthSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, &NewDocumentDialog::onWidthChanged);
-    connect(m_heightSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, &NewDocumentDialog::onHeightChanged);
-
-    // Store colorLabel for updates
-    connect(m_colorBtn, &QPushButton::clicked, this, [this, colorLabel]() {
-        colorLabel->setText(m_bgColor.name());
+    connect(m_fields, &SizeFields::changed, this, [this] {
+        m_buttons->button(QDialogButtonBox::Ok)->setEnabled(m_fields->isValid());
+        // Typing a different size leaves the preset ("Custom"); a new
+        // resolution for a paper size keeps it (A4 stays A4).
+        if (!m_applyingPreset && m_presetCombo->currentIndex() != 0 && !matchesPreset()) {
+            const QSignalBlocker block(m_presetCombo);
+            m_presetCombo->setCurrentIndex(0);
+        }
     });
+    setMinimumWidth(440);
 }
 
-int NewDocumentDialog::imageWidth() const { return m_widthSpin->value(); }
-int NewDocumentDialog::imageHeight() const { return m_heightSpin->value(); }
-int NewDocumentDialog::resolution() const { return m_resolutionSpin->value(); }
+int NewDocumentDialog::imageWidth() const { return m_fields->pixelSize().width(); }
+int NewDocumentDialog::imageHeight() const { return m_fields->pixelSize().height(); }
+double NewDocumentDialog::resolution() const { return m_fields->dpi(); }
 
 void NewDocumentDialog::onPresetChanged(int index) {
-    const int presets[][2] = {{0,0},{640,480},{800,600},{1024,768},{1280,720},{1920,1080},{2560,1440},{3840,2160}};
-    if (index > 0 && index < 8) {
-        m_updating = true;
-        m_widthSpin->setValue(presets[index][0]);
-        m_heightSpin->setValue(presets[index][1]);
-        m_ratio = (double)presets[index][0] / presets[index][1];
-        m_sizeInfoLabel->setText(QString("%1 \u00d7 %2 pixels").arg(presets[index][0]).arg(presets[index][1]));
-        m_updating = false;
-    }
+    const int i = m_presetCombo->itemData(index).toInt();
+    if (i < 0 || i >= int(std::size(kPresets)) || !kPresets[i].label) return;
+    const Preset &p = kPresets[i];
+    m_applyingPreset = true;
+    if (p.unit < 0)
+        m_fields->setPixelSize(QSize(int(p.width), int(p.height)));
+    else
+        m_fields->setPrintSize(QSizeF(p.width, p.height), Units::Length(p.unit));
+    m_applyingPreset = false;
+}
+
+bool NewDocumentDialog::matchesPreset() const {
+    const int i = m_presetCombo->currentData().toInt();
+    if (i < 0 || i >= int(std::size(kPresets)) || !kPresets[i].label) return false;
+    const Preset &p = kPresets[i];
+    if (p.unit < 0)
+        return m_fields->pixelSize() == QSize(int(p.width), int(p.height));
+    const Units::Length unit = Units::Length(p.unit);
+    if (m_fields->keep() != SizeFields::Keep::PrintSize) return false;
+    const QSizeF printed = m_fields->printSizeInches();
+    return std::abs(printed.width() - Units::toInches(p.width, unit)) < 1e-9
+        && std::abs(printed.height() - Units::toInches(p.height, unit)) < 1e-9;
 }
 
 void NewDocumentDialog::onChooseColor() {
@@ -119,25 +131,6 @@ void NewDocumentDialog::onChooseColor() {
     if (c.isValid()) {
         m_bgColor = c;
         m_colorBtn->setStyleSheet(QString("background-color: %1; border: 1px solid #aaa;").arg(c.name()));
+        m_colorLabel->setText(c.name());
     }
-}
-
-void NewDocumentDialog::onWidthChanged(int value) {
-    if (m_updating) return;
-    m_updating = true;
-    if (m_aspectRatio->isChecked())
-        m_heightSpin->setValue(static_cast<int>(value / m_ratio));
-    m_sizeInfoLabel->setText(QString("%1 \u00d7 %2 pixels").arg(m_widthSpin->value()).arg(m_heightSpin->value()));
-    m_presetCombo->setCurrentIndex(0);
-    m_updating = false;
-}
-
-void NewDocumentDialog::onHeightChanged(int value) {
-    if (m_updating) return;
-    m_updating = true;
-    if (m_aspectRatio->isChecked())
-        m_widthSpin->setValue(static_cast<int>(value * m_ratio));
-    m_sizeInfoLabel->setText(QString("%1 \u00d7 %2 pixels").arg(m_widthSpin->value()).arg(m_heightSpin->value()));
-    m_presetCombo->setCurrentIndex(0);
-    m_updating = false;
 }

@@ -66,6 +66,11 @@ protected:
     void dropEvent(QDropEvent *event) override;
 
 private slots:
+    // While a text frame is being edited, a new primary color colors its
+    // selected text.
+    void onPrimaryColorChanged(const QColor &color);
+    // A painting tool was used on a text layer: say why nothing happened.
+    void onTextLayerBlocked(const QString &layerName);
     void onApplicationStateChanged(Qt::ApplicationState state);
     void repositionFloatingUtilityWindows();
     // File
@@ -75,6 +80,12 @@ private slots:
     bool saveDocument();
     bool saveDocumentAs();
     void exportPdf();
+public slots:
+    // File > Extract Picture from PDF: the PDF's pictures, the first one
+    // chosen; open it as an image, copy it, or add it as a layer. Without a
+    // path, asks for the file.
+    void extractPictureFromPdf(const QString &filePath = QString());
+private slots:
     // Perspective guides: settings changed (tool options or View menu), and
     // the guide lines drawn into a new layer.
     void perspectiveSettingsChanged();
@@ -159,6 +170,15 @@ private:
     void transformSelectionContents(const std::function<QImage(const QImage &)> &operation, const QString &description);
     void deleteSelectionContents();
     std::vector<int> targetLayerIndices() const;
+    class TextTool *textTool() const;
+public:
+    // Before a command changes the pixels of these layers: text layers among
+    // them become ordinary layers, after asking (a "Convert to Pixels" or
+    // "Cancel" message box named "convertTextToPixels"). False: cancelled.
+    bool convertTextLayersFor(const std::vector<int> &indices);
+    // Layers > Convert Text to Pixels, for the active layer.
+    void convertActiveTextToPixels();
+private:
     QAction *addShortcutAction(const QString &text, const QList<QKeySequence> &shortcuts,
                                const std::function<void()> &handler,
                                Qt::ShortcutContext context = Qt::WindowShortcut);

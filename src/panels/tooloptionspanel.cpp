@@ -240,14 +240,19 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
     m_fontSizeLabel = new QLabel(QStringLiteral("Size:"));
     m_fontSizeLabel->setStyleSheet("font-size: 11px;");
     layout->addWidget(m_fontSizeLabel);
-    m_fontSizeSpin = new QSpinBox;
-    m_fontSizeSpin->setRange(1, 500);
+    m_fontSizeSpin = new QDoubleSpinBox;
+    m_fontSizeSpin->setRange(1, 2000);
+    m_fontSizeSpin->setDecimals(1);
     m_fontSizeSpin->setValue(24);
+    m_fontSizeSpin->setSuffix(QStringLiteral(" pt"));
     m_fontSizeSpin->setKeyboardTracking(false);   // commit on Enter/focus-out, not per digit
-    m_fontSizeSpin->setFixedWidth(52);
+    m_fontSizeSpin->setToolTip(QStringLiteral(
+        "Font size in points at the image's resolution (1 pt = 1/72 inch, so 12 pt "
+        "is 50 pixels at 300 dpi)"));
+    m_fontSizeSpin->setFixedWidth(76);
     m_fontSizeSpin->setFixedHeight(20);
     layout->addWidget(m_fontSizeSpin);
-    connect(m_fontSizeSpin, QOverload<int>::of(&QSpinBox::valueChanged),
+    connect(m_fontSizeSpin, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
             this, &ToolOptionsPanel::onFontSizeChanged);
 
     auto makeStyleButton = [this](const QString &text, const QString &tip, bool italic, bool underline) {
@@ -275,7 +280,8 @@ ToolOptionsPanel::ToolOptionsPanel(QWidget *parent) : QWidget(parent) {
     layout->addWidget(m_strikeBtn);
 
     m_alignCombo = new QComboBox;
-    m_alignCombo->addItems({QStringLiteral("Left"), QStringLiteral("Center"), QStringLiteral("Right")});
+    m_alignCombo->addItems({QStringLiteral("Left"), QStringLiteral("Center"), QStringLiteral("Right"),
+                            QStringLiteral("Justify")});
     m_alignCombo->setFixedHeight(20);
     m_alignCombo->setToolTip(QStringLiteral("Text alignment"));
     layout->addWidget(m_alignCombo);
@@ -566,19 +572,7 @@ void ToolOptionsPanel::updateFromTool() {
     m_fillStyleCombo->setCurrentIndex(qBound(0, m_tool->fillStyle(), m_fillStyleCombo->count() - 1));
     m_fillStyleCombo->blockSignals(false);
 
-    if (auto *text = dynamic_cast<TextTool*>(m_tool)) {
-        m_fontCombo->blockSignals(true);
-        m_fontCombo->setCurrentFont(QFont(text->fontFamily()));
-        m_fontCombo->blockSignals(false);
-        m_fontSizeSpin->blockSignals(true);
-        m_fontSizeSpin->setValue(text->fontSize());
-        m_fontSizeSpin->blockSignals(false);
-        m_boldBtn->blockSignals(true);      m_boldBtn->setChecked(text->bold());           m_boldBtn->blockSignals(false);
-        m_italicBtn->blockSignals(true);    m_italicBtn->setChecked(text->italic());       m_italicBtn->blockSignals(false);
-        m_underlineBtn->blockSignals(true); m_underlineBtn->setChecked(text->underline()); m_underlineBtn->blockSignals(false);
-        m_strikeBtn->blockSignals(true);    m_strikeBtn->setChecked(text->strikeOut());    m_strikeBtn->blockSignals(false);
-        m_alignCombo->blockSignals(true);   m_alignCombo->setCurrentIndex(static_cast<int>(text->alignment())); m_alignCombo->blockSignals(false);
-    }
+    syncTextControls();
 
     if (auto *grad = dynamic_cast<GradientTool*>(m_tool)) {
         m_gradientRepeatCombo->blockSignals(true);
@@ -622,8 +616,8 @@ void ToolOptionsPanel::updateFromTool() {
     const bool hasFill = (t == ToolType::Shape);
     // Fill Style (solid/hatch) applies to the tools that lay down filled colour.
     const bool hasFillStyle = (t == ToolType::Brush || t == ToolType::Shape);
-    const bool hasOpacity = hasSize || t == ToolType::Fill || t == ToolType::Gradient
-                            || t == ToolType::Text;
+    // Text frames are layers; their opacity is the layer's (Layers panel).
+    const bool hasOpacity = hasSize || t == ToolType::Fill || t == ToolType::Gradient;
 
     // Recolor gets a soft-edge Hardness control, like the brush-like tools.
     const bool hasHardness = isBrushLike || t == ToolType::Recolor;
@@ -884,6 +878,20 @@ void ToolOptionsPanel::onSpacingChanged(int value) {
     if (m_tool) { m_tool->setSpacing(qMax(1, value)); emit toolOptionsChanged(); }
 }
 
+void ToolOptionsPanel::syncTextControls() {
+    auto *text = dynamic_cast<TextTool*>(m_tool);
+    if (!text) return;
+    const QSignalBlocker b1(m_fontCombo), b2(m_fontSizeSpin), b3(m_boldBtn), b4(m_italicBtn),
+        b5(m_underlineBtn), b6(m_strikeBtn), b7(m_alignCombo);
+    m_fontCombo->setCurrentFont(QFont(text->fontFamily()));
+    m_fontSizeSpin->setValue(text->fontSize());
+    m_boldBtn->setChecked(text->bold());
+    m_italicBtn->setChecked(text->italic());
+    m_underlineBtn->setChecked(text->underline());
+    m_strikeBtn->setChecked(text->strikeOut());
+    m_alignCombo->setCurrentIndex(static_cast<int>(text->alignment()));
+}
+
 void ToolOptionsPanel::onFontChanged(const QFont &font) {
     if (auto *text = dynamic_cast<TextTool*>(m_tool)) {
         text->setFontFamily(font.family());
@@ -891,7 +899,7 @@ void ToolOptionsPanel::onFontChanged(const QFont &font) {
     }
 }
 
-void ToolOptionsPanel::onFontSizeChanged(int value) {
+void ToolOptionsPanel::onFontSizeChanged(double value) {
     if (auto *text = dynamic_cast<TextTool*>(m_tool)) {
         text->setFontSize(value);
         emit toolOptionsChanged();
@@ -899,13 +907,23 @@ void ToolOptionsPanel::onFontSizeChanged(int value) {
 }
 
 void ToolOptionsPanel::onTextStyleChanged() {
-    if (auto *text = dynamic_cast<TextTool*>(m_tool)) {
+    auto *text = dynamic_cast<TextTool*>(m_tool);
+    if (!text) return;
+    // Only what changed: while a frame is edited each setter changes the
+    // selected text, and re-applying the others would flatten mixed formats.
+    QObject *from = sender();
+    if (from == m_boldBtn) text->setBold(m_boldBtn->isChecked());
+    else if (from == m_italicBtn) text->setItalic(m_italicBtn->isChecked());
+    else if (from == m_underlineBtn) text->setUnderline(m_underlineBtn->isChecked());
+    else if (from == m_strikeBtn) text->setStrikeOut(m_strikeBtn->isChecked());
+    else if (from == m_alignCombo) text->setAlignment(static_cast<TextTool::Align>(m_alignCombo->currentIndex()));
+    else {
         text->setBold(m_boldBtn->isChecked());
         text->setItalic(m_italicBtn->isChecked());
         text->setUnderline(m_underlineBtn->isChecked());
         text->setStrikeOut(m_strikeBtn->isChecked());
         text->setAlignment(static_cast<TextTool::Align>(m_alignCombo->currentIndex()));
-        emit toolOptionsChanged();
     }
+    emit toolOptionsChanged();
 }
 

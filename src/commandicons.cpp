@@ -276,6 +276,17 @@ QHash<QString, Draw> &table() {
         p.drawPolygon(doc);
         arrow(p, QPointF(13, 6), QPointF(8, 11), kGreen, 1.5, 2.6);
     };
+    t["Layers > Convert Text to Pixels"] = [](QPainter &p) {
+        // A letter T, an arrow, and a block of pixels.
+        p.setPen(line(ink(), 1.8));
+        p.drawLine(QPointF(1.5, 4), QPointF(8.5, 4));
+        p.drawLine(QPointF(5, 4), QPointF(5, 13));
+        arrow(p, QPointF(7, 15.5), QPointF(12, 15.5), kOrange, 1.4, 2.4);
+        p.setPen(Qt::NoPen);
+        const QColor cells[4] = {kBlue, QColor(150, 186, 236), QColor(150, 186, 236), kBlue};
+        for (int i = 0; i < 4; ++i)
+            p.fillRect(QRectF(12 + (i % 2) * 3.5, 5 + (i / 2) * 3.5, 3.2, 3.2), cells[i]);
+    };
     t["Layers > Move Layer Up"] = [](QPainter &p) {
         layerStack(p, 8, 7, 2);
         arrow(p, QPointF(16.5, 17), QPointF(16.5, 3), kBlue);

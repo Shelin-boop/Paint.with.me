@@ -7,6 +7,7 @@
 #include <QCursor>
 #include <QString>
 #include <QIcon>
+#include <QVariant>
 #include <functional>
 
 class CanvasWidget;
@@ -86,6 +87,22 @@ public:
     // shortcut doesn't swallow it — e.g. the Line/Curve tool needs Enter/Escape
     // to commit/cancel, but Enter is also the Deselect shortcut.
     virtual bool wantsCommitKey(int key) const { Q_UNUSED(key); return false; }
+    // While typing, a tool can also claim chords such as Ctrl+A, Ctrl+B or
+    // Ctrl+Z, which then act on the text instead of the image.
+    virtual bool wantsShortcut(const QKeyEvent *event) const { Q_UNUSED(event); return false; }
+    // Text from an input method (compose, dead keys, CJK input).
+    virtual void inputMethodEvent(class QInputMethodEvent *event, CanvasWidget &canvas) { Q_UNUSED(event); Q_UNUSED(canvas); }
+    virtual QVariant inputMethodQuery(Qt::InputMethodQuery query, const CanvasWidget &canvas) const {
+        Q_UNUSED(query); Q_UNUSED(canvas); return QVariant();
+    }
+    // Whether a press would change the active layer's pixels. The canvas
+    // keeps such tools off text layers (they must be turned into pixels
+    // first, Layers > Convert Text to Pixels).
+    virtual bool changesLayerPixels(const Document *doc) const { Q_UNUSED(doc); return false; }
+    // The pointer shape over a point of the image (handles, frames ...).
+    virtual QCursor cursorAt(const QPointF &canvasPos, const CanvasWidget &canvas) const {
+        Q_UNUSED(canvasPos); Q_UNUSED(canvas); return cursor();
+    }
     virtual void drawOverlay(QPainter &painter, const CanvasWidget &canvas) { Q_UNUSED(painter); Q_UNUSED(canvas); }
 
     // Called just before the tool stops being current (tool switch). A tool that

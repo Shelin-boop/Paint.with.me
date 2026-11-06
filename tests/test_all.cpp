@@ -1940,19 +1940,24 @@ int main(int argc, char **argv) {
     // ---------- TEXT TOOL ----------
     SECTION("Text tool");
     {
+        // Text goes into a frame on a layer of its own, drawn while typing;
+        // Esc finishes it as one undo step. The background is not painted on.
         Document doc(80,40); doc.activeLayer()->clear(Qt::white);
         doc.setPrimaryColor(Qt::black);
         CanvasWidget canvas; canvas.setDocument(&doc);
         TextTool text;
-        QMouseEvent e = pressEv(QPointF(5,20)); text.mousePressEvent(QPointF(5,20), &e, canvas);
+        const QImage background = doc.activeLayer()->image().copy();
+        QMouseEvent e = pressEv(QPointF(5,10)); text.mousePressEvent(QPointF(5,10), &e, canvas);
         for (QChar ch : QString("Hi")) {
             QKeyEvent k(QEvent::KeyPress, 0, Qt::NoModifier, QString(ch));
             text.keyPressEvent(&k, canvas);
         }
-        QImage before = doc.activeLayer()->image().copy();
-        QKeyEvent enter(QEvent::KeyPress, Qt::Key_Return, Qt::NoModifier);
-        text.keyPressEvent(&enter, canvas);   // commit
-        CHECK(imagesDiffer(before, doc.activeLayer()->image()), "Text tool commits text to the layer");
+        QKeyEvent esc(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
+        text.keyPressEvent(&esc, canvas);   // finish
+        CHECK(doc.layerCount() == 2 && doc.layerAt(1)->isTextLayer(), "Text tool makes a text layer");
+        CHECK(doc.layerAt(0)->image() == background, "the layer below is left alone");
+        CHECK(imagesDiffer(background, doc.flatten()), "the text shows in the image");
+        CHECK(doc.history().currentIndex() == 1, "one undo step for the text");
     }
 
     // ---------- COLOR PICKER ----------
@@ -2434,10 +2439,14 @@ int main(int argc, char **argv) {
         }
         CHECK(claimed == 26, "the canvas claims every letter while typing");
 
-        // But a shortcut chord (Ctrl+…) must still pass through to the app.
+        // Text chords (Ctrl+A, Ctrl+B ...) act on the text; others, such as
+        // Ctrl+S, still reach the app.
         QKeyEvent ctrlA(QEvent::ShortcutOverride, Qt::Key_A, Qt::ControlModifier, QString());
         QApplication::sendEvent(&canvas, &ctrlA);
-        CHECK(!ctrlA.isAccepted(), "Ctrl-chords still reach the app while typing");
+        CHECK(ctrlA.isAccepted(), "Ctrl+A selects the text while typing");
+        QKeyEvent ctrlS(QEvent::ShortcutOverride, Qt::Key_S, Qt::ControlModifier, QString());
+        QApplication::sendEvent(&canvas, &ctrlS);
+        CHECK(!ctrlS.isAccepted(), "Ctrl-chords still reach the app while typing");
 
         // Once editing ends, letters go back to being shortcuts.
         QKeyEvent esc(QEvent::KeyPress, Qt::Key_Escape, Qt::NoModifier);
@@ -2889,7 +2898,7 @@ int main(int argc, char **argv) {
             tool.mousePressEvent(QPointF(10, 60), &pr, canvas);
             tool.insertText("pasted", canvas);
             tool.commitText(canvas);
-            CHECK(inkWidth(doc.activeLayer()->image()) > 20, "pasted text is drawn while editing");
+            CHECK(inkWidth(doc.flatten()) > 20, "pasted text is drawn while editing");
         }
         {   // paste outside editing is a no-op — no text conjured from nowhere
             Document doc(400, 120);
@@ -2900,7 +2909,7 @@ int main(int argc, char **argv) {
             canvas.setCurrentTool(&tool);
             tool.insertText("ghost", canvas);
             tool.commitText(canvas);
-            CHECK(inkWidth(doc.activeLayer()->image()) == 0, "paste does nothing when not editing");
+            CHECK(inkWidth(doc.flatten()) == 0 && doc.layerCount() == 1, "paste does nothing when not editing");
         }
         {   // pasted CRLF becomes a real line break
             Document doc(400, 200);
@@ -2914,7 +2923,7 @@ int main(int argc, char **argv) {
             tool.mousePressEvent(QPointF(10, 40), &pr, canvas);
             tool.insertText("a\r\nb", canvas);
             tool.commitText(canvas);
-            CHECK(inkHeight(doc.activeLayer()->image()) > 30, "pasted CRLF makes two lines");
+            CHECK(inkHeight(doc.flatten()) > 30, "pasted CRLF makes two lines");
         }
     }
 

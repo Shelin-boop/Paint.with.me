@@ -1,4 +1,5 @@
 #include "mainwindow.h"
+#include "tools/texttool.h"
 #include "plugins/pluginmanager.h"
 #include "dialogs/pastedialog.h"
 #include "toolicons.h"
@@ -105,6 +106,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     });
     connect(m_document, &Document::documentChanged, this, &MainWindow::updateTitle);
     connect(m_document, &Document::documentChanged, this, &MainWindow::updateImageList);
+    connect(m_document, &Document::primaryColorChanged, this, &MainWindow::onPrimaryColorChanged,
+            Qt::UniqueConnection);
+    connect(m_canvas, &CanvasWidget::textLayerBlocked, this, &MainWindow::onTextLayerBlocked);
     connect(m_document, &Document::sizeChanged, this, [this](int w, int h) {
         m_sizeLabel->setText(QString("%1 × %2").arg(w).arg(h));
     });
@@ -232,6 +236,12 @@ void MainWindow::saveUiState() {
 void MainWindow::createTools() {
     for (const ToolInfo &info : toolInfos()) m_tools.push_back(createTool(info.type));
     applyToolSettings();
+    // The tool bar follows the format at the text caret.
+    if (TextTool *text = textTool())
+        text->setFormatListener([this] {
+            if (m_toolOptionsPanel && m_currentTool && m_currentTool->type() == ToolType::Text)
+                m_toolOptionsPanel->syncTextControls();
+        });
 }
 
 void MainWindow::applyToolSettings() {

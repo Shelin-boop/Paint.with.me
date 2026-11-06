@@ -36,6 +36,9 @@ set(CORE_SOURCES
     src/core/history.cpp
     src/core/hatchpatterns.cpp
     src/core/thumbnails.cpp
+    src/core/units.cpp
+    src/core/textframe.cpp
+    src/core/pdfpictures.cpp
 )
 
 set(CANVAS_SOURCES
@@ -134,6 +137,8 @@ set(ADJUSTMENTS_SOURCES
 
 set(DIALOGS_SOURCES
     src/dialogs/pastedialog.cpp
+    src/dialogs/sizefields.cpp
+    src/dialogs/pdfpicturedialog.cpp
     src/dialogs/resizedialog.cpp
     src/dialogs/canvassizedialog.cpp
     src/dialogs/newdocumentdialog.cpp
@@ -215,6 +220,10 @@ pwm_test(pwm_panel_tests tests/test_toolspanel.cpp)
 pwm_test(pwm_psd_tests tests/test_psd.cpp)
 pwm_test(pwm_pdf_tests tests/test_pdf.cpp)
 pwm_test(pwm_perspective_tests tests/test_perspective.cpp)
+pwm_test(pwm_units_tests tests/test_units.cpp)
+pwm_test(pwm_text_tests tests/test_text.cpp)
+pwm_test(pwm_pdfpictures_tests tests/test_pdfpictures.cpp)
+target_compile_definitions(pwm_pdfpictures_tests PRIVATE PWM_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 target_compile_definitions(pwm_psd_tests PRIVATE PWM_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 
 enable_testing()
@@ -226,7 +235,10 @@ add_test(NAME tools_panel COMMAND pwm_panel_tests)
 add_test(NAME psd_format COMMAND pwm_psd_tests)
 add_test(NAME pdf_export COMMAND pwm_pdf_tests)
 add_test(NAME perspective COMMAND pwm_perspective_tests)
-set_tests_properties(functional brush_regression paste_regression adjustment_preview tools_panel psd_format pdf_export perspective
+add_test(NAME print_units COMMAND pwm_units_tests)
+add_test(NAME text_frames COMMAND pwm_text_tests)
+add_test(NAME pdf_pictures COMMAND pwm_pdfpictures_tests)
+set_tests_properties(functional brush_regression paste_regression adjustment_preview tools_panel psd_format pdf_export perspective print_units text_frames pdf_pictures
                      PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 
 # Speed benchmark with a large document (5000 x 5000 px, 16 layers). Not part of

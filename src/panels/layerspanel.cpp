@@ -258,9 +258,10 @@ void LayersPanel::setDocument(Document *doc) {
     }
 }
 
-QIcon LayersPanel::makeThumbnail(const QImage &image) const {
+QIcon LayersPanel::makeThumbnail(const QImage &image, bool text) const {
     // Remembered per content version: unchanged layers cost nothing.
-    auto it = m_iconCache.constFind(image.cacheKey());
+    const qint64 cacheKey = qint64(quint64(image.cacheKey()) * 2u + (text ? 1u : 0u));
+    auto it = m_iconCache.constFind(cacheKey);
     if (it != m_iconCache.constEnd()) return it.value();
     const QImage thumb = Thumbnails::cached(image, QSize(40, 30));
     QPixmap pm(40, 30);
@@ -271,11 +272,24 @@ QIcon LayersPanel::makeThumbnail(const QImage &image) const {
         for (int x2 = 0; x2 < 40; x2 += 5)
             tp.fillRect(x2, y2, 5, 5, ((x2/5 + y2/5) % 2 == 0) ? QColor(204,204,204) : Qt::white);
     tp.drawImage((40 - thumb.width()) / 2, (30 - thumb.height()) / 2, thumb);
+    if (text) {
+        // A text layer: a small "T" in the corner.
+        const QRectF badge(27, 17, 13, 13);
+        tp.setRenderHint(QPainter::Antialiasing);
+        tp.setPen(QPen(QColor(40, 40, 40), 1));
+        tp.setBrush(QColor(255, 255, 255, 235));
+        tp.drawRoundedRect(badge.adjusted(0.5, 0.5, -0.5, -0.5), 2, 2);
+        QFont f = tp.font();
+        f.setPixelSize(10);
+        f.setBold(true);
+        tp.setFont(f);
+        tp.drawText(badge, Qt::AlignCenter, QStringLiteral("T"));
+    }
     tp.end();
     const QIcon icon(pm);
     if (m_iconCache.size() > 4 * std::max(16, m_document ? m_document->layerCount() : 0))
         m_iconCache.clear();
-    m_iconCache.insert(image.cacheKey(), icon);
+    m_iconCache.insert(cacheKey, icon);
     return icon;
 }
 
@@ -291,8 +305,10 @@ void LayersPanel::updateLayerList() {
         item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
         item->setData(Qt::UserRole, i);  // remember which layer this row shows
         item->setCheckState(layer->isVisible() ? Qt::Checked : Qt::Unchecked);
-        item->setIcon(makeThumbnail(layer->image()));
+        item->setIcon(makeThumbnail(layer->image(), layer->isTextLayer()));
         item->setData(kThumbKeyRole, layer->image().cacheKey());
+        if (layer->isTextLayer())
+            item->setToolTip(QStringLiteral("Text layer: click its text with the Text tool to edit it"));
         if (!layer->isVisible())
             item->setForeground(Qt::gray);
         m_layerList->addItem(item);
@@ -315,9 +331,10 @@ void LayersPanel::refreshThumbnails() {
         const int idx = item->data(Qt::UserRole).toInt();
         auto *layer = m_document->layerAt(idx);
         if (!layer) continue;
+        if (item->text() != layer->name()) item->setText(layer->name());   // text layers rename as you type
         const qint64 key = layer->image().cacheKey();
         if (item->data(kThumbKeyRole).toLongLong() == key) continue;   // unchanged
-        item->setIcon(makeThumbnail(layer->image()));
+        item->setIcon(makeThumbnail(layer->image(), layer->isTextLayer()));
         item->setData(kThumbKeyRole, key);
     }
 }

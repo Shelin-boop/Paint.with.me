@@ -54,6 +54,11 @@ void MainWindow::createMenus() {
     auto *fileMenu = menuBar()->addMenu(QStringLiteral("&File"));
     fileMenu->addAction(QStringLiteral("&New..."), QKeySequence::New, this, &MainWindow::newDocument);
     fileMenu->addAction(QStringLiteral("&Open..."), QKeySequence::Open, this, &MainWindow::openDocument);
+    auto *extractAction = fileMenu->addAction(QStringLiteral("Extract Picture from P&DF..."), this,
+                                              [this]() { extractPictureFromPdf(); });
+    extractAction->setToolTip(QStringLiteral(
+        "Takes a picture out of a PDF: the first one is chosen, the others can be picked. "
+        "Open it as an image, copy it to the clipboard, or add it as a layer."));
     m_recentFilesMenu = fileMenu->addMenu(QStringLiteral("&Recent files"));
     m_recentFiles = QSettings(AppInfo::kId, AppInfo::kId).value("recentFiles").toStringList();
     updateRecentFilesMenu();
@@ -174,6 +179,15 @@ void MainWindow::createMenus() {
     layersMenu->addAction(QStringLiteral("Duplicate Layer"), QKeySequence("Ctrl+Shift+D"), this, [this]() { m_document->duplicateLayer(m_document->activeLayerIndex()); });
     layersMenu->addAction(QStringLiteral("Merge Layer Down"), QKeySequence("Ctrl+M"), this, [this]() { m_document->mergeLayerDown(m_document->activeLayerIndex()); });
     layersMenu->addAction(QStringLiteral("Import from File..."), this, &MainWindow::importLayerFromFile);
+    auto *convertTextAction = layersMenu->addAction(QStringLiteral("Convert Text to Pixels"), this,
+                                                    &MainWindow::convertActiveTextToPixels);
+    convertTextAction->setToolTip(QStringLiteral(
+        "Turns the selected text layer into an ordinary layer you can paint on. "
+        "Its text can then no longer be edited."));
+    connect(layersMenu, &QMenu::aboutToShow, this, [this, convertTextAction]() {
+        const Layer *layer = m_document ? m_document->activeLayer() : nullptr;
+        convertTextAction->setEnabled(layer && layer->isTextLayer());
+    });
     layersMenu->addSeparator();
     layersMenu->addAction(QStringLiteral("Move Layer Up"), QKeySequence("Ctrl+Shift+Up"), this, &MainWindow::moveActiveLayerUp);
     layersMenu->addAction(QStringLiteral("Move Layer Down"), QKeySequence("Ctrl+Shift+Down"), this, &MainWindow::moveActiveLayerDown);

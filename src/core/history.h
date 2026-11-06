@@ -125,6 +125,26 @@ private:
     QString m_description;
 };
 
+// One layer replaced by another version of itself (a text edit, text turned
+// into pixels), added (no `before`) or removed (no `after`). The versions
+// are kept as layer copies, which share their pixels.
+class LayerReplaceCommand : public HistoryCommand {
+public:
+    LayerReplaceCommand(Document *doc, int index, std::shared_ptr<const class Layer> before,
+                        std::shared_ptr<const class Layer> after, const QString &desc);
+    void undo() override;
+    void redo() override;
+    QString description() const override { return m_description; }
+    void forEachImage(const std::function<void(const QImage &)> &visit) const override;
+private:
+    void apply(const std::shared_ptr<const class Layer> &from, const std::shared_ptr<const class Layer> &to);
+    Document *m_doc;
+    int m_index;
+    std::shared_ptr<const class Layer> m_before;
+    std::shared_ptr<const class Layer> m_after;
+    QString m_description;
+};
+
 // Generic full-document snapshot: captures the entire layer stack, size and
 // active index. Used for structural operations that can't be represented by a
 // single fine-grained command (merge, flatten, crop, resize, canvas size...).
@@ -142,6 +162,7 @@ private:
         int width = 0;
         int height = 0;
         int activeLayer = 0;
+        double dpi = 96.0;
         Selection selection;
         std::vector<std::shared_ptr<class Layer>> layers;
     };
@@ -185,6 +206,13 @@ public:
     void push(std::unique_ptr<HistoryCommand> cmd);
     void undo();
     void redo();
+    // Called before any step is added, undone or redone, so a tool that is
+    // still editing (a text frame being typed) can first record its own step
+    // and the steps stay in order. Cleared by passing an empty function.
+    void setBeforeChange(std::function<void()> finishPendingEdit);
+    // Runs it now. The document calls this before it changes anything, so
+    // the unfinished edit is recorded first and against the state it saw.
+    void finishPendingEdit();
     // Jump to a given point in history (0 = original, N = after N actions) by
     // undoing/redoing as needed. Used by the History panel's click-to-navigate.
     void goToIndex(int index);
@@ -230,6 +258,8 @@ signals:
 private:
     void trim();
 
+    std::function<void()> m_beforeChange;
+    bool m_finishing = false;
     std::vector<std::unique_ptr<HistoryCommand>> m_undoStack;
     std::vector<std::unique_ptr<HistoryCommand>> m_redoStack;
     std::function<void(const ImageVisitor &)> m_liveImages;

@@ -1,12 +1,14 @@
 #include "document.h"
 #include "pdnformat.h"
 #include "psdformat.h"
+#include "textframe.h"
 #include <QPainter>
 #include <QtConcurrent/QtConcurrentMap>
 #include <cstring>
 #include <QImageReader>
 #include <QImageWriter>
 #include <cstdlib>
+#include <cmath>
 #include <limits>
 #include <QFileInfo>
 #include <QFile>
@@ -37,9 +39,22 @@ void Document::setUpHistory() {
     m_history.setMemoryBudget(HistoryManager::configuredMemoryBudget());
 }
 
-void Document::resize(int width, int height) {
-    if (width <= 0 || height <= 0 || (width == m_width && height == m_height)) return;
+void Document::resize(int width, int height, double dpi) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
+    if (width <= 0 || height <= 0) return;
+    const bool newDpi = dpi > 0 && std::abs(dpi - m_dpi) > 1e-9;
+    if (width == m_width && height == m_height) {
+        if (!newDpi) return;
+        auto cmd = std::make_unique<DocumentSnapshotCommand>(this, "Resolution");
+        m_dpi = dpi;
+        cmd->captureAfter();
+        m_history.push(std::move(cmd));
+        m_modified = true;
+        emit documentChanged();
+        return;
+    }
     auto cmd = std::make_unique<DocumentSnapshotCommand>(this, "Resize Image");
+    if (newDpi) m_dpi = dpi;
     const QSize oldSize = size();
     const double scaleX = double(width) / m_width;
     const double scaleY = double(height) / m_height;
@@ -47,6 +62,20 @@ void Document::resize(int width, int height) {
     m_height = height;
     // Resample every bitmap and origin by the document scale, not buffer size.
     for (auto &layer : m_layers) {
+        if (auto text = layer->textFrame()) {
+            // Text stays text when the image keeps its proportions: the frame
+            // and its font sizes are scaled and drawn again, sharp.
+            if (std::abs(scaleX - scaleY) <= 0.005 * std::max(scaleX, scaleY)) {
+                auto moved = std::make_shared<TextFrame>(*text);
+                moved->box.translate(layer->textShift());
+                auto scaled = moved->scaled((scaleX + scaleY) / 2.0);
+                QPoint drawnAt;
+                const QImage drawn = scaled->render(&drawnAt);
+                layer->setText(scaled, drawn, drawnAt);
+                continue;
+            }
+            layer->convertTextToPixels(oldSize);
+        }
         const QPoint origin = layer->offset();
         QImage scaled = layer->image().scaled(
             qMax(1, qRound(layer->width() * scaleX)),
@@ -88,14 +117,25 @@ void Document::resize(int width, int height) {
     emit layersChanged();
 }
 
-void Document::resizeCanvas(int width, int height, int anchorX, int anchorY) {
+void Document::resizeCanvas(int width, int height, int anchorX, int anchorY, double dpi) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (width <= 0 || height <= 0) return;
     auto cmd = std::make_unique<DocumentSnapshotCommand>(this, "Canvas Size");
+    if (dpi > 0) m_dpi = dpi;
+    const QPoint anchor(anchorX, anchorY);
     for (auto &layer : m_layers) {
+        // Layers that keep pixels outside the canvas (kept pastes, text)
+        // just move with the anchor; nothing of them is cut off.
+        if (layer->retainsOffCanvasPixels()) {
+            layer->setOffset(layer->offset() + anchor);
+            continue;
+        }
         QImage newImg(width, height, QImage::Format_ARGB32_Premultiplied);
         newImg.fill(Qt::transparent);
         QPainter p(&newImg);
-        p.drawImage(anchorX, anchorY, layer->image());
+        p.drawImage(layer->offset() + anchor, layer->image());
+        p.end();
+        layer->setOffset(QPoint());
         layer->setImage(newImg);
     }
     m_width = width;
@@ -140,6 +180,7 @@ void Document::setEditAllLayers(bool editAllLayers) {
 }
 
 int Document::addLayer(const QString &name) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     QString layerName = name.isEmpty() ? QString("Layer %1").arg(m_layers.size() + 1) : name;
     auto layer = std::make_shared<Layer>(m_width, m_height, layerName);
     // New layers are transparent (the Layer ctor already fills transparent), so
@@ -160,6 +201,7 @@ int Document::addLayer(const QString &name) {
 }
 
 int Document::addLayer(const QImage &image, const QString &name) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     QString layerName = name.isEmpty() ? QString("Layer %1").arg(m_layers.size() + 1) : name;
     // Every layer must be canvas-sized — the Move tool and other tools assume it.
     // A pasted/imported image that was smaller than the canvas used to become a
@@ -190,6 +232,7 @@ int Document::addLayer(const QImage &image, const QString &name) {
 }
 
 int Document::pasteImage(const QImage &image, const QString &name, bool expandCanvas) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (image.isNull()) return -1;
     if (expandCanvas) {
         const int width = qMax(m_width, image.width()), height = qMax(m_height, image.height());
@@ -243,6 +286,7 @@ int Document::pasteImage(const QImage &image, const QString &name, bool expandCa
 }
 
 void Document::removeLayer(int index) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (m_layers.size() <= 1 || index < 0 || index >= static_cast<int>(m_layers.size())) return;
 
     auto cmd = std::make_unique<LayerRemoveCommand>(this, index, "Remove Layer");
@@ -259,6 +303,7 @@ void Document::removeLayer(int index) {
 }
 
 void Document::moveLayer(int fromIndex, int toIndex) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (fromIndex < 0 || fromIndex >= static_cast<int>(m_layers.size())) return;
     if (toIndex < 0 || toIndex >= static_cast<int>(m_layers.size())) return;
     if (fromIndex == toIndex) return;
@@ -277,6 +322,7 @@ void Document::moveLayer(int fromIndex, int toIndex) {
 }
 
 void Document::duplicateLayer(int index) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (index < 0 || index >= static_cast<int>(m_layers.size())) return;
     auto copy = std::make_shared<Layer>(*m_layers[index]);
     copy->setName(copy->name() + " copy");
@@ -318,11 +364,13 @@ static QImage knockOutBackground(const QImage &src) {
 }
 
 void Document::mergeLayerDown(int index, bool keepArtwork) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (index <= 0 || index >= static_cast<int>(m_layers.size())) return;
     auto cmd = std::make_unique<DocumentSnapshotCommand>(this, "Merge Layer Down");
 
     Layer *upper = m_layers[index].get();
     Layer *lower = m_layers[index - 1].get();
+    lower->convertTextToPixels(size());   // the result is pixels covering the canvas
 
     // Both bitmaps live in document space. Retain their union rather than
     // clipping the upper to the lower buffer or applying the lower offset twice.
@@ -364,6 +412,7 @@ void Document::mergeLayerDown(int index, bool keepArtwork) {
 }
 
 void Document::flattenImage() {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (m_layers.size() <= 1) return;
     auto cmd = std::make_unique<DocumentSnapshotCommand>(this, "Flatten Image");
 
@@ -398,6 +447,40 @@ void Document::removeLayerDirect(int index) {
         emit layersChanged();
         emit documentChanged();
     }
+}
+
+void Document::replaceLayerDirect(int index, std::shared_ptr<Layer> layer) {
+    if (index < 0 || index >= static_cast<int>(m_layers.size()) || !layer) return;
+    const QRect before(m_layers[index]->offset(), m_layers[index]->image().size());
+    m_layers[index] = std::move(layer);
+    const QRect after(m_layers[index]->offset(), m_layers[index]->image().size());
+    emit regionChanged(before.united(after));
+    emit layersChanged();
+    emit documentChanged();
+}
+
+bool Document::convertTextToPixels(int index) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
+    Layer *layer = layerAt(index);
+    if (!layer || !layer->isTextLayer()) return false;
+    auto before = std::make_shared<const Layer>(*layer);
+    auto converted = std::make_shared<Layer>(*layer);
+    converted->convertTextToPixels(size());
+    m_layers[index] = converted;
+    m_history.push(std::make_unique<LayerReplaceCommand>(this, index, before,
+                                                         std::make_shared<const Layer>(*converted),
+                                                         QStringLiteral("Convert Text to Pixels")));
+    m_modified = true;
+    emit layersChanged();
+    emit documentChanged();
+    return true;
+}
+
+QVector<int> Document::textLayersAmong(const QVector<int> &indices) const {
+    QVector<int> result;
+    for (int index : indices)
+        if (const Layer *layer = layerAt(index); layer && layer->isTextLayer()) result.append(index);
+    return result;
 }
 
 void Document::moveLayerDirect(int fromIndex, int toIndex) {
@@ -545,6 +628,11 @@ bool Document::loadPsd(const QString &filePath) {
         layer->setLocked(data.locked);
         layer->setOpacity(data.opacity);
         layer->setBlendMode(data.blendMode);
+        // Last: the text belongs to the pixels exactly as they are now.
+        if (!data.textFrame.isEmpty()) {
+            if (auto text = TextFrame::deserialize(data.textFrame))
+                layer->adoptText(std::move(text));
+        }
         layers.push_back(layer);
     }
 
@@ -723,11 +811,16 @@ void Document::restoreFromSnapshot(std::vector<std::shared_ptr<Layer>> layers,
 }
 
 void Document::cropTo(const QRect &rect) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     QRect r = rect.intersected(QRect(0, 0, m_width, m_height));
     if (r.isEmpty()) return;
     auto cmd = std::make_unique<DocumentSnapshotCommand>(this, "Crop to Selection");
 
     for (auto &layer : m_layers) {
+        if (layer->isTextLayer()) {   // text keeps its whole frame and stays text
+            layer->setOffset(layer->offset() - r.topLeft());
+            continue;
+        }
         // The crop is in document space, not the retained bitmap's local space.
         layer->setImage(layer->image().copy(r.translated(-layer->offset())));
         layer->setOffset(QPoint());
@@ -748,6 +841,7 @@ void Document::cropTo(const QRect &rect) {
 }
 
 void Document::rotate(int quarterTurns, const QString &description) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     quarterTurns = ((quarterTurns % 4) + 4) % 4;
     if (quarterTurns == 0) return;
     auto cmd = std::make_unique<DocumentSnapshotCommand>(this, description);
@@ -755,6 +849,7 @@ void Document::rotate(int quarterTurns, const QString &description) {
     QTransform t;
     t.rotate(90.0 * quarterTurns);
     for (auto &layer : m_layers) {
+        layer->convertTextToPixels(size());   // a text frame cannot be turned
         const QPoint origin = layer->offset();
         const QSize buffer = layer->image().size();
         QPoint rotatedOrigin;
@@ -784,8 +879,10 @@ void Document::rotate(int quarterTurns, const QString &description) {
 }
 
 void Document::flip(bool horizontal, const QString &description) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     auto cmd = std::make_unique<DocumentSnapshotCommand>(this, description);
     for (auto &layer : m_layers) {
+        layer->convertTextToPixels(size());   // nor mirrored
         const QPoint origin = layer->offset();
         layer->setOffset(horizontal ? QPoint(m_width - origin.x() - layer->width(), origin.y())
                                     : QPoint(origin.x(), m_height - origin.y() - layer->height()));
@@ -803,6 +900,7 @@ void Document::flip(bool horizontal, const QString &description) {
 }
 
 void Document::reorderLayers(const std::vector<int> &newOrder, int keepActiveOriginalIndex) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (newOrder.size() != m_layers.size()) return;
     // Validate it's a permutation.
     std::vector<bool> seen(m_layers.size(), false);
@@ -836,6 +934,7 @@ void Document::reorderLayers(const std::vector<int> &newOrder, int keepActiveOri
 }
 
 void Document::setLayerOpacity(int index, float opacity) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (auto *l = layerAt(index)) {
         l->setOpacity(opacity);
         m_modified = true;
@@ -845,6 +944,7 @@ void Document::setLayerOpacity(int index, float opacity) {
 }
 
 void Document::setLayerVisibility(int index, bool visible) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (auto *l = layerAt(index)) {
         l->setVisible(visible);
         m_modified = true;
@@ -854,6 +954,7 @@ void Document::setLayerVisibility(int index, bool visible) {
 }
 
 void Document::setLayerBlendMode(int index, BlendMode mode) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (auto *l = layerAt(index)) {
         l->setBlendMode(mode);
         m_modified = true;
@@ -863,6 +964,7 @@ void Document::setLayerBlendMode(int index, BlendMode mode) {
 }
 
 void Document::setLayerName(int index, const QString &name) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (auto *l = layerAt(index)) {
         l->setName(name);
         m_modified = true;
@@ -871,6 +973,7 @@ void Document::setLayerName(int index, const QString &name) {
 }
 
 void Document::setLayerLocked(int index, bool locked) {
+    m_history.finishPendingEdit();   // an open text frame is recorded first
     if (auto *l = layerAt(index)) {
         l->setLocked(locked);
         emit layersChanged();

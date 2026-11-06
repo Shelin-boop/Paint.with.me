@@ -1,4 +1,5 @@
 #include "layer.h"
+#include "textframe.h"
 #include <QPainter>
 #include <algorithm>
 #include <cmath>
@@ -27,6 +28,9 @@ Layer::Layer(const Layer &other)
     , m_blendMode(other.m_blendMode)
     , m_offset(other.m_offset)
     , m_retainsOffCanvasPixels(other.m_retainsOffCanvasPixels)
+    , m_text(other.m_text)
+    , m_textKey(other.m_textKey)
+    , m_textOffset(other.m_textOffset)
 {
 }
 
@@ -40,8 +44,55 @@ Layer &Layer::operator=(const Layer &other) {
         m_blendMode = other.m_blendMode;
         m_offset = other.m_offset;
         m_retainsOffCanvasPixels = other.m_retainsOffCanvasPixels;
+        m_text = other.m_text;
+        m_textKey = other.m_textKey;
+        m_textOffset = other.m_textOffset;
     }
     return *this;
+}
+
+std::shared_ptr<const TextFrame> Layer::textFrame() const {
+    if (!m_text || m_image.isNull() || m_image.cacheKey() != m_textKey) return nullptr;
+    return m_text;
+}
+
+void Layer::setText(std::shared_ptr<const TextFrame> text, const QImage &rendered, const QPoint &origin) {
+    setImage(rendered);
+    m_offset = origin;
+    m_retainsOffCanvasPixels = true;   // moves keep the whole drawing
+    m_text = std::move(text);
+    m_textKey = m_image.cacheKey();
+    m_textOffset = origin;
+}
+
+void Layer::adoptText(std::shared_ptr<const TextFrame> text) {
+    m_text = std::move(text);
+    m_textKey = m_image.cacheKey();
+    m_textOffset = m_offset;
+    // The frame was saved where the text is now; a file keeps no shift.
+    m_retainsOffCanvasPixels = true;
+}
+
+void Layer::convertTextToPixels(const QSize &canvasSize) {
+    if (!m_text) return;
+    const bool wasText = isTextLayer();
+    m_text.reset();
+    m_textKey = 0;
+    if (!wasText) return;
+    const QRect canvas(QPoint(), canvasSize);
+    const QRect own(m_offset, m_image.size());
+    const QRect area = canvas.united(own);
+    if (area != own) {
+        QImage grown(area.size(), QImage::Format_ARGB32_Premultiplied);
+        grown.fill(Qt::transparent);
+        QPainter painter(&grown);
+        painter.setCompositionMode(QPainter::CompositionMode_Source);
+        painter.drawImage(m_offset - area.topLeft(), m_image);
+        painter.end();
+        m_image = grown;
+    }
+    m_offset = area.topLeft();
+    m_retainsOffCanvasPixels = area != canvas;
 }
 
 void Layer::resize(int width, int height) {
