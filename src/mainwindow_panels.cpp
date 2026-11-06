@@ -2,6 +2,7 @@
 // default layout and reset, floating panels, the status bar.
 // Split from mainwindow.cpp; one class, several files.
 #include "mainwindow.h"
+#include "shortcuts.h"
 #include "toolicons.h"
 #include "core/adjustmentpreview.h"
 #include "canvas/canvaswidget.h"
@@ -476,8 +477,18 @@ void MainWindow::createStatusBar() {
     connect(zoomInBtn, &QToolButton::clicked, this, [this]() { m_canvas->zoomIn(); });
 
     connect(zoomSlider, &QSlider::valueChanged, this, [this](int idx) {
-        m_canvas->setZoom(zoomSteps[idx] / 100.0);
+        m_canvas->setZoomCentered(zoomSteps[idx] / 100.0);
     });
+
+    // Shown while the view is rotated; a click turns it back.
+    m_rotationButton = new QToolButton;
+    m_rotationButton->setObjectName(QStringLiteral("RotationIndicator"));
+    m_rotationButton->setAutoRaise(true);
+    m_rotationButton->setFixedHeight(16);
+    m_rotationButton->setStyleSheet(QStringLiteral("QToolButton { font-size: 11px; padding: 0 3px; }"));
+    m_rotationButton->hide();
+    connect(m_rotationButton, &QToolButton::clicked, this, [this]() { m_canvas->setRotation(0.0); });
+    connect(m_canvas, &CanvasWidget::rotationChanged, this, &MainWindow::updateRotationIndicator);
 
     connect(m_canvas, &CanvasWidget::zoomChanged, this, [this, zoomSlider, findClosestZoomIndex](double zoom) {
         int percent = static_cast<int>(zoom * 100.0);
@@ -493,6 +504,7 @@ void MainWindow::createStatusBar() {
     statusBar()->addPermanentWidget(cursorIcon);
     statusBar()->addPermanentWidget(m_positionLabel);
     statusBar()->addPermanentWidget(pxLabel);
+    statusBar()->addPermanentWidget(m_rotationButton);
     statusBar()->addPermanentWidget(m_zoomLabel);
     statusBar()->addPermanentWidget(zoomOutBtn);
     statusBar()->addPermanentWidget(zoomSlider);

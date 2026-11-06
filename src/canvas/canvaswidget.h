@@ -7,6 +7,7 @@
 #include <QTimer>
 #include <QPoint>
 #include <QTransform>
+#include <QKeySequence>
 #include <QPainterPath>
 
 class Document;
@@ -26,6 +27,8 @@ public:
     // View
     double zoom() const { return m_zoom; }
     void setZoom(double zoom);
+    // Zooms keeping the middle of the view where it is (menu, slider).
+    void setZoomCentered(double zoom);
     void zoomIn();
     void zoomOut();
     void zoomToFit();
@@ -39,8 +42,27 @@ public:
     void setPan(const QPointF &pan) { m_pan = pan; m_autoCenter = false; update(); }
 
     // Coordinate conversion
+    // Image (document) pixels <-> widget pixels, with zoom, pan and rotation.
     QPointF widgetToCanvas(const QPointF &widgetPos) const;
     QPointF canvasToWidget(const QPointF &canvasPos) const;
+    // The same as a transform, for drawing in image coordinates (use cosmetic
+    // pens, or widths divided by zoom()).
+    QTransform canvasTransform() const;
+
+    // View rotation: only the view turns, like turning the paper on a desk;
+    // the image does not change. Degrees, clockwise, around the middle of the
+    // view, kept in (-180, 180].
+    double rotation() const { return m_rotation; }
+    void setRotation(double degrees);
+    void rotateBy(double degrees) { setRotation(m_rotation + degrees); }
+    // Moves the view by a distance on screen (a drag), whatever the rotation.
+    void panBy(const QPointF &widgetDelta);
+    // Zooms so that the image point under `widgetPos` stays there.
+    void zoomAt(const QPointF &widgetPos, double zoom);
+    // Keys held for panning and for turning the view by dragging, and for
+    // the Color Picker while held (Settings > Keyboard; empty = none).
+    void setHoldKeys(const QKeySequence &pan, const QKeySequence &rotate,
+                     const QKeySequence &colorPicker = QKeySequence());
 
     // Rendering
     void setPreviewImage(const QImage &image) { m_previewImage = image; update(); }
@@ -76,9 +98,14 @@ signals:
     void tabletDetected();   // emitted the first time a stylus is used
     // A tool that paints was used on a text layer and nothing happened.
     void textLayerBlocked(const QString &layerName);
+    void rotationChanged(double degrees);
+    // The Color Picker key went down (true) or came up (false). It comes up
+    // only once no mouse button or pen is pressed, so a pick is finished.
+    void colorPickerHeld(bool held);
 
 protected:
     bool event(QEvent *event) override;   // claim ShortcutOverride while a tool types
+    void focusOutEvent(QFocusEvent *event) override;
     void paintEvent(QPaintEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
@@ -117,6 +144,21 @@ private:
     bool m_autoCenter = true;
 
     bool m_blockedPress = false;   // this press reached a text layer with a painting tool
+    double m_rotation = 0.0;
+    QTransform viewRotation() const;       // unrotated view -> widget
+    QPointF viewCenter() const;            // pivot: middle of the area right of / below the rulers
+    double fitZoomFor(const QSizeF &size, double margin) const;
+    QKeySequence m_panKey{Qt::Key_Space};
+    QKeySequence m_rotateKey{QKeySequence(Qt::SHIFT | Qt::Key_Space)};
+    QKeySequence m_pickKey;
+    bool m_rotateKeyDown = false;
+    bool m_pickKeyDown = false;
+    bool m_pickReleasePending = false;   // key up while a button was down
+    Qt::MouseButtons m_buttonsDown;      // as of the last press or release
+    void endHolds();                     // focus lost: no key-up will come
+    void handleMouseRelease(QMouseEvent *event);
+    bool m_isRotating = false;
+    QPointF m_lastRotatePos;
     bool m_isPanning = false;
     bool m_spaceDown = false;   // Space held: pan-drag with any tool (Paint.NET)
     QPoint m_lastPanPos;

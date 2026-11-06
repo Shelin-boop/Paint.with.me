@@ -30,7 +30,7 @@ jobs:
         run: cmake --build build -j
 
       - name: Build tests
-        run: cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_bench -j4
+        run: cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests pwm_bench -j4
 
       - name: Run tests (headless)
         env:
@@ -49,7 +49,7 @@ jobs:
           for i in $(seq 50); do [ -S "$XDG_RUNTIME_DIR/wl-test" ] && break; sleep 0.2; done
           # The tests use their own XDG_RUNTIME_DIR, so give the socket's full path.
           export WAYLAND_DISPLAY="$XDG_RUNTIME_DIR/wl-test" QT_QPA_PLATFORM=wayland
-          for t in pwm_tests pwm_brush_tests pwm_preview_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests; do
+          for t in pwm_tests pwm_brush_tests pwm_preview_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests; do
             echo "== $t"
             ./build/$t > "$t.log" 2>&1 || { cat "$t.log"; exit 1; }
             tail -1 "$t.log"

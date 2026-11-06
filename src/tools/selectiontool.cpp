@@ -78,20 +78,18 @@ void SelectionTool::mouseReleaseEvent(const QPointF &canvasPos, QMouseEvent *eve
 void SelectionTool::drawOverlay(QPainter &painter, const CanvasWidget &canvas) {
     if (!m_selecting) return;
 
-    QPointF wStart = canvas.canvasToWidget(m_startPos);
-    QPointF wEnd = canvas.canvasToWidget(m_currentPos);
-    QRectF rect(wStart, wEnd);
-
-    painter.setPen(QPen(Qt::white, 1));
+    // Drawn in image coordinates through the canvas transform, so the shape
+    // stays right in a turned view; cosmetic pens keep 1 screen pixel.
+    const QRectF rect = QRectF(m_startPos, m_currentPos).normalized();
+    painter.save();
+    painter.setTransform(canvas.canvasTransform(), true);
     painter.setBrush(Qt::NoBrush);
-    if (m_shape == SelectionShape::Rectangle)
-        painter.drawRect(rect.normalized());
-    else
-        painter.drawEllipse(rect.normalized());
-
-    painter.setPen(QPen(Qt::black, 1, Qt::DashLine));
-    if (m_shape == SelectionShape::Rectangle)
-        painter.drawRect(rect.normalized());
-    else
-        painter.drawEllipse(rect.normalized());
+    for (int pass = 0; pass < 2; ++pass) {
+        QPen pen = pass == 0 ? QPen(Qt::white, 1) : QPen(Qt::black, 1, Qt::DashLine);
+        pen.setCosmetic(true);
+        painter.setPen(pen);
+        if (m_shape == SelectionShape::Rectangle) painter.drawRect(rect);
+        else painter.drawEllipse(rect);
+    }
+    painter.restore();
 }

@@ -21,6 +21,8 @@
 #include "core/pdfexport.h"
 
 class QMenu;
+class QToolButton;
+class Shortcuts;
 class Document;
 class CanvasWidget;
 class LayersPanel;
@@ -49,6 +51,13 @@ public:
     void restartApplication();
     // Applies Settings > Tools to all tools (antialiasing).
     void applyToolSettings();
+
+    // The keyboard shortcuts (Settings > Keyboard).
+    Shortcuts *shortcuts() const { return m_shortcuts; }
+    // Degrees the view turns per Rotate Left / Right (View > Rotate View,
+    // Settings > Canvas; setting `view/rotationStep`, default 15).
+    static double rotationStep();
+    static void setRotationStep(double degrees);
 
 protected:
     void closeEvent(QCloseEvent *event) override;
@@ -136,6 +145,10 @@ private slots:
     void zoomToSelection();
     void zoomToActual();
     void toggleGrid();
+    // View > Rotate View: turns the view (not the image) by the step.
+    void rotateViewLeft();
+    void rotateViewRight();
+    void resetViewRotation();
 
     // Tools
     void selectTool(ToolType type);
@@ -189,6 +202,16 @@ private:
     void selectTopLayer();
     void selectBottomLayer();
     void adjustCurrentToolBrushSize(int delta);
+    // The painting tool used last (Paintbrush unless another was used).
+    void selectLastPaintTool();
+    // The Eraser, or the last painting tool when the Eraser is on.
+    void toggleEraser();
+    // The Color Picker while its key is held, then the tool before it.
+    void onColorPickerHeld(bool held);
+    // Keys changed in Settings > Keyboard: tool keys, held keys, tooltips.
+    void applyShortcutKeys();
+    void updateRotationIndicator(double degrees);
+    void updateRotationStepActions();
     void toggleActiveLayerVisibility();
     void showLayerPropertiesDialog();
     void showSelectionContextMenu(const QPoint &globalPos);
@@ -303,6 +326,19 @@ private:
     QAction *m_rulersAction = nullptr;
     QAction *m_perspectiveGuidesAction = nullptr;
     QAction *m_perspectiveSnapAction = nullptr;
+
+    // Keyboard shortcuts
+    Shortcuts *m_shortcuts = nullptr;
+    QList<QAction *> m_toolKeyActions;   // rebuilt when tool keys change
+    QList<std::function<void()>> m_shortcutTooltipUpdates;
+    ToolType m_lastPaintTool = ToolType::Brush;
+    bool m_pickerHeld = false;
+    ToolType m_toolBeforePicker = ToolType::Brush;
+
+    // View rotation
+    QToolButton *m_rotationButton = nullptr;   // status bar, shown while turned
+    QActionGroup *m_rotationStepGroup = nullptr;
+    QAction *m_otherRotationStepAction = nullptr;
 
     bool m_normalizingDockLayout = false;
     bool m_restoringState = false;

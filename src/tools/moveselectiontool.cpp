@@ -149,20 +149,15 @@ void MoveSelectionTool::drawOverlay(QPainter &painter, const CanvasWidget &canva
     if (rect.isEmpty()) return;
 
     painter.save();
-    QPointF topLeft = canvas.canvasToWidget(rect.topLeft());
-    QPointF bottomRight = canvas.canvasToWidget(rect.bottomRight() + QPoint(1, 1));
-    QRectF widgetRect(topLeft, bottomRight);
-
+    // Mapped as shapes, so box and handles turn with a turned view.
+    const QTransform toWidget = canvas.canvasTransform();
     painter.setPen(QPen(QColor(30, 30, 30), 1, Qt::DashLine));
     painter.setBrush(Qt::NoBrush);
-    painter.drawRect(widgetRect.normalized());
+    painter.drawPolygon(toWidget.map(QPolygonF(QRectF(rect.topLeft(), QSizeF(rect.size())))));
 
     painter.setPen(QPen(Qt::white, 1));
     painter.setBrush(QColor(35, 120, 255));
-    for (const QRectF &handle : SelHandles::rects(rect, canvas.zoom())) {
-        QPointF handleTopLeft = canvas.canvasToWidget(handle.topLeft());
-        QPointF handleBottomRight = canvas.canvasToWidget(handle.bottomRight());
-        painter.drawRect(QRectF(handleTopLeft, handleBottomRight).normalized());
-    }
+    for (const QRectF &handle : SelHandles::rects(rect, canvas.zoom()))
+        painter.drawPolygon(toWidget.map(QPolygonF(handle)));
     painter.restore();
 }

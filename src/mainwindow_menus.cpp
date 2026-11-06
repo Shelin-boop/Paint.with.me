@@ -44,6 +44,10 @@
 #include "dialogs/shortcutshelp.h"
 #include "commandicons.h"
 #include <QMenuBar>
+#include <QInputDialog>
+#include <QLocale>
+#include <cmath>
+#include "shortcuts.h"
 
 void MainWindow::createMenus() {
     auto setShortcuts = [](QAction *action, std::initializer_list<QKeySequence> shortcuts) {
@@ -113,6 +117,38 @@ void MainWindow::createMenus() {
     auto *zoomFitAction = viewMenu->addAction(QStringLiteral("&Best Fit"), QKeySequence("Ctrl+B"), this, &MainWindow::zoomToFit);
     viewMenu->addAction(QStringLiteral("Zoom to &Selection"), QKeySequence("Ctrl+Shift+B"), this, &MainWindow::zoomToSelection);
     auto *actualSizeAction = viewMenu->addAction(QStringLiteral("&Actual Size"), QKeySequence("Ctrl+0"), this, &MainWindow::zoomToActual);
+    // Turning the paper: only the view turns, the image stays as it is.
+    // Keys 4, 6 and 5 as in Krita; the step is chosen here or in Settings.
+    auto *rotateViewMenu = viewMenu->addMenu(QStringLiteral("R&otate View"));
+    auto *rotateLeft = rotateViewMenu->addAction(QStringLiteral("Rotate &Left"), QKeySequence("4"), this,
+                                                 &MainWindow::rotateViewLeft);
+    rotateLeft->setToolTip(QStringLiteral("Turns the view counterclockwise by the step. The image does not change."));
+    auto *rotateRight = rotateViewMenu->addAction(QStringLiteral("Rotate &Right"), QKeySequence("6"), this,
+                                                  &MainWindow::rotateViewRight);
+    rotateRight->setToolTip(QStringLiteral("Turns the view clockwise by the step. The image does not change."));
+    rotateViewMenu->addAction(QStringLiteral("R&eset Rotation"), QKeySequence("5"), this,
+                              &MainWindow::resetViewRotation);
+    rotateViewMenu->addSeparator();
+    m_rotationStepGroup = new QActionGroup(this);
+    m_rotationStepGroup->setExclusive(true);
+    for (double step : {1.0, 5.0, 10.0, 15.0, 30.0, 45.0, 90.0}) {
+        auto *a = rotateViewMenu->addAction(QStringLiteral("%1\u00B0 per Step").arg(step), this,
+                                            [this, step]() { setRotationStep(step); updateRotationStepActions(); });
+        a->setCheckable(true);
+        a->setData(step);
+        m_rotationStepGroup->addAction(a);
+    }
+    m_otherRotationStepAction = rotateViewMenu->addAction(QStringLiteral("Other Step..."), this, [this]() {
+        bool ok = false;
+        const double step = QInputDialog::getDouble(
+            this, QStringLiteral("Rotation Step"), QStringLiteral("Degrees per step:"), rotationStep(),
+            0.1, 180.0, 1, &ok);
+        if (!ok) return;
+        setRotationStep(step);
+        updateRotationStepActions();
+    });
+    connect(rotateViewMenu, &QMenu::aboutToShow, this, &MainWindow::updateRotationStepActions);
+    updateRotationStepActions();
     viewMenu->addSeparator();
     m_gridAction = viewMenu->addAction(QStringLiteral("&Pixel Grid"), this, &MainWindow::toggleGrid);
     m_gridAction->setCheckable(true);
@@ -306,6 +342,10 @@ void MainWindow::createMenus() {
     m_iconMenus = {imageMenu, layersMenu, adjMenu, fxMenu};
     CommandIcons::decorate(m_iconMenus);
 
+    // Every menu command's keys can be changed (Settings > Keyboard); the
+    // keys given above are the defaults.
+    m_shortcuts->addMenuBar(menuBar(), {m_recentFilesMenu});
+
     // paint.net has no Window/Help menus: the four utility windows plus Settings
     // and Help live as six icons on the RIGHT side of the menu bar.
     createMenuBarCornerIcons();
@@ -341,7 +381,7 @@ void MainWindow::populatePluginsMenu(QMenu *pluginsMenu) {
 }
 
 void MainWindow::showShortcutsHelp() {
-    const QString html = ShortcutsHelp::html();
+    const QString html = ShortcutsHelp::html(m_shortcuts);
 
     QMessageBox box(this);
     box.setWindowTitle(QStringLiteral("Keyboard shortcuts"));
@@ -365,9 +405,6 @@ void MainWindow::createMenuBarCornerIcons() {
         btn->setIconSize(QSize(16, 16));
         btn->setCheckable(true);
         btn->setChecked(dock->isVisible());
-        btn->setToolTip(QString("<b>%1</b> (%2)<br>%3<br><i>%4</i>")
-                            .arg((label), key, (what),
-                                 QStringLiteral("Ctrl+Shift+" ) + key + " : " + QStringLiteral("reset the window position")));
         btn->setAutoRaise(true);
         // "Active" state = a blue underline, NOT a filled blue background: the global
         // QToolButton:checked fill hid the blue Tools/History icons (blue on blue) in
@@ -381,15 +418,34 @@ void MainWindow::createMenuBarCornerIcons() {
         connect(dock, &QDockWidget::visibilityChanged, btn, &QToolButton::setChecked);
 
         // F5-F8 toggle; Ctrl+Shift+F* resets position (like paint.net).
+        // Both can be changed in Settings > Keyboard.
         auto *toggle = new QAction((label), this);
-        toggle->setShortcut(QKeySequence(key));
         connect(toggle, &QAction::triggered, this, [dock]() { dock->setVisible(!dock->isVisible()); });
         addAction(toggle);
 
         auto *reset = new QAction("Reset " + label, this);
-        reset->setShortcut(QKeySequence("Ctrl+Shift+" + key));
         connect(reset, &QAction::triggered, this, [this, dock]() { resetUtilityWindow(dock); });
         addAction(reset);
+
+        const QString id = QStringLiteral("panels.") + label.toLower();
+        m_shortcuts->add({id, QStringLiteral("Panels"), QStringLiteral("Show or Hide ") + label,
+                          {QKeySequence(key)}, Shortcuts::Kind::Command, toggle, what});
+        m_shortcuts->add({id + QStringLiteral(".reset"), QStringLiteral("Panels"),
+                          QStringLiteral("Put ") + label + QStringLiteral(" Back in Its Place"),
+                          {QKeySequence(QStringLiteral("Ctrl+Shift+") + key)}, Shortcuts::Kind::Command, reset,
+                          QString()});
+        auto updateTip = [this, btn, label, what, id]() {
+            const QString keys = Shortcuts::text(m_shortcuts->keys(id));
+            const QString resetKeys = Shortcuts::text(m_shortcuts->keys(id + QStringLiteral(".reset")));
+            QString tip = QStringLiteral("<b>%1</b>").arg(label);
+            if (!keys.isEmpty()) tip += QStringLiteral(" (%1)").arg(keys);
+            tip += QStringLiteral("<br>") + what;
+            if (!resetKeys.isEmpty())
+                tip += QStringLiteral("<br><i>%1: reset the window position</i>").arg(resetKeys);
+            btn->setToolTip(tip);
+        };
+        updateTip();
+        m_shortcutTooltipUpdates << updateTip;
 
         cornerLayout->addWidget(btn);
         return btn;
@@ -528,51 +584,218 @@ void MainWindow::cycleToolGroup(const std::vector<ToolType> &types, bool reverse
     selectTool(types[nextIndex]);
 }
 
+namespace {
+QString toolShortcutId(const ToolInfo &info) {
+    return QStringLiteral("tool.") + QString::fromLatin1(info.key);
+}
+}  // namespace
+
 void MainWindow::createKeyboardShortcuts() {
-    addShortcutAction("Deselect", {QKeySequence("Return"), QKeySequence("Enter")}, [this]() {
-        if (!m_document || !m_document->selection().hasSelection()) return;
-        if (m_currentTool && m_currentTool->type() == ToolType::Text) return;
-        deselectAll();
-    });
+    // Commands without a menu entry. Each is listed in Settings > Keyboard;
+    // the keys here are the defaults.
+    auto command = [this](const QString &id, const QString &category, const QString &label,
+                          const QList<QKeySequence> &keys, const std::function<void()> &handler,
+                          const QString &hint = QString()) {
+        QAction *action = addShortcutAction(label, keys, handler);
+        m_shortcuts->add({id, category, label, keys, Shortcuts::Kind::Command, action, hint});
+    };
+    // Letters and digits do nothing while typing into a field.
+    auto singleKey = [this](const std::function<void()> &handler) {
+        return [this, handler]() { if (allowSingleKeyShortcuts()) handler(); };
+    };
 
-    // Tool keys from the registry. Tools sharing a key (S: selection tools,
-    // M: move tools, O: line and shapes) cycle in Paint.NET's order, and
-    // Shift with that key cycles backwards.
-    QMap<QString, std::vector<ToolType>> groups;
-    QStringList keyOrder;
+    command(QStringLiteral("edit.deselectEnter"), QStringLiteral("Edit"), QStringLiteral("Deselect (Extra Keys)"),
+            {QKeySequence("Return"), QKeySequence("Enter")}, [this]() {
+                if (!m_document || !m_document->selection().hasSelection()) return;
+                if (m_currentTool && m_currentTool->type() == ToolType::Text) return;
+                deselectAll();
+            }, QStringLiteral("Keys that finish a selection, besides Edit > Deselect All."));
+
+    // Tools: one entry each, with the registry's key as default. Tools that
+    // end up with the same key take turns (applyShortcutKeys()).
     for (const ToolInfo &info : toolInfos()) {
-        const QString key = QString::fromLatin1(info.shortcut);
-        if (key.isEmpty()) continue;
-        if (!groups.contains(key)) keyOrder << key;
-        groups[key].push_back(info.type);
+        QList<QKeySequence> keys;
+        if (info.shortcut && *info.shortcut) keys << QKeySequence(QString::fromLatin1(info.shortcut));
+        m_shortcuts->add({toolShortcutId(info), QStringLiteral("Tools"), QString::fromLatin1(info.name), keys,
+                          Shortcuts::Kind::Tool, nullptr,
+                          QStringLiteral("Tools with the same key take turns: press it again for the next one, "
+                                         "with Shift for the one before.")});
     }
-    for (const QString &key : keyOrder) {
-        const std::vector<ToolType> group = groups.value(key);
-        const QString label = group.size() > 1 ? QStringLiteral("Tools ") + key
+
+    const QString painting = QStringLiteral("Painting");
+    command(QStringLiteral("painting.lastTool"), painting, QStringLiteral("Last Used Painting Tool"),
+            {QKeySequence("N")}, singleKey([this]() { selectLastPaintTool(); }),
+            QStringLiteral("Back to the Paintbrush, Pencil, Smudge, Blur Brush, Clone Stamp or Recolor tool "
+                           "used last, for example after the Eraser or the Color Picker."));
+    command(QStringLiteral("painting.eraserToggle"), painting, QStringLiteral("Eraser, Again for the Last Painting Tool"),
+            {QKeySequence("Shift+E")}, singleKey([this]() { toggleEraser(); }),
+            QStringLiteral("Switches between the Eraser and the painting tool used last."));
+    command(QStringLiteral("painting.sizeDown"), painting, QStringLiteral("Brush Width Smaller"),
+            {QKeySequence("[")}, [this]() { adjustCurrentToolBrushSize(-1); });
+    command(QStringLiteral("painting.sizeUp"), painting, QStringLiteral("Brush Width Bigger"),
+            {QKeySequence("]")}, [this]() { adjustCurrentToolBrushSize(1); });
+    command(QStringLiteral("painting.sizeDownFast"), painting, QStringLiteral("Brush Width Smaller, Big Steps"),
+            {QKeySequence("Ctrl+[")}, [this]() { adjustCurrentToolBrushSize(-5); });
+    command(QStringLiteral("painting.sizeUpFast"), painting, QStringLiteral("Brush Width Bigger, Big Steps"),
+            {QKeySequence("Ctrl+]")}, [this]() { adjustCurrentToolBrushSize(5); });
+    command(QStringLiteral("colors.swap"), painting, QStringLiteral("Swap Primary and Secondary Color"),
+            {QKeySequence("X")}, singleKey([this]() {
+                if (m_colorsPanel) m_colorsPanel->swapPrimaryAndSecondaryColors();
+            }));
+    command(QStringLiteral("colors.toggle"), painting, QStringLiteral("Switch Which Color the Palette Edits"),
+            {QKeySequence("C")}, singleKey([this]() {
+                if (m_colorsPanel) m_colorsPanel->toggleActiveColorSlot();
+            }));
+
+    const QString layers = QStringLiteral("Layers");
+    command(QStringLiteral("layers.above"), layers, QStringLiteral("Select Layer Above"),
+            {QKeySequence("Alt+PgUp")}, [this]() { selectLayerAbove(); });
+    command(QStringLiteral("layers.below"), layers, QStringLiteral("Select Layer Below"),
+            {QKeySequence("Alt+PgDown")}, [this]() { selectLayerBelow(); });
+    command(QStringLiteral("layers.top"), layers, QStringLiteral("Select Top Layer"),
+            {QKeySequence("Ctrl+Alt+PgUp")}, [this]() { selectTopLayer(); });
+    command(QStringLiteral("layers.bottom"), layers, QStringLiteral("Select Bottom Layer"),
+            {QKeySequence("Ctrl+Alt+PgDown")}, [this]() { selectBottomLayer(); });
+
+    // Keys that work while held, over the image (the canvas handles them).
+    const QString canvas = QStringLiteral("Canvas");
+    m_shortcuts->add({QStringLiteral("hold.pan"), canvas, QStringLiteral("Pan While Held"),
+                      {QKeySequence(Qt::Key_Space)}, Shortcuts::Kind::Hold, nullptr,
+                      QStringLiteral("Hold the key and drag to move the view, with any tool.")});
+    m_shortcuts->add({QStringLiteral("hold.rotate"), canvas, QStringLiteral("Rotate View While Held"),
+                      {QKeySequence(Qt::SHIFT | Qt::Key_Space)}, Shortcuts::Kind::Hold, nullptr,
+                      QStringLiteral("Hold the key and drag around the middle of the view to turn it freely.")});
+    m_shortcuts->add({QStringLiteral("hold.colorPicker"), canvas, QStringLiteral("Color Picker While Held"),
+                      {QKeySequence("I")}, Shortcuts::Kind::Hold, nullptr,
+                      QStringLiteral("Hold the key and click (or touch with the pen) to pick a color; "
+                                     "letting go brings back the tool you had.")});
+
+    connect(m_canvas, &CanvasWidget::colorPickerHeld, this, &MainWindow::onColorPickerHeld);
+    connect(m_shortcuts, &Shortcuts::changed, this, &MainWindow::applyShortcutKeys);
+    applyShortcutKeys();
+}
+
+void MainWindow::applyShortcutKeys() {
+    // Tool keys: one action per key. Tools sharing a key (S: selection
+    // tools, M: move tools, O: line and shapes) cycle in Paint.NET's order,
+    // and Shift with that key cycles backwards when Shift+key is free.
+    for (QAction *a : m_toolKeyActions) {
+        a->setShortcuts({});
+        removeAction(a);
+        a->deleteLater();
+    }
+    m_toolKeyActions.clear();
+    QList<QKeySequence> keyOrder;
+    QMap<QString, std::vector<ToolType>> groups;
+    QMap<ToolType, QString> toolKeys;
+    for (const ToolInfo &info : toolInfos()) {
+        const QList<QKeySequence> keys = m_shortcuts->keys(toolShortcutId(info));
+        toolKeys.insert(info.type, Shortcuts::text(keys));
+        for (const QKeySequence &key : keys) {
+            const QString k = key.toString(QKeySequence::PortableText);
+            if (!groups.contains(k)) keyOrder << key;
+            groups[k].push_back(info.type);
+        }
+    }
+    for (const QKeySequence &key : keyOrder) {
+        const std::vector<ToolType> group = groups.value(key.toString(QKeySequence::PortableText));
+        const QString keyText = key.toString(QKeySequence::NativeText);
+        const QString label = group.size() > 1 ? QStringLiteral("Tools ") + keyText
                                                : QString::fromLatin1(toolInfo(group.front()).name);
-        addShortcutAction(label, {QKeySequence(key)}, [this, group]() { cycleToolGroup(group); });
-        if (group.size() > 1)
-            addShortcutAction(label + QStringLiteral(" reverse"), {QKeySequence(QStringLiteral("Shift+") + key)},
-                              [this, group]() { cycleToolGroup(group, true); });
+        m_toolKeyActions << addShortcutAction(label, {key}, [this, group]() { cycleToolGroup(group); });
+        const QKeySequence shifted(key[0].keyboardModifiers() | Qt::ShiftModifier | key[0].key());
+        if (group.size() > 1 && !(key[0].keyboardModifiers() & Qt::ShiftModifier)
+            && m_shortcuts->clashes(QString(), shifted).isEmpty())
+            m_toolKeyActions << addShortcutAction(label + QStringLiteral(" reverse"), {shifted},
+                                                  [this, group]() { cycleToolGroup(group, true); });
+    }
+    if (m_toolsPanel) {
+        m_toolsPanel->setToolKeys(toolKeys);
+        m_toolsPanel->refreshPins();   // pinned commands show their keys
     }
 
-    addShortcutAction("Swap colors", {QKeySequence("X")}, [this]() {
-        if (!allowSingleKeyShortcuts() || !m_colorsPanel) return;
-        m_colorsPanel->swapPrimaryAndSecondaryColors();
-    });
-    addShortcutAction("Toggle active color", {QKeySequence("C")}, [this]() {
-        if (!allowSingleKeyShortcuts() || !m_colorsPanel) return;
-        m_colorsPanel->toggleActiveColorSlot();
-    });
+    m_canvas->setHoldKeys(m_shortcuts->key(QStringLiteral("hold.pan")),
+                          m_shortcuts->key(QStringLiteral("hold.rotate")),
+                          m_shortcuts->key(QStringLiteral("hold.colorPicker")));
+    for (const auto &update : m_shortcutTooltipUpdates) update();
+    updateRotationIndicator(m_canvas->rotation());
+}
 
-    addShortcutAction("Layer above", {QKeySequence("Alt+PgUp")}, [this]() { selectLayerAbove(); });
-    addShortcutAction("Layer below", {QKeySequence("Alt+PgDown")}, [this]() { selectLayerBelow(); });
-    addShortcutAction("Top layer", {QKeySequence("Ctrl+Alt+PgUp")}, [this]() { selectTopLayer(); });
-    addShortcutAction("Bottom layer", {QKeySequence("Ctrl+Alt+PgDown")}, [this]() { selectBottomLayer(); });
-    addShortcutAction("Brush size down", {QKeySequence("[")}, [this]() { adjustCurrentToolBrushSize(-1); });
-    addShortcutAction("Brush size up", {QKeySequence("]")}, [this]() { adjustCurrentToolBrushSize(1); });
-    addShortcutAction("Brush size down fast", {QKeySequence("Ctrl+[")}, [this]() { adjustCurrentToolBrushSize(-5); });
-    addShortcutAction("Brush size up fast", {QKeySequence("Ctrl+]")}, [this]() { adjustCurrentToolBrushSize(5); });
+void MainWindow::selectLastPaintTool() {
+    selectTool(m_lastPaintTool);
+}
+
+void MainWindow::toggleEraser() {
+    if (m_currentTool && m_currentTool->type() == ToolType::Eraser) selectLastPaintTool();
+    else selectTool(ToolType::Eraser);
+}
+
+void MainWindow::onColorPickerHeld(bool held) {
+    if (held) {
+        if (m_pickerHeld || !m_currentTool) return;
+        m_pickerHeld = true;
+        m_toolBeforePicker = m_currentTool->type();
+        if (m_toolBeforePicker != ToolType::ColorPicker) selectTool(ToolType::ColorPicker);
+        return;
+    }
+    if (!m_pickerHeld) return;
+    m_pickerHeld = false;
+    // Back only if nothing else chose a tool meanwhile.
+    if (m_currentTool && m_currentTool->type() == ToolType::ColorPicker
+        && m_toolBeforePicker != ToolType::ColorPicker)
+        selectTool(m_toolBeforePicker);
+}
+
+double MainWindow::rotationStep() {
+    const double step = QSettings(AppInfo::kId, AppInfo::kId).value(QStringLiteral("view/rotationStep"), 15.0).toDouble();
+    return std::isfinite(step) ? qBound(0.1, step, 180.0) : 15.0;
+}
+
+void MainWindow::setRotationStep(double degrees) {
+    QSettings(AppInfo::kId, AppInfo::kId).setValue(QStringLiteral("view/rotationStep"), qBound(0.1, degrees, 180.0));
+}
+
+void MainWindow::rotateViewLeft() {
+    m_canvas->rotateBy(-rotationStep());
+}
+
+void MainWindow::rotateViewRight() {
+    m_canvas->rotateBy(rotationStep());
+}
+
+void MainWindow::resetViewRotation() {
+    m_canvas->setRotation(0.0);
+}
+
+void MainWindow::updateRotationStepActions() {
+    if (!m_rotationStepGroup) return;
+    const double step = rotationStep();
+    bool preset = false;
+    for (QAction *a : m_rotationStepGroup->actions()) {
+        const bool match = std::abs(a->data().toDouble() - step) < 1e-6;
+        a->setChecked(match);
+        preset = preset || match;
+    }
+    if (!preset) {
+        // Uncheck all (an exclusive group keeps one checked otherwise).
+        m_rotationStepGroup->setExclusive(false);
+        for (QAction *a : m_rotationStepGroup->actions()) a->setChecked(false);
+        m_rotationStepGroup->setExclusive(true);
+    }
+    if (m_otherRotationStepAction)
+        m_otherRotationStepAction->setText(
+            preset ? QStringLiteral("Other Step...")
+                   : QStringLiteral("Other Step (now %1\u00B0)...").arg(QLocale().toString(step, 'g', 4)));
+}
+
+void MainWindow::updateRotationIndicator(double degrees) {
+    if (!m_rotationButton) return;
+    m_rotationButton->setVisible(degrees != 0.0);
+    m_rotationButton->setText(QStringLiteral("\u21BB %1\u00B0").arg(QLocale().toString(degrees, 'f', degrees == std::round(degrees) ? 0 : 1)));
+    const QString keys = Shortcuts::text(m_shortcuts->keys(QStringLiteral("View > Rotate View > Reset Rotation")));
+    m_rotationButton->setToolTip(
+        QStringLiteral("<b>View rotated</b><br>Only the view is turned; the image is not. "
+                       "Click to turn it back%1.").arg(keys.isEmpty() ? QString() : QStringLiteral(" (%1)").arg(keys)));
 }
 
 void MainWindow::createToolBar() {

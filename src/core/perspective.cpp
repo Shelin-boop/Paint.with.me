@@ -2,6 +2,7 @@
 
 #include <QLineF>
 #include <QPainter>
+#include <QPainterPath>
 #include <QSettings>
 #include <cmath>
 
@@ -86,7 +87,9 @@ void drawGuides(QPainter &painter, const QVector<QPointF> &points, int rays, con
     if (points.isEmpty() || rays <= 0 || area.isEmpty()) return;
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing, true);
-    painter.setClipRect(toTarget.mapRect(area));
+    QPainterPath clip;   // the image's outline, also when the view is turned
+    clip.addPolygon(toTarget.map(QPolygonF(area)));
+    painter.setClipPath(clip);
     for (int i = 0; i < points.size(); ++i) {
         QColor c = color(i);
         c.setAlpha(alpha);

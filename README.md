@@ -20,6 +20,7 @@ built natively in C++17 and Qt 6. No Wine, no .NET runtime.
 - New tools Paint.NET does not have: a smudge tool and a blur brush.
 - Text in frames that stays editable until you turn it into pixels.
 - Sizes in millimeters, centimeters or inches at a chosen resolution.
+- Turn the view like a sheet of paper, and choose your own keyboard shortcuts.
 
 ## Install
 
@@ -68,6 +69,22 @@ then follow the guide they start along; the tool options set the number of
 lines, snapping to horizontal and vertical, and "Guides to New Layer" draws
 the lines into a layer of their own. View > Perspective Guides and Snap to
 Perspective switch them on and off while you paint.
+
+**Rotate the view** like a sheet of paper on a desk: View > Rotate View, or
+the keys 4 and 6 (5 turns it back). Only the view turns; the image, saving and
+printing are not affected. How far one step turns it is chosen in the same
+menu (1 to 90 degrees, or any other step) or in Settings > Canvas. Hold
+Shift+Space and drag to turn it freely. While it is turned, the status bar
+shows the angle; click it to turn back.
+
+**Keyboard shortcuts** can be changed in Settings > Keyboard: every menu
+command, every tool, and keys of their own for the last used painting tool
+(N), switching to the Eraser and back (Shift+E), the brush width ([ and ]),
+panning while a key is held (Space), the Color Picker while a key is held (I)
+and more. Search by name or by key; a key another command already has is
+taken from it after asking. Tools given the same key take turns. Useful for
+the express keys of a pen display: let the tablet driver send a key, then give
+that key to the command here. Help > Keyboard shortcuts lists the current keys.
 
 **Undo** keeps as many steps as fit into a memory limit (Settings > Undo
 History; by default one eighth of the computer's memory, between 512 MB and
@@ -136,6 +153,7 @@ CCITT fax, nor protected (encrypted) PDFs.
 6. Code cleanup, native Wayland (done)
 7. Smudge tool and blur brush (done)
 8. Editable text frames, print sizes in mm/cm/in with dpi, pictures from PDFs (done)
+9. Rotating the view, keyboard shortcuts of your own (done)
 
 ## Build from source
 
@@ -155,8 +173,10 @@ cmake --build build
 Run the headless test suite:
 
 ```bash
-cmake --build build --target pwm_tests pwm_brush_tests \
-  pwm_paste_tests pwm_preview_tests pwm_integration_tests
+cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests \
+  pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests \
+  pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests \
+  pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 

@@ -303,7 +303,7 @@ static void toolSettingsPage() {
         if (auto *list = dialog.findChild<QListWidget *>()) list->setCurrentRow(3);
         dialog.resize(640, 640);
         dialog.grab().save(QString::fromLocal8Bit(shots) + "/settings-tools.png");
-        if (auto *list = dialog.findChild<QListWidget *>()) list->setCurrentRow(4);
+        if (auto *list = dialog.findChild<QListWidget *>()) list->setCurrentRow(5);
         dialog.grab().save(QString::fromLocal8Bit(shots) + "/settings-help.png");
     }
 }

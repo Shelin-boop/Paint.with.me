@@ -49,6 +49,14 @@ Claude sessions and milestones, not in hours of human work.
 - PDF (2026-11-06): File > Extract Picture from PDF (also File > Open and
   drag and drop of a .pdf) takes pictures out, first one chosen; pages are not
   rendered.
+- View rotation (2026-11-06): View > Rotate View turns only the view (keys
+  4 / 6, 5 resets, as in Krita; Shift+Space and drag turns freely). The step
+  is a setting (`view/rotationStep`, default 15 degrees), chosen in the menu
+  or Settings > Canvas. Rulers show no scale while turned.
+- Keyboard shortcuts (2026-11-06): every menu command, tool and extra key can
+  be changed in Settings > Keyboard. New extra keys: last used painting tool
+  (N), Eraser and back (Shift+E), Color Picker while held (I). Tools given the
+  same key take turns. Keys while typing in a text frame stay fixed.
 - The AppImage carries a PNG `.DirIcon`, so file managers can show its icon
   (Dolphin: Configure Dolphin > Previews > "AppImage").
 - Clean up code that is badly structured, as part of the work.
@@ -75,10 +83,14 @@ Claude sessions and milestones, not in hours of human work.
    Settings > Tools page and a bigger, centered open-images strip.
 8. Editable text frames, print sizes with units and dpi, Extract Picture
    from PDF, AppImage file icon. Done 2026-11-06.
+9. Rotating the view with a chosen step; keyboard shortcuts of one's own.
+   Done 2026-11-06.
 
 ### Ideas for later (owner's list; ask which comes next)
 
-- (empty: text frames were done on 2026-11-06)
+- (empty: rotation and own shortcuts were done on 2026-11-06)
+- Found, not asked for yet: Canvas Size says the new space gets the secondary
+  color, but it stays transparent (inherited).
 
 ## Rules
 
@@ -95,14 +107,14 @@ Claude sessions and milestones, not in hours of human work.
 - Keep `tests/data/pdn/LICENSE-pypdn` with the pypdn test files.
 - Write documentation and UI text in American English. Dates as yyyy-mm-dd,
   times in 24-hour format, SI units. Menus use "..." (three dots), not "…".
-- Every change keeps all twelve test suites passing; new behavior gets a test.
+- Every change keeps all fourteen test suites passing; new behavior gets a test.
 
 ## Build and test
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests
+cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
@@ -133,6 +145,8 @@ PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_brush_tests
 PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_units_tests        # New, Resize, Canvas Size
 PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_text_tests         # a text frame being edited
 PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_pdfpictures_tests  # the PDF picture dialog
+PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_rotation_tests     # turned view, Settings > Canvas
+PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_shortcuts_tests    # Settings > Keyboard
 ```
 
 Note: `cmake --build build` builds only the app; build the test targets
@@ -199,6 +213,11 @@ explicitly (the command above), or old test programs run.
 | Text-layer undo steps; finishing open edits first | `LayerReplaceCommand`, `HistoryManager::setBeforeChange` / `finishPendingEdit` |
 | Asking before pixel commands change text layers | `MainWindow::convertTextLayersFor` |
 | Pictures inside PDFs (own reader) and its dialog | `src/core/pdfpictures.cpp`, `src/dialogs/pdfpicturedialog.cpp` |
+| View rotation: mapping, drawing turned, fit, zoom at a point, held keys | `CanvasWidget::canvasTransform`, `setRotation`, `panBy`, `zoomAt`, `setHoldKeys` |
+| Rotate View commands, step, status bar angle | `MainWindow::rotateViewLeft` ..., `rotationStep`, `updateRotationIndicator` |
+| Keyboard shortcuts: list, defaults, saved keys, clashes | `src/shortcuts.cpp` (`Shortcuts`) |
+| Commands without a menu entry, tool keys, last painting tool, held picker | `MainWindow::createKeyboardShortcuts`, `applyShortcutKeys` in `src/mainwindow_menus.cpp` |
+| Settings > Keyboard page | `src/dialogs/keyboardpage.cpp` |
 | Tests (custom harness, not QTest) | `tests/` |
 
 ### Adding a tool
@@ -209,6 +228,9 @@ explicitly (the command above), or old test programs run.
    settings and presets, never changed later; name; shortcut key; slot in the
    Tools panel; tooltip; status-bar hint) and a line in `createTool()`. The main
    window, the Tools panel, the tool list, shortcuts and presets read from it.
+   The shortcut key is the default; Settings > Keyboard lists the tool by
+   itself. A tool that puts paint on the image also goes into
+   `isPaintingTool` (the "Last Used Painting Tool" key).
 4. `src/toolicons.cpp`: draw the icon (`forTool`).
 5. `src/panels/tooloptionspanel.cpp`: which options are shown (`updateFromTool`).
 6. If strokes should follow perspective guides: `CanvasWidget::startsPerspectiveSnap`.
@@ -275,6 +297,24 @@ mouse move. `tests/test_brush.cpp` compares such tools against a full redraw.
 - Image > Resize keeps text (scaled fonts) when proportions stay; Canvas Size
   and Crop move it; Rotate, Flip and Merge Down turn it into pixels.
 
+### Keyboard shortcuts
+
+- Menu commands are listed automatically (`Shortcuts::addMenuBar`, after
+  `createMenus`); the keys given in `createMenus` are their defaults. Their
+  id is the menu path ("View > Rotate View > Rotate Left"), so renaming a menu
+  entry drops a key a user chose for it.
+- A command without a menu entry is added in `createKeyboardShortcuts` with a
+  fixed id ("painting.lastTool"); tools use "tool." + the registry key; keys
+  that work while held ("hold.pan", "hold.rotate", "hold.colorPicker") go to
+  `CanvasWidget::setHoldKeys` and work while the canvas has the focus.
+- Saved: only changed keys, as JSON in `keyboard/custom` (portable key text;
+  an empty list means "no key").
+- Tool keys are rebuilt on every change (`applyShortcutKeys`): one action per
+  key, tools with the same key take turns, Shift+key goes backwards unless
+  another command has Shift+key.
+- Single keys check `allowSingleKeyShortcuts()`; while the Text tool types,
+  the canvas takes every key without Ctrl or Alt (ShortcutOverride).
+
 ### Undo
 
 - `HistoryCommand::forEachImage()` lists the images a step keeps; a new kind
@@ -287,7 +327,7 @@ mouse move. `tests/test_brush.cpp` compares such tools against a full redraw.
 - The AppImage ships Qt's Wayland plugins (`EXTRA_PLATFORM_PLUGINS` from the
   Qt in use, plus `waylandcompositor` in `EXTRA_QT_MODULES` for the plugin
   folders). Its smoke test starts it in a headless Weston with
-  `QT_QPA_PLATFORM=wayland`; CI runs ten suites natively there too.
+  `QT_QPA_PLATFORM=wayland`; CI runs twelve suites natively there too.
 - On Wayland the app cannot place its own windows: "Keep floating panels
   attached" is disabled, and `repositionFloatingUtilityWindows` does nothing.
 - "Restart Now" closes like quitting (every unsaved image is asked about),

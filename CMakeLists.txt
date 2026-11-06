@@ -150,6 +150,7 @@ set(DIALOGS_SOURCES
     src/dialogs/saveconfigdialog.cpp
     src/dialogs/pdfexportdialog.cpp
     src/dialogs/shortcutshelp.cpp
+    src/dialogs/keyboardpage.cpp
     src/dialogs/penwidgets.cpp
 )
 
@@ -175,6 +176,7 @@ set(APP_SOURCES
     src/displayserver.cpp
     src/toolicons.cpp
     src/commandicons.cpp
+    src/shortcuts.cpp
     src/theme.cpp
     src/dockdropoverlay.cpp
     ${CORE_SOURCES}
@@ -223,6 +225,8 @@ pwm_test(pwm_perspective_tests tests/test_perspective.cpp)
 pwm_test(pwm_units_tests tests/test_units.cpp)
 pwm_test(pwm_text_tests tests/test_text.cpp)
 pwm_test(pwm_pdfpictures_tests tests/test_pdfpictures.cpp)
+pwm_test(pwm_rotation_tests tests/test_rotation.cpp)
+pwm_test(pwm_shortcuts_tests tests/test_shortcuts.cpp)
 target_compile_definitions(pwm_pdfpictures_tests PRIVATE PWM_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 target_compile_definitions(pwm_psd_tests PRIVATE PWM_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 
@@ -238,6 +242,8 @@ add_test(NAME perspective COMMAND pwm_perspective_tests)
 add_test(NAME print_units COMMAND pwm_units_tests)
 add_test(NAME text_frames COMMAND pwm_text_tests)
 add_test(NAME pdf_pictures COMMAND pwm_pdfpictures_tests)
+add_test(NAME view_rotation COMMAND pwm_rotation_tests)
+add_test(NAME keyboard_shortcuts COMMAND pwm_shortcuts_tests)
 set_tests_properties(functional brush_regression paste_regression adjustment_preview tools_panel psd_format pdf_export perspective print_units text_frames pdf_pictures
                      PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 

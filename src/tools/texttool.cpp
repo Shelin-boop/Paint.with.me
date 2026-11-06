@@ -43,8 +43,9 @@ QString plainFromSelection(QString text) {
     return text;
 }
 
-QRectF toWidget(const QRectF &r, const CanvasWidget &canvas) {
-    return QRectF(canvas.canvasToWidget(r.topLeft()), canvas.canvasToWidget(r.bottomRight())).normalized();
+// An image rectangle on screen: a turned rectangle when the view is turned.
+QPolygonF toWidget(const QRectF &r, const CanvasWidget &canvas) {
+    return canvas.canvasTransform().map(QPolygonF(r));
 }
 
 }  // namespace
@@ -651,7 +652,7 @@ QVariant TextTool::inputMethodQuery(Qt::InputMethodQuery query, const CanvasWidg
     case Qt::ImEnabled:
         return isEditing();
     case Qt::ImCursorRectangle:
-        return isEditing() ? toWidget(caretRect(), canvas).toAlignedRect() : QRect();
+        return isEditing() ? toWidget(caretRect().adjusted(0, 0, 1, 0), canvas).boundingRect().toAlignedRect() : QRect();
     case Qt::ImFont:
         return isEditing() ? fontAtCaret() : QFont();
     case Qt::ImCursorPosition:
@@ -814,31 +815,36 @@ void TextTool::drawOverlay(QPainter &painter, const CanvasWidget &canvas) {
     painter.save();
     painter.setRenderHint(QPainter::Antialiasing, false);
 
-    const QRectF frame = toWidget(frameRect(), canvas);
+    const QPolygonF frame = toWidget(frameRect(), canvas);
     painter.setBrush(Qt::NoBrush);
     painter.setPen(QPen(Qt::white, 1));
-    painter.drawRect(frame);
+    painter.drawPolygon(frame);
     painter.setPen(QPen(QColor(40, 40, 40), 1, Qt::DashLine));
-    painter.drawRect(frame);
+    painter.drawPolygon(frame);
 
-    for (const QRectF &r : selectionRects())
-        painter.fillRect(toWidget(r, canvas), QColor(0, 120, 215, 90));
+    painter.setPen(Qt::NoPen);
+    painter.setBrush(QColor(0, 120, 215, 90));
+    for (const QRectF &r : selectionRects()) painter.drawPolygon(toWidget(r, canvas));
 
     if (!m_cursor.hasSelection()) {
-        const QRectF caret = toWidget(caretRect(), canvas);
-        const QLineF line(caret.topLeft(), caret.bottomLeft());
+        const QRectF caret = caretRect();
+        const QLineF line(canvas.canvasToWidget(caret.topLeft()), canvas.canvasToWidget(caret.bottomLeft()));
         painter.setPen(QPen(QColor(255, 255, 255, 200), 3));
         painter.drawLine(line);
         painter.setPen(QPen(Qt::black, 1));
         painter.drawLine(line);
     }
 
-    const QRectF r = frame;
+    // Handles: small squares at the corners and edge middles, turned with
+    // the view like the frame.
+    const QRectF r = frameRect();
     const QPointF points[8] = {r.topLeft(), {r.center().x(), r.top()}, r.topRight(),
                                {r.right(), r.center().y()}, r.bottomRight(),
                                {r.center().x(), r.bottom()}, r.bottomLeft(), {r.left(), r.center().y()}};
+    const double half = 3.5 / std::max(canvas.zoom(), 1e-6);
     painter.setPen(QPen(QColor(40, 40, 40), 1));
     painter.setBrush(Qt::white);
-    for (const QPointF &p : points) painter.drawRect(QRectF(p - QPointF(3.5, 3.5), QSizeF(7, 7)));
+    for (const QPointF &p : points)
+        painter.drawPolygon(toWidget(QRectF(p - QPointF(half, half), QSizeF(2 * half, 2 * half)), canvas));
     painter.restore();
 }
