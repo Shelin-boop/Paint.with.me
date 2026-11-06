@@ -11,6 +11,7 @@
 #include "panels/colorspanel.h"
 #include "panels/historypanel.h"
 #include "panels/imagelistbar.h"
+#include "commandicons.h"
 #include "panels/toolspanel.h"
 #include "core/pdfexport.h"
 #include "core/perspective.h"
@@ -270,7 +271,13 @@ void MainWindow::applyTheme() {
     // The reset/swap icons are painted pixmaps, so a stylesheet can't recolour
     // them: redraw them for the new scheme.
     if (m_colorsPanel) m_colorsPanel->refreshIcons();
-    if (m_toolsPanel) m_toolsPanel->refreshIcons();
+    // Command icons draw their lines in the theme's color; pinned commands
+    // take the new icons when the panel rebuilds.
+    CommandIcons::decorate(m_iconMenus);
+    if (m_toolsPanel) {
+        m_toolsPanel->refreshIcons();
+        if (menuBar()) m_toolsPanel->setCommands(ToolsPanel::commandsFromMenuBar(menuBar(), {m_recentFilesMenu}));
+    }
 }
 
 void MainWindow::showSettingsDialog() {

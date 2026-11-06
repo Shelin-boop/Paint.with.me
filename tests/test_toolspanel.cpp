@@ -22,6 +22,8 @@
 #include "mainwindow.h"
 #include "panels/toolspanel.h"
 #include "panels/imagelistbar.h"
+#include <functional>
+#include "commandicons.h"
 #include "toolicons.h"
 #include "tools/brushpreset.h"
 #include "tools/brushtool.h"
@@ -433,6 +435,76 @@ static void imageList() {
     CHECK(r.top() - barRect.top() >= 4 && barRect.bottom() - r.bottom() >= 4);
 }
 
+// Every command in the Image, Layers, Adjustments and Effects menus has a
+// drawn icon (Effects > Plugins aside), and no icon is left over for a
+// command that no longer exists. PWM_SCREENSHOT_DIR gets a sheet of them.
+static void commandIcons() {
+    std::printf("== Command icons ==\n");
+    MainWindow window;
+    QStringList found, missing;
+    QList<QPair<QString, QIcon>> sheet;
+    std::function<void(QMenu *, const QString &)> walk = [&](QMenu *menu, const QString &path) {
+        for (QAction *a : menu->actions()) {
+            if (a->isSeparator()) continue;
+            const QString here = path + " > " + CommandIcons::plainLabel(a->text());
+            if (QMenu *sub = a->menu()) {
+                if (here != "Effects > Plugins") walk(sub, here);
+                continue;
+            }
+            found << here;
+            if (a->icon().isNull()) missing << here;
+            else sheet.append({here, a->icon()});
+        }
+    };
+    for (QAction *top : window.menuBar()->actions()) {
+        const QString title = CommandIcons::plainLabel(top->text());
+        if (top->menu() && QStringList({"Image", "Layers", "Adjustments", "Effects"}).contains(title))
+            walk(top->menu(), title);
+    }
+    CHECK(found.size() > 70);
+    CHECK(missing.isEmpty());
+    for (const QString &m : missing) std::printf("  no icon: %s\n", qPrintable(m));
+    for (const QString &path : CommandIcons::paths()) {
+        CHECK(found.contains(path));
+        if (!found.contains(path)) std::printf("  icon for a missing command: %s\n", qPrintable(path));
+    }
+    // A pinned command shows its menu icon, not the lettered tile.
+    auto *panel = window.findChild<ToolsPanel *>();
+    if (panel) {
+        panel->pinCommand("Effects > Blurs > Gaussian Blur...");
+        settle();
+        qint64 actionIcon = -1;
+        for (const auto &entry : sheet)
+            if (entry.first == "Effects > Blurs > Gaussian Blur") actionIcon = entry.second.cacheKey();
+        bool shown = false;
+        for (QToolButton *b : panel->findChildren<QToolButton *>())
+            if (!b->isHidden() && b->toolTip().contains("Gaussian Blur"))
+                shown = b->icon().cacheKey() == actionIcon;
+        CHECK(shown);
+        panel->unpin(ToolsPanel::commandPin("Effects > Blurs > Gaussian Blur..."));
+    }
+    const QByteArray dir = qgetenv("PWM_SCREENSHOT_DIR");
+    if (dir.isEmpty()) return;
+    const int cols = 6, cell = 150, rowH = 44;
+    QImage img(cols * cell, ((sheet.size() + cols - 1) / cols) * rowH + 8, QImage::Format_ARGB32);
+    img.fill(Qt::white);
+    QPainter p(&img);
+    QFont f = p.font();
+    f.setPixelSize(10);
+    p.setFont(f);
+    for (int i = 0; i < sheet.size(); ++i) {
+        const int x = (i % cols) * cell + 4, y = (i / cols) * rowH + 4;
+        p.drawPixmap(x, y, sheet[i].second.pixmap(32, 32));
+        p.drawPixmap(x + 36, y + 8, sheet[i].second.pixmap(16, 16));
+        p.setPen(Qt::black);
+        p.drawText(QRect(x + 56, y, cell - 60, 36), Qt::AlignVCenter | Qt::TextWordWrap,
+                   sheet[i].first.section(" > ", -1));
+    }
+    p.end();
+    QDir().mkpath(QString::fromLocal8Bit(dir));
+    img.save(QString::fromLocal8Bit(dir) + "/command-icons.png");
+}
+
 int main(int argc, char **argv) {
     QTemporaryDir settings;
     for (const char *name : {"XDG_CONFIG_HOME", "XDG_DATA_HOME", "XDG_CACHE_HOME", "XDG_RUNTIME_DIR"}) {
@@ -448,6 +520,7 @@ int main(int argc, char **argv) {
     standalonePanel();
     mainWindowLayout();
     imageList();
+    commandIcons();
     std::printf("\n%d passed, %d failed\n", g_pass, g_fail);
     return g_fail == 0 ? 0 : 1;
 }
