@@ -57,6 +57,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
 private:
     bool m_restartRequested = false;
+    QList<QMenu *> m_iconMenus;   // menus whose commands have drawn icons
     QStringList m_restartFiles;
     void syncUtilityWindowsToMainState();
 protected:

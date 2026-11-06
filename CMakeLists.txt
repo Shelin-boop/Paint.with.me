@@ -168,6 +168,7 @@ set(APP_SOURCES
     src/desktopintegration.cpp
     src/displayserver.cpp
     src/toolicons.cpp
+    src/commandicons.cpp
     src/theme.cpp
     src/dockdropoverlay.cpp
     ${CORE_SOURCES}

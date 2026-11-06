@@ -42,6 +42,7 @@
 #include "desktopintegration.h"
 #include "displayserver.h"
 #include "dialogs/shortcutshelp.h"
+#include "commandicons.h"
 #include <QMenuBar>
 
 void MainWindow::createMenus() {
@@ -285,6 +286,11 @@ void MainWindow::createMenus() {
     fxMenu->addSeparator();
     auto *pluginsMenu = fxMenu->addMenu(QStringLiteral("Plugins"));
     populatePluginsMenu(pluginsMenu);
+
+    // Icons for the Image, Layers, Adjustments and Effects commands (also
+    // used when they are pinned to the Tools panel).
+    m_iconMenus = {imageMenu, layersMenu, adjMenu, fxMenu};
+    CommandIcons::decorate(m_iconMenus);
 
     // paint.net has no Window/Help menus: the four utility windows plus Settings
     // and Help live as six icons on the RIGHT side of the menu bar.
