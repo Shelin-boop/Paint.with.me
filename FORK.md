@@ -24,6 +24,22 @@ upstream repository. It only reads from it.
 
 ## What differs from upstream
 
+### 2026-11-06: smudge and blur brush, pen extras, command icons
+
+- New tools: Smudge (drags color like wet paint) and Blur Brush, key U
+  (src/tools/retouchtool.*).
+- Pen: pressure on size, opacity or both; pressure curve; tilt flattens the
+  tip; a pad to try the pen (Settings > Tools).
+- Icons, drawn in code, for every command in the Image, Layers, Adjustments
+  and Effects menus (src/commandicons.cpp); they also show on pinned
+  commands in the Tools panel.
+- Settings > Tools filled (antialiasing moved there from the tool bar, pen
+  settings); Settings > Help lists the keyboard shortcuts.
+- Native Wayland is the default; XWayland remains selectable, and changing
+  it offers to restart the app. Quitting asks about every unsaved image.
+- The Colors panel remembers More/Less; the open-images strip is centered,
+  with bigger thumbnails.
+
 ### 2026-11-05: code cleanup, native Wayland as an option
 
 - Tool registry (`src/tools/toolregistry.cpp`): one table with every tool's

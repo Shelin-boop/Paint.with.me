@@ -68,7 +68,7 @@ QRect Tool::paintDab(QImage &buffer, const Dab &dab, const QColor &opaqueColor, 
                      int fillStyle, bool antialiased, bool peak, QImage &scratch) {
     if (dab.radius < 0.4 || dab.alpha <= 0.0) return QRect();   // no pressure, no mark
     const double r = dab.radius;
-    // Include the rasterizer's antialias fringe, including fractional centres.
+    // Include the rasterizer's antialias fringe, including fractional centers.
     const QRect area = QRectF(dab.pos.x() - r - 2, dab.pos.y() - r - 2, 2 * r + 4, 2 * r + 4)
                            .toAlignedRect().intersected(buffer.rect());
     if (area.isEmpty()) return area;

@@ -23,15 +23,21 @@ Claude sessions and milestones, not in hours of human work.
   and save `.psd` (Adobe), open `.psb`. Flat: PNG, JPEG, BMP, GIF, TIFF, WebP
   and the like. The inherited `.psw` format was removed on 2026-11-05.
 - Undo: a memory budget instead of a fixed step count (done 2026-11-05).
-- New tools: a smudge tool (German "verwischen", drags color like a finger
-  through wet paint) and a blur brush. Paint.NET has neither. A perspective
-  tool exists since 2026-11-05.
+- Tools Paint.NET does not have: perspective guides (2026-11-05), smudge
+  (German "verwischen", drags color like a finger through wet paint) and blur
+  brush (both 2026-11-06, key U).
 - Owner's pen display: XPPen Artist 15.6 Pro V2 on Kubuntu; pen pressure
-  reaches the app (confirmed by the owner 2026-11-05, under XWayland).
-- Window system: XWayland by default in a Wayland session; native Wayland is
-  opt-in (Settings > User Interface > Window System, setting
-  `display/nativeWayland`, applies at the next start). `QT_QPA_PLATFORM` or
-  `-platform` always win.
+  works under XWayland and native Wayland (confirmed by the owner 2026-11-06).
+  Pen extras (2026-11-06): pressure on size, opacity or both (per tool, tool
+  bar "Pressure"), pressure curve and tilt (Settings > Tools).
+- Window system: native Wayland by default in a Wayland session since
+  2026-11-06 (owner tested it on Plasma: pen, panels and sharpness fine);
+  XWayland stays as a compatibility choice (Settings > User Interface >
+  Window System, setting `display/windowSystem` = `wayland` / `xwayland`).
+  Changing it offers "Restart Now". `QT_QPA_PLATFORM` or `-platform` always
+  win.
+- Antialiasing is one setting for all tools (Settings > Tools,
+  `tools/antialiasing`), not a tool bar switch.
 - Clean up code that is badly structured, as part of the work.
 - Default panel layout (owner's choice, 2026-11-05): Tools above Colors on the
   left, History above Layers on the right. The Tools panel widens to 3 or 4
@@ -49,11 +55,21 @@ Claude sessions and milestones, not in hours of human work.
 5. Undo rework: memory budget instead of 100 steps. Done 2026-11-05. Also
    done on the owner's request: PDF export and a perspective tool.
 6. Code cleanup and native Wayland. Done 2026-11-05: tool registry,
-   `mainwindow.cpp` split by job, Qt's Wayland plugins in the AppImage, native
-   Wayland as an opt-in setting. Open: the owner tries native Wayland on
-   Plasma; if it works (pen pressure, floating panels, dialogs), make it the
-   default in `DisplayServer::platformFor` (`src/displayserver.cpp`).
-7. Smudge tool and blur brush.
+   `mainwindow.cpp` split by job, Qt's Wayland plugins in the AppImage.
+   Native Wayland became the default on 2026-11-06 after the owner's test.
+7. Smudge tool and blur brush. Done 2026-11-06, together with pen extras,
+   icons for the Image, Layers, Adjustments and Effects commands, a filled
+   Settings > Tools page and a bigger, centered open-images strip.
+
+### Ideas for later (owner's list; ask which comes next)
+
+- Text frames that stay editable until converted to pixels (owner,
+  2026-11-06): drag open a box of any size, type into it with all system
+  fonts, the usual formatting (bold, italic, underline, size, color) and
+  alignment (left, center, right, justified), edit it again later, and turn
+  it into ordinary pixels only when chosen. Probably a special kind of layer
+  that keeps the text and draws it, saved in `.psd` as a text layer if
+  possible (otherwise as pixels with a note).
 
 ## Rules
 
@@ -98,12 +114,17 @@ QT_QPA_PLATFORM=offscreen build/pwm_bench --quick  # 2000 x 2000 px, 8 layers
 Run it before and after any change to compositing, the canvas, painting tools,
 panels that react to document changes, undo or autosave.
 
-Pictures of the main window for a visual check (default layout, four columns
-with shortcuts, narrow panel):
+Pictures for a visual check (main window layouts and a sheet of all command
+icons; Settings pages; smudge and blur strokes):
 
 ```bash
 PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_panel_tests
+PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_paste_tests
+PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_brush_tests
 ```
+
+Note: `cmake --build build` builds only the app; build the test targets
+explicitly (the command above), or old test programs run.
 
 ## Releases
 
@@ -131,6 +152,11 @@ PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_panel_tests
 | Main window: edit, image and layer commands | `src/mainwindow_edit.cpp` |
 | Main window: effects and adjustments (one numeric `switch`) | `src/mainwindow_effects.cpp` |
 | Every tool's key, name, shortcut, panel slot, tooltip, hint; creating tools | `src/tools/toolregistry.cpp` |
+| Pen: pressure curve, tilt, settings; shared dab code (size, opacity, tilt) | `src/core/pensettings.cpp`, `Tool::dabAt`, `forEachDab`, `paintDab` |
+| Smudge tool and blur brush (shared base `RetouchTool`) | `src/tools/retouchtool.cpp` |
+| Icons for the Image, Layers, Adjustments, Effects commands | `src/commandicons.cpp` |
+| Settings dialog; pen widgets; keyboard shortcut table | `src/dialogs/settingsdialog.cpp`, `penwidgets.cpp`, `shortcutshelp.cpp` |
+| Restart after changing the window system | `MainWindow::restartApplication`, `DisplayServer::relaunch` |
 | Document, layers, selection, undo history | `src/core/` |
 | Undo memory budget (steps report their images; shared pixels count once) | `HistoryManager::memoryUsed`, `trim` in `src/core/history.cpp` |
 | PDF export (own writer) and its dialog | `src/core/pdfexport.cpp`, `src/dialogs/pdfexportdialog.cpp` |
@@ -147,6 +173,7 @@ PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_panel_tests
 | Effects (base `Effect::apply(QImage)`) | `src/effects/` |
 | Panels: layers, colors, history, tool options | `src/panels/` |
 | Tools panel: tool grid, extra columns, pinned commands and presets | `src/panels/toolspanel.cpp` |
+| Open-images strip (thumbnails in the tool bar, centered) | `src/panels/imagelistbar.cpp` |
 | Brush presets (saved tool settings, JSON in the settings) | `src/tools/brushpreset.cpp` |
 | Default panel layout and reset | `MainWindow::applyDefaultPanelLayout`, `resetUtilityWindow` |
 | Tool icons, drawn in code (no image files) | `src/toolicons.cpp` |
@@ -165,7 +192,14 @@ PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_panel_tests
 4. `src/toolicons.cpp`: draw the icon (`forTool`).
 5. `src/panels/tooloptionspanel.cpp`: which options are shown (`updateFromTool`).
 6. If strokes should follow perspective guides: `CanvasWidget::startsPerspectiveSnap`.
-7. A test in `tests/` (`tests/test_toolspanel.cpp` checks the registry is complete).
+7. A test in `tests/` (`tests/test_toolspanel.cpp` checks the registry is
+   complete; update its "last ToolType" check).
+
+Brush-like tools build their dabs with `Tool::dabAt` / `forEachDab` (size,
+opacity and tilt from the pen, pressure smoothed along each segment) and
+paint coverage with `Tool::paintDab`; tools that rework existing pixels
+derive from `RetouchTool`. A new menu command in Image, Layers, Adjustments
+or Effects needs an icon in `src/commandicons.cpp` (a test checks).
 
 A tool that changes pixels while the mouse moves reports the changed document
 area with `canvas.updateCanvasRegion(rect)` and returns `true` from
@@ -216,6 +250,10 @@ mouse move. `tests/test_brush.cpp` compares such tools against a full redraw.
   `QT_QPA_PLATFORM=wayland`; CI runs seven suites natively there too.
 - On Wayland the app cannot place its own windows: "Keep floating panels
   attached" is disabled, and `repositionFloatingUtilityWindows` does nothing.
+- "Restart Now" closes like quitting (every unsaved image is asked about),
+  then `main()` starts the app again: from an AppImage via `$APPIMAGE`,
+  without `QT_QPA_PLATFORM` (unless it came from outside) and the AppImage's
+  own variables.
 - Testing natively in the sandbox: `weston --backend=headless-backend.so
   --socket=wl-test`, then `WAYLAND_DISPLAY=$XDG_RUNTIME_DIR/wl-test
   QT_QPA_PLATFORM=wayland build/<test>`. Closer to Plasma: KWin 5.27

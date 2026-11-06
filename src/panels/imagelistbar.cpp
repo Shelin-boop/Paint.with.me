@@ -19,7 +19,7 @@ constexpr int kMargin = 4;         // space above and below the strip
 
 ImageListBar::ImageListBar(QWidget *parent) : QWidget(parent) {
     setObjectName("imageListBar");
-    // Takes the free width of the toolbar and centres the thumbnails in the
+    // Takes the free width of the toolbar and centers the thumbnails in the
     // window (see placeThumbnails).
     setSizePolicy(QSizePolicy::Expanding, QSizePolicy::Fixed);
     m_layout = new QHBoxLayout(this);
@@ -112,7 +112,7 @@ int ImageListBar::thumbnailsWidth() const {
 }
 
 void ImageListBar::placeThumbnails() {
-    // Centre the thumbnails on the window, not just on this bar (which starts
+    // Center the thumbnails on the window, not just on this bar (which starts
     // after the toolbar buttons), as far as the bar's own width allows.
     const int content = thumbnailsWidth();
     int lead = 0;

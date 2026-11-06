@@ -36,10 +36,14 @@ It needs a 64-bit Linux, such as Ubuntu or Kubuntu 22.04 or newer; the release
 notes name the exact glibc version. No other installation is needed, not even
 libfuse2.
 
-On a Wayland desktop (KDE Plasma, GNOME) it runs through XWayland by default.
-To run it natively on Wayland, turn on **Settings > User Interface > Run
-natively on Wayland (experimental)** and start it again. Help > About shows
-which one is in use. Natively, the desktop decides where floating panels go.
+On a Wayland desktop (KDE Plasma, GNOME) it runs natively on Wayland. If that
+causes trouble, choose **XWayland** in Settings > User Interface; it offers to
+restart right away. Help > About shows which one is in use.
+
+Graphics tablets: pressing harder can change the brush size, its opacity or
+both (the **Pressure** list in the tool bar, shown once a pen has been used).
+Settings > Tools has a pressure curve, an option for pen tilt and a pad to
+try your pen.
 
 The panels sit at the sides of the main window: Tools above Colors on the left,
 History above Layers on the right. Drag a panel by its title to another side or
@@ -114,8 +118,8 @@ or a white background.
 3. Speed with large images, panels docked in the main window (done)
 4. File formats: layered PSD instead of the inherited `.psw` format (done)
 5. A memory-efficient undo history (done)
-6. Code cleanup, native Wayland (done; native Wayland is an option for now)
-7. Smudge tool and blur brush
+6. Code cleanup, native Wayland (done)
+7. Smudge tool and blur brush (done)
 
 ## Build from source
 

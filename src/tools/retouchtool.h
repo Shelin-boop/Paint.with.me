@@ -19,7 +19,7 @@ public:
     void drawOverlay(QPainter &painter, const CanvasWidget &canvas) override;
     bool updatesCanvasRegion() const override { return true; }
 
-    // How much one dab weighs at a pixel centre `p` (layer pixels): 1 inside
+    // How much one dab weighs at a pixel center `p` (layer pixels): 1 inside
     // the hard core, falling off to 0 at the dab's edge; flattened tips too.
     static double dabWeight(const Dab &dab, int hardness, bool antialiased, const QPointF &p);
 
@@ -68,7 +68,7 @@ protected:
 
 private:
     // The picked-up paint: premultiplied RGBA floats in a square around the
-    // dab centre, side 2 * m_half + 1; m_valid marks pixels that hold paint.
+    // dab center, side 2 * m_half + 1; m_valid marks pixels that hold paint.
     int m_half = 0;
     std::vector<float> m_paint;
     std::vector<unsigned char> m_valid;
