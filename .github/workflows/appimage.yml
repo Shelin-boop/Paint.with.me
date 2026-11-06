@@ -89,7 +89,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          cmake --build build -j --target pwm_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_panel_tests pwm_integration_tests
+          cmake --build build -j --target pwm_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_panel_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests
           export LD_LIBRARY_PATH="$QT_ROOT/lib:$LD_LIBRARY_PATH"
           ./build/pwm_integration_tests
           ./build/pwm_tests
@@ -97,6 +97,10 @@ jobs:
           ./build/pwm_pdf_tests
           ./build/pwm_perspective_tests
           ./build/pwm_panel_tests
+          ./build/pwm_units_tests
+          ./build/pwm_text_tests
+          # With this Qt, CMYK JPEGs arrive as CMYK (Qt 6.8 and newer).
+          ./build/pwm_pdfpictures_tests
 
       - name: Bundle Qt into the AppDir
         env:
@@ -123,6 +127,11 @@ jobs:
 
       - name: Pack the AppImage (static runtime, no libfuse2 needed)
         run: |
+          # The AppImage file's own icon: file managers (Dolphin's "AppImage"
+          # preview, AppImageLauncher ...) read .DirIcon at the top of the
+          # AppImage. linuxdeploy only put the SVG there, so .DirIcon was
+          # missing; a PNG is what every reader can show.
+          cp "AppDir/usr/share/icons/hicolor/256x256/apps/$APP_ID.png" AppDir/.DirIcon
           wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
           FILE="Paint.with.me-${VER}-x86_64.AppImage"
@@ -133,6 +142,12 @@ jobs:
       - name: Smoke test the AppImage
         run: |
           ./"$FILE" --appimage-extract-and-run --version
+          # The file's icon is inside, as a PNG.
+          rm -rf squashfs-root
+          ./"$FILE" --appimage-extract .DirIcon > /dev/null
+          file -L squashfs-root/.DirIcon | grep -q "PNG image data, 256 x 256" \
+            || { echo ".DirIcon is missing or not a 256 px PNG"; exit 1; }
+          rm -rf squashfs-root
           # Start it headless with an empty home and check that the menu entry appears.
           export HOME="$RUNNER_TEMP/smoke-home" XDG_DATA_HOME="$RUNNER_TEMP/smoke-home/share"
           mkdir -p "$HOME"
