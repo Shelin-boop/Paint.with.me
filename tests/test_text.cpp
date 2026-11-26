@@ -331,7 +331,15 @@ static void moveAndResizeFrame() {
     type(s.tool, s.canvas, QStringLiteral("frame text that wraps"));
     const QRect before = ink(s.doc.flatten());
     // Drag the frame's left border (not a handle) 60 px right and 30 down.
-    const QPointF border(40, 90);
+    // The frame is as tall as its text, which depends on the system's fonts,
+    // so the point is a quarter down the frame as drawn: between the corner
+    // handle and the middle one (each reaches 6 px).
+    TextFrame typed = *s.doc.activeLayer()->textFrame();
+    typed.box.translate(s.doc.activeLayer()->textShift());
+    const QRectF startFrame = typed.frameRect();
+    std::printf("  frame for moving: %.1f x %.1f px\n", startFrame.width(), startFrame.height());
+    CHECK(startFrame.height() >= 32);
+    const QPointF border(startFrame.left(), startFrame.top() + startFrame.height() / 4);
     press(s.tool, s.canvas, border);
     move(s.tool, s.canvas, border + QPointF(30, 15));
     move(s.tool, s.canvas, border + QPointF(60, 30));

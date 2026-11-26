@@ -18,8 +18,11 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 
 export DEBIAN_FRONTEND=noninteractive
 apt-get update -q
+# Debian 12 keeps Qt's OpenGL build files in a package of their own. The
+# image format plugins are only for the tests (WebP and TIFF are tested).
 apt-get install -y -q --no-install-recommends \
-    build-essential cmake ninja-build qt6-base-dev libgl1-mesa-dev zlib1g-dev \
+    build-essential cmake ninja-build qt6-base-dev libqt6opengl6-dev \
+    qt6-image-formats-plugins libgl1-mesa-dev zlib1g-dev \
     dpkg-dev file fonts-dejavu-core
 
 "$HERE/build-and-test.sh" build-deb "$VER"

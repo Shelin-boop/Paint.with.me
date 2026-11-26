@@ -21,8 +21,9 @@ HERE="$(cd "$(dirname "$0")" && pwd)"
 case " ${ID:-} ${ID_LIKE:-} " in
     *" fedora "*)
         SYSTEM=fedora
+        # The image format plugins are for the tests (WebP and TIFF are tested).
         dnf install -y gcc-c++ cmake ninja-build qt6-qtbase-devel zlib-devel \
-            mesa-libGL-devel rpm-build dejavu-sans-fonts file
+            mesa-libGL-devel qt6-qtimageformats rpm-build dejavu-sans-fonts file
         # Loaded at run time, so not found automatically: WebP and TIFF,
         # native Wayland.
         REQUIRES="qt6-qtimageformats, qt6-qtwayland"
@@ -33,8 +34,8 @@ case " ${ID:-} ${ID_LIKE:-} " in
         zypper --non-interactive install gcc-c++ cmake ninja \
             qt6-core-devel qt6-gui-devel qt6-widgets-devel qt6-printsupport-devel \
             qt6-concurrent-devel qt6-network-devel qt6-opengl-devel \
-            qt6-openglwidgets-devel zlib-devel Mesa-libGL-devel rpm-build \
-            dejavu-fonts file
+            qt6-openglwidgets-devel zlib-devel Mesa-libGL-devel qt6-imageformats \
+            rpm-build dejavu-fonts file
         REQUIRES="qt6-imageformats, qt6-wayland"
         QT=$(rpm -q --qf '%{VERSION}' qt6-core-devel)
         ;;
