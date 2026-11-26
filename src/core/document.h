@@ -114,6 +114,18 @@ public:
     // (one pixel per 2^shift x 2^shift document pixels) and `origin` is in
     // reduced pixels; for showing a zoomed-out image quickly.
     void compositeInto(QImage &dest, const QPoint &origin, int shift = 0) const;
+    // Only some of the layers (for the canvas's layer group cache): layers
+    // [from, to) are combined over `below` (an image of the whole reduced
+    // view, read at the same pixels as `dest`; transparent when null), then
+    // `above` (the same kind of image) is drawn over them. With from = 0, no
+    // `below` and to = all, this is compositeInto() above, to the bit.
+    struct CompositeParts {
+        int from = 0;
+        int to = -1;   // -1: up to the top layer
+        const QImage *below = nullptr;
+        const QImage *above = nullptr;
+    };
+    void compositeInto(QImage &dest, const QPoint &origin, int shift, const CompositeParts &parts) const;
     // Size of the reduced view of the whole document for `shift`.
     QSize reducedSize(int shift) const {
         return QSize((m_width + (1 << shift) - 1) >> shift, (m_height + (1 << shift) - 1) >> shift);

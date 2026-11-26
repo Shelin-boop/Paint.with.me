@@ -545,6 +545,10 @@ QImage Document::flattenVisible(const QRect &region) const {
 }
 
 void Document::compositeInto(QImage &dest, const QPoint &origin, int shift) const {
+    compositeInto(dest, origin, shift, CompositeParts());
+}
+
+void Document::compositeInto(QImage &dest, const QPoint &origin, int shift, const CompositeParts &parts) const {
     if (dest.isNull()) return;
     Q_ASSERT(dest.format() == QImage::Format_ARGB32_Premultiplied);
     shift = std::max(0, shift);
@@ -561,8 +565,10 @@ void Document::compositeInto(QImage &dest, const QPoint &origin, int shift) cons
     struct Item { const Layer *layer; QRect area; };   // area: in `dest` pixels
     std::vector<Item> items;
     items.reserve(m_layers.size());
-    for (const auto &ptr : m_layers) {
-        const Layer &layer = *ptr;
+    const int from = std::max(0, parts.from);
+    const int to = parts.to < 0 ? int(m_layers.size()) : std::min(parts.to, int(m_layers.size()));
+    for (int i = from; i < to; ++i) {
+        const Layer &layer = *m_layers[size_t(i)];
         if (!layer.isVisible() || layer.opacity() <= 0.0f || layer.image().isNull()) continue;
         QRect area = (useBounds && layer.blendMode() != BlendMode::Overwrite)
                          ? layer.contentBounds()
@@ -583,11 +589,24 @@ void Document::compositeInto(QImage &dest, const QPoint &origin, int shift) cons
     for (int y = 0; y < dest.height(); y += stripRows)
         strips.push_back({y, std::min(dest.height(), y + stripRows)});
 
+    // The pixels of `below` / `above` that this dest row starts at (they
+    // cover the whole reduced view; `dest` shows part of it).
+    auto partRow = [&](const QImage *image, int destY) -> const uchar * {
+        const int y = origin.y() + destY;
+        if (!image || y < 0 || y >= image->height() || origin.x() < 0
+            || origin.x() + width > image->width())
+            return nullptr;
+        return image->constScanLine(y) + size_t(origin.x()) * 4;
+    };
     auto work = [&](const Strip &strip) {
         const int rows = strip.y1 - strip.y0;
         uchar *first = bits + strip.y0 * bpl;
-        for (int r = 0; r < rows; ++r)
-            std::memset(first + r * bpl, 0, size_t(width) * 4);
+        for (int r = 0; r < rows; ++r) {
+            if (const uchar *src = partRow(parts.below, strip.y0 + r))
+                std::memcpy(first + r * bpl, src, size_t(width) * 4);
+            else
+                std::memset(first + r * bpl, 0, size_t(width) * 4);
+        }
         QImage view(first, width, rows, bpl, QImage::Format_ARGB32_Premultiplied);
         const QRect stripRect(0, strip.y0, width, rows);
         QPainter painter;
@@ -597,6 +616,14 @@ void Document::compositeInto(QImage &dest, const QPoint &origin, int shift) cons
             if (!painter.isActive()) painter.begin(&view);
             item.layer->compositeInto(painter, view, origin + QPoint(0, strip.y0),
                                       part.translated(0, -strip.y0), shift);
+        }
+        if (parts.above) {
+            // Already combined layers on top: one plain "over" per pixel.
+            if (!painter.isActive()) painter.begin(&view);
+            painter.setOpacity(1.0);
+            painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
+            painter.drawImage(QPoint(0, 0), *parts.above,
+                              QRect(origin.x(), origin.y() + strip.y0, width, rows));
         }
     };
 

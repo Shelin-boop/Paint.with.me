@@ -1,4 +1,5 @@
 #include "selection.h"
+#include <cstring>
 #include <QPainter>
 #include <QQueue>
 #include <cmath>
@@ -205,12 +206,16 @@ void Selection::contract(int pixels) {
 }
 
 void Selection::translate(const QPoint &delta) {
-    if (m_empty) return;
+    if (m_empty || delta.isNull()) return;
+    // Row by row: a plain copy of the bytes (drawing a grayscale mask with a
+    // painter went through a slow conversion; arrow keys move it often).
+    const int w = m_mask.width(), h = m_mask.height();
     QImage newMask(m_mask.size(), QImage::Format_Grayscale8);
     newMask.fill(0);
-    QPainter p(&newMask);
-    p.drawImage(delta, m_mask);
-    p.end();
+    const QRect source = QRect(0, 0, w, h).intersected(QRect(-delta.x(), -delta.y(), w, h));
+    for (int y = source.top(); y <= source.bottom(); ++y)
+        std::memcpy(newMask.scanLine(y + delta.y()) + source.left() + delta.x(),
+                    m_mask.constScanLine(y) + source.left(), size_t(source.width()));
     m_mask = newMask;
     updateEmpty();
 }

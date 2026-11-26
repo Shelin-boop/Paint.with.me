@@ -189,63 +189,84 @@ void Layer::compositeInto(QPainter &painter, QImage &dest, const QPoint &destOri
     }
 
     // Per-pixel modes work on straight (unpremultiplied) colours.
-    const QImage top = m_image.copy(source).convertToFormat(QImage::Format_ARGB32);
-    blendPerPixel(painter, dest, target, top);
+    blendPerPixel(painter, dest, target, m_image.copy(source));
 }
 
+namespace {
+// Straight and premultiplied 8-bit colors, with rounding of our own: QImage's
+// conversions use processor-specific vector code whose rounding differs
+// between processors (and from the graphics card), and the bitwise Xor mode
+// turns one step of rounding into a very different color. The graphics card
+// (GpuCompositor) uses these same formulas.
+inline int unpremultiply8(int c, int a) {
+    return a == 0 ? 0 : std::min(255, (c * 255 + a / 2) / a);
+}
+inline int premultiply8(int c, int a) {
+    const int t = c * a;
+    return (t + (t >> 8) + 0x80) >> 8;
+}
+} // namespace
+
 void Layer::blendPerPixel(QPainter &painter, const QImage &dest, const QRect &target,
-                          const QImage &top) const {
+                          const QImage &topImage) const {
     // "blended" holds the blend result with the top layer's alpha; drawn
-    // SourceOver so transparent top pixels leave the base untouched.
-    const QImage base = dest.copy(target).convertToFormat(QImage::Format_ARGB32);
-    QImage blended(target.size(), QImage::Format_ARGB32);
+    // SourceOver so transparent top pixels leave the base untouched. Both
+    // inputs are premultiplied; the blend works on straight colors.
+    const QImage top = topImage.convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    const QImage base = dest.copy(target).convertToFormat(QImage::Format_ARGB32_Premultiplied);
+    QImage blended(target.size(), QImage::Format_ARGB32_Premultiplied);
     blended.fill(Qt::transparent);
     for (int y = 0; y < target.height(); ++y) {
         const QRgb *topLine = reinterpret_cast<const QRgb *>(top.constScanLine(y));
         const QRgb *baseLine = reinterpret_cast<const QRgb *>(base.constScanLine(y));
         QRgb *outLine = reinterpret_cast<QRgb *>(blended.scanLine(y));
         for (int x = 0; x < target.width(); ++x) {
-            const QRgb s = topLine[x];
-            if (qAlpha(s) == 0) continue;
-            const QRgb b = baseLine[x];
+            const QRgb sp = topLine[x];
+            const int sa = qAlpha(sp);
+            if (sa == 0) continue;
+            const QRgb bp = baseLine[x];
+            const int ba = qAlpha(bp);
+            const int sr = unpremultiply8(qRed(sp), sa), sg = unpremultiply8(qGreen(sp), sa),
+                      sb = unpremultiply8(qBlue(sp), sa);
+            const int br = unpremultiply8(qRed(bp), ba), bg = unpremultiply8(qGreen(bp), ba),
+                      bb0 = unpremultiply8(qBlue(bp), ba);
             int rr, gg, bb;
             switch (m_blendMode) {
             case BlendMode::Reflect:
-                rr = reflect(qRed(b), qRed(s));
-                gg = reflect(qGreen(b), qGreen(s));
-                bb = reflect(qBlue(b), qBlue(s));
+                rr = reflect(br, sr);
+                gg = reflect(bg, sg);
+                bb = reflect(bb0, sb);
                 break;
             case BlendMode::Glow:  // inverse of reflect (base/source swapped)
-                rr = reflect(qRed(s), qRed(b));
-                gg = reflect(qGreen(s), qGreen(b));
-                bb = reflect(qBlue(s), qBlue(b));
+                rr = reflect(sr, br);
+                gg = reflect(sg, bg);
+                bb = reflect(sb, bb0);
                 break;
             case BlendMode::Xor:  // Paint.NET: per-channel bitwise XOR of colours
-                rr = qRed(b)   ^ qRed(s);
-                gg = qGreen(b) ^ qGreen(s);
-                bb = qBlue(b)  ^ qBlue(s);
+                rr = br ^ sr;
+                gg = bg ^ sg;
+                bb = bb0 ^ sb;
                 break;
             case BlendMode::Negation:
             default:
-                rr = 255 - std::abs(255 - qRed(b) - qRed(s));
-                gg = 255 - std::abs(255 - qGreen(b) - qGreen(s));
-                bb = 255 - std::abs(255 - qBlue(b) - qBlue(s));
+                rr = 255 - std::abs(255 - br - sr);
+                gg = 255 - std::abs(255 - bg - sg);
+                bb = 255 - std::abs(255 - bb0 - sb);
                 break;
             }
             // Where the base is (partly) transparent the blend has nothing to
             // work against, so fade toward the source colour by the base alpha.
             // Otherwise these modes render black fringes over transparent areas.
-            const double bA = qAlpha(b) / 255.0;
-            rr = static_cast<int>(qRed(s)   * (1.0 - bA) + rr * bA + 0.5);
-            gg = static_cast<int>(qGreen(s) * (1.0 - bA) + gg * bA + 0.5);
-            bb = static_cast<int>(qBlue(s)  * (1.0 - bA) + bb * bA + 0.5);
-            outLine[x] = qRgba(qBound(0, rr, 255), qBound(0, gg, 255),
-                               qBound(0, bb, 255), qAlpha(s));
+            const double bA = ba / 255.0;
+            rr = qBound(0, static_cast<int>(sr * (1.0 - bA) + rr * bA + 0.5), 255);
+            gg = qBound(0, static_cast<int>(sg * (1.0 - bA) + gg * bA + 0.5), 255);
+            bb = qBound(0, static_cast<int>(sb * (1.0 - bA) + bb * bA + 0.5), 255);
+            outLine[x] = qRgba(premultiply8(rr, sa), premultiply8(gg, sa), premultiply8(bb, sa), sa);
         }
     }
     painter.setOpacity(m_opacity);
     painter.setCompositionMode(QPainter::CompositionMode_SourceOver);
-    painter.drawImage(target.topLeft(), blended.convertToFormat(QImage::Format_ARGB32_Premultiplied));
+    painter.drawImage(target.topLeft(), blended);
 }
 
 namespace {
@@ -298,7 +319,7 @@ void Layer::compositeReduced(QPainter &painter, QImage &dest, const QPoint &dest
     }
 
     if (isPerPixelMode(m_blendMode)) {
-        blendPerPixel(painter, dest, target, small.convertToFormat(QImage::Format_ARGB32));
+        blendPerPixel(painter, dest, target, small);
         return;
     }
     painter.setOpacity(m_opacity);
