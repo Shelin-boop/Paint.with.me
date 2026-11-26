@@ -16,6 +16,11 @@
 #include "appinfo.h"
 #include "core/pensettings.h"
 #include "core/layer.h"
+#include "canvas/gpucanvasview.h"
+#include "canvas/gpucompositor.h"
+#include "canvas/gpusupport.h"
+#include <QOpenGLContext>
+#include <QOpenGLFunctions>
 
 // The key combination of a key event as a shortcut would see it: keypad
 // digits count as digits.
@@ -79,6 +84,7 @@ CanvasWidget::CanvasWidget(QWidget *parent)
 
 void CanvasWidget::setDocument(Document *doc) {
     m_nudge.finish();   // arrow-key moves belong to the image they were made in
+    m_groups.clear();
     // An unfinished edit (text frame, line) belongs to the image it was made in.
     if (m_currentTool && doc != m_document) m_currentTool->deactivate(*this);
     m_previewImage = QImage();
@@ -303,6 +309,49 @@ void CanvasWidget::focusOutEvent(QFocusEvent *event) {
     QWidget::focusOutEvent(event);
 }
 
+void CanvasWidget::applyGpuSetting() {
+    QString why;
+    const bool want = GpuSupport::wanted(&why);
+    setGpuEnabled(want, why);
+}
+
+void CanvasWidget::setGpuEnabled(bool on, const QString &why) {
+    m_gpuWhy = on ? QString() : why;
+    if (on == (m_gpuView != nullptr)) {
+        emit gpuStatusChanged(gpuStatus());
+        return;
+    }
+    if (on) {
+        GpuSupport::markStarting(true);   // cleared after the first good frame
+        m_gpuConfirmed = false;
+        m_gpuView = new GpuCanvasView(this);
+        m_gpuView->setGeometry(rect());
+        connect(m_gpuView, &GpuCanvasView::failed, this, [this](const QString &reason) {
+            setGpuEnabled(false, reason);
+            emit gpuFailed(reason);
+        });
+        m_gpuView->show();
+        // The processor's copies are not needed while the card draws.
+        m_groups.clear();
+        m_cachedRender = QImage();
+    } else {
+        // Not deleted at once: this may run inside the view's own signal.
+        m_gpuView->hide();
+        m_gpuView->deleteLater();
+        m_gpuView = nullptr;
+    }
+    // Whoever draws now starts from the whole image.
+    m_cacheValid = false;
+    m_dirtyRender = QRegion();
+    update();
+    emit gpuStatusChanged(gpuStatus());
+}
+
+QString CanvasWidget::gpuStatus() const {
+    if (m_gpuView) return QStringLiteral("Graphics card: %1").arg(GpuSupport::describe());
+    return m_gpuWhy.isEmpty() ? QStringLiteral("Processor") : QStringLiteral("Processor (%1)").arg(m_gpuWhy);
+}
+
 void CanvasWidget::updateCanvas() {
     // The cache is redone only if the layers really changed (see
     // renderSignature()); undo of a brush stroke, for one, has already
@@ -351,7 +400,54 @@ void CanvasWidget::updateCanvasRegion(const QRect &documentRect) {
 }
 
 void CanvasWidget::paintEvent(QPaintEvent *) {
+    // The graphics card draws the whole frame in its own view on top.
+    if (m_gpuView) {
+        m_gpuView->update();
+        return;
+    }
     QPainter painter(this);
+    paintScene(painter, nullptr);
+}
+
+bool CanvasWidget::paintOnGpuView(GpuCanvasView *view, GpuCompositor *gpu) {
+    bool ok = true;
+    m_gpuViewport = QSize(qRound(view->width() * view->devicePixelRatioF()),
+                          qRound(view->height() * view->devicePixelRatioF()));
+    if (gpu && m_document && m_previewImage.isNull()) {
+        int shift = 0;
+        while (shift < 6 && std::ldexp(1.0, -(shift + 1)) >= m_zoom) ++shift;
+        // The same bookkeeping as the processor's cache: areas reported by
+        // updateCanvasRegion, or everything when something else changed.
+        ok = gpu->update(*m_document, shift, m_dirtyRender, !m_cacheValid);
+        view->context()->functions()->glBindFramebuffer(GL_FRAMEBUFFER, view->defaultFramebufferObject());
+        if (ok) {
+            m_cacheValid = true;
+            m_cacheSignature = renderSignature();
+            m_dirtyRender = QRegion();
+            if (!m_gpuConfirmed) {
+                m_gpuConfirmed = true;
+                GpuSupport::markStarting(false);   // the card works
+            }
+        } else {
+            GpuSupport::markStarting(false);   // failed cleanly, did not crash
+            m_cacheValid = false;   // the processor combines it afresh
+            m_cachedRender = QImage();
+        }
+    }
+    QPainter painter(view);
+    paintScene(painter, ok ? gpu : nullptr);
+    return ok;
+}
+
+QColor CanvasWidget::checkerColor(bool dark) const {
+    // Brightness slider (Settings > Canvas) scales the checkerboard: 100 = white
+    // squares, lower values darken both tones.
+    const int base = qBound(0, 155 + m_checkerBrightness, 255);
+    const int v = dark ? qBound(0, base - 51, 255) : base;
+    return QColor(v, v, v);
+}
+
+void CanvasWidget::paintScene(QPainter &painter, GpuCompositor *gpu) {
     painter.setRenderHint(QPainter::SmoothPixmapTransform, m_zoom < 2.0);
 
     // Backdrop around the image (paint.net's "editing window"), scheme-aware
@@ -375,14 +471,31 @@ void CanvasWidget::paintEvent(QPaintEvent *) {
         painter.setRenderHint(QPainter::SmoothPixmapTransform, true);
     }
 
-    // Checkerboard for transparency
-    drawCheckerboard(painter, canvasRect.toRect());
+    if (gpu && m_previewImage.isNull()) {
+        // The graphics card: checkerboard and image in one pass.
+        GpuCompositor::View view;
+        view.viewport = m_gpuViewport;
+        view.devicePixelRatio = painter.device()->devicePixelRatioF();
+        view.rotation = m_rotation != 0.0 ? viewRotation() : QTransform();
+        view.canvasRect = canvasRect;
+        view.smooth = m_zoom < 2.0 || m_rotation != 0.0;
+        view.checker1 = checkerColor(false);
+        view.checker2 = checkerColor(true);
+        painter.beginNativePainting();
+        gpu->draw(view);
+        painter.endNativePainting();
+    } else {
+        // Checkerboard for transparency
+        drawCheckerboard(painter, canvasRect.toRect());
+    }
 
     // Render document. Zoomed out, the layers are combined at a reduced size
     // (half, quarter, ...) that still has at least one pixel per screen pixel:
     // combining all 25 million pixels of a 5000 x 5000 image only to shrink
     // the result to the screen made big images slow.
-    if (m_previewImage.isNull()) {
+    if (gpu && m_previewImage.isNull()) {
+        // drawn above
+    } else if (m_previewImage.isNull()) {
         int shift = 0;
         while (shift < 6 && std::ldexp(1.0, -(shift + 1)) >= m_zoom) ++shift;
         const QSize cacheSize = m_document->reducedSize(shift);
@@ -391,7 +504,7 @@ void CanvasWidget::paintEvent(QPaintEvent *) {
                 || m_cachedRender.format() != QImage::Format_ARGB32_Premultiplied)
                 m_cachedRender = QImage(cacheSize, QImage::Format_ARGB32_Premultiplied);
             m_cacheShift = shift;
-            m_document->compositeInto(m_cachedRender, QPoint(), shift);
+            m_groups.composite(*m_document, m_cachedRender, QPoint(), shift);
             m_cacheValid = true;
             m_cacheSignature = renderSignature();
         } else if (!m_dirtyRender.isEmpty()) {
@@ -404,7 +517,7 @@ void CanvasWidget::paintEvent(QPaintEvent *) {
             for (const QRect &area : reduced) {
                 QImage view(bits + area.y() * bpl + area.x() * 4, area.width(), area.height(),
                             bpl, QImage::Format_ARGB32_Premultiplied);
-                m_document->compositeInto(view, area.topLeft(), shift);
+                m_groups.composite(*m_document, view, area.topLeft(), shift);
             }
         }
         m_dirtyRender = QRegion();
@@ -581,12 +694,8 @@ void CanvasWidget::reloadSettings() {
 
 void CanvasWidget::drawCheckerboard(QPainter &painter, const QRect &rect) {
     const int gridSize = 8;
-    // Brightness slider (Settings > Canvas) scales the checkerboard: 100 = white
-    // squares, lower values darken both tones.
-    const int base = qBound(0, 155 + m_checkerBrightness, 255);
-    const int alt = qBound(0, base - 51, 255);
-    QColor c1(base, base, base);
-    QColor c2(alt, alt, alt);
+    const QColor c1 = checkerColor(false);
+    const QColor c2 = checkerColor(true);
 
     painter.save();
     painter.setClipRect(rect);
@@ -892,8 +1001,18 @@ void CanvasWidget::keyPressEvent(QKeyEvent *event) {
             if (!event->isAutoRepeat()) emit textLayerBlocked(layer->name());
         } else {
             const QPoint delta = Nudge::stepFor(event->key(), m_nudgeHeld.elapsed(), m_document->size());
+            // The outline drawn for the selection only moves along: shifting
+            // it is much quicker than tracing the moved mask again, as long
+            // as no part of it leaves the image (that part is cut off).
+            const bool outlineCurrent = m_selectionOutlineKey == m_document->selection().mask().cacheKey()
+                && QRectF(0, 0, m_document->width(), m_document->height())
+                       .contains(m_selectionOutline.boundingRect().translated(delta));
             const QRect changed = m_nudge.step(*m_document, outline ? Nudge::Mode::Outline : Nudge::Mode::Pixels,
                                                delta);
+            if (outlineCurrent) {
+                m_selectionOutline.translate(delta);
+                m_selectionOutlineKey = m_document->selection().mask().cacheKey();
+            }
             if (!changed.isEmpty()) updateCanvasRegion(changed);
             update();
         }
@@ -1003,6 +1122,7 @@ void CanvasWidget::keyReleaseEvent(QKeyEvent *event) {
 
 void CanvasWidget::resizeEvent(QResizeEvent *event) {
     QWidget::resizeEvent(event);
+    if (m_gpuView) m_gpuView->setGeometry(rect());
     // The startup view has to be centred whatever the final window size turns out
     // to be: the window manager maximises us *after* the first layout pass, so
     // centring only at construction leaves the image off-centre. Re-centring on

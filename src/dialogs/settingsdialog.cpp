@@ -16,6 +16,7 @@
 #include "appinfo.h"
 #include "displayserver.h"
 #include "instancelink.h"
+#include "canvas/gpusupport.h"
 #include "core/history.h"
 #include "core/pensettings.h"
 #include "dialogs/penwidgets.h"
@@ -227,8 +228,43 @@ QWidget *SettingsDialog::buildCanvasPage() {
     stepRow->addStretch();
     layout->addLayout(stepRow);
 
+    // Graphics card or processor (CanvasWidget, GpuCompositor).
+    layout->addSpacing(12);
+    auto *gpuGroup = new QGroupBox(QStringLiteral("Drawing the Image"));
+    auto *gpuLayout = new QVBoxLayout(gpuGroup);
+    auto *gpuRow = new QHBoxLayout;
+    gpuRow->addWidget(new QLabel(QStringLiteral("Combine layers, zoom and turn with:")));
+    auto *gpu = new QComboBox;
+    gpu->setObjectName(QStringLiteral("gpuMode"));
+    gpu->addItem(QStringLiteral("Automatic"), int(GpuSupport::Mode::Auto));
+    gpu->addItem(QStringLiteral("Graphics card (OpenGL)"), int(GpuSupport::Mode::On));
+    gpu->addItem(QStringLiteral("Processor"), int(GpuSupport::Mode::Off));
+    gpu->setCurrentIndex(gpu->findData(int(GpuSupport::mode())));
+    gpu->setToolTip(QStringLiteral(
+        "Automatic: the graphics card when it has a proper OpenGL driver, otherwise the processor. "
+        "Brushes and effects always run on the processor."));
+    connect(gpu, qOverload<int>(&QComboBox::currentIndexChanged), this, [this, gpu](int) {
+        GpuSupport::setMode(GpuSupport::Mode(gpu->currentData().toInt()));
+        emit gpuSettingsChanged();
+    });
+    gpuRow->addWidget(gpu);
+    gpuRow->addStretch();
+    gpuLayout->addLayout(gpuRow);
+    m_gpuStatus = new QLabel;
+    m_gpuStatus->setObjectName(QStringLiteral("gpuStatus"));
+    m_gpuStatus->setWordWrap(true);
+    m_gpuStatus->setTextInteractionFlags(Qt::TextSelectableByMouse);
+    gpuLayout->addWidget(m_gpuStatus);
+    setGpuStatus(QString());
+    layout->addWidget(gpuGroup);
+
     layout->addStretch();
     return page;
+}
+
+void SettingsDialog::setGpuStatus(const QString &status) {
+    if (!m_gpuStatus) return;
+    m_gpuStatus->setText(status.isEmpty() ? QString() : QStringLiteral("In use: %1").arg(status));
 }
 
 QWidget *SettingsDialog::buildKeyboardPage() {

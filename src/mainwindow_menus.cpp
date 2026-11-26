@@ -498,6 +498,7 @@ void MainWindow::createMenuBarCornerIcons() {
         QMessageBox::about(this, QStringLiteral("About Paint.with.me"),
             QStringLiteral("<h2>%1</h2>"
                            "<p>Version %2, running on %4</p>"
+                           "<p>Image drawn by: %5</p>"
                            "<p>A free image editor for Linux in the style of Paint.NET, built with Qt and C++.</p>"
                            "<p>Based on <a href=\"https://github.com/Univers4craft/paint.software\">paint.software</a> "
                            "by Univers4craft and contributors. MIT license.</p>"
@@ -505,7 +506,8 @@ void MainWindow::createMenuBarCornerIcons() {
                            "<p>Not affiliated with Paint.NET or dotPDN LLC.</p>")
                 .arg(AppInfo::kDisplayName, QStringLiteral(PWM_VERSION_STR), AppInfo::kHomepage,
                      DisplayServer::describe(QGuiApplication::platformName(),
-                                             !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY"))));
+                                             !qEnvironmentVariableIsEmpty("WAYLAND_DISPLAY")),
+                     m_canvas->gpuStatus().toHtmlEscaped()));
     });
     helpBtn->setMenu(helpMenu);
     cornerLayout->addWidget(helpBtn);

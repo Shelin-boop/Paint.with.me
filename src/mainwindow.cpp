@@ -76,6 +76,13 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     m_canvas = new CanvasWidget(this);
     m_canvas->setDocument(m_document);
     setCentralWidget(m_canvas);
+    // The graphics card combines and shows the image when it can (Settings >
+    // Canvas); if it fails later, the processor takes over.
+    m_canvas->applyGpuSetting();
+    connect(m_canvas, &CanvasWidget::gpuFailed, this, [this](const QString &reason) {
+        statusBar()->showMessage(QStringLiteral("The graphics card stopped drawing the image (%1). "
+                                                "The processor draws it now.").arg(reason), 15000);
+    });
 
     createTools();
     createToolsPanel();
@@ -320,6 +327,9 @@ void MainWindow::showSettingsDialog() {
         showUsage();
     });
     connect(&dlg, &SettingsDialog::toolSettingsChanged, this, &MainWindow::applyToolSettings);
+    dlg.setGpuStatus(m_canvas->gpuStatus());
+    connect(m_canvas, &CanvasWidget::gpuStatusChanged, &dlg, &SettingsDialog::setGpuStatus);
+    connect(&dlg, &SettingsDialog::gpuSettingsChanged, this, [this]() { m_canvas->applyGpuSetting(); });
     showUsage();
     dlg.exec();
     if (dlg.restartRequested())

@@ -21,7 +21,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends \
             build-essential cmake ninja-build \
             qt6-base-dev qt6-image-formats-plugins libgl1-mesa-dev zlib1g-dev \
-            qt6-wayland weston
+            qt6-wayland weston xvfb xauth libgl1-mesa-dri libegl1
 
       - name: Configure
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
@@ -30,12 +30,19 @@ jobs:
         run: cmake --build build -j
 
       - name: Build tests
-        run: cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests pwm_windows_tests pwm_bench -j4
+        run: cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests pwm_windows_tests pwm_gpu_tests pwm_bench -j4
 
       - name: Run tests (headless)
         env:
           QT_QPA_PLATFORM: offscreen
         run: ctest --test-dir build --output-on-failure
+
+      - name: Run the graphics card tests (OpenGL through Mesa's software renderer)
+        run: |
+          # The canvas drawn by OpenGL against the processor's, all blend
+          # modes; a virtual X display gives OpenGL without a graphics card.
+          xvfb-run -a -s "-screen 0 1920x1080x24" \
+            env QT_QPA_PLATFORM=xcb PWM_REQUIRE_GPU=1 ./build/pwm_gpu_tests
 
       - name: Run tests natively on Wayland (headless Weston)
         run: |
@@ -49,7 +56,7 @@ jobs:
           for i in $(seq 50); do [ -S "$XDG_RUNTIME_DIR/wl-test" ] && break; sleep 0.2; done
           # The tests use their own XDG_RUNTIME_DIR, so give the socket's full path.
           export WAYLAND_DISPLAY="$XDG_RUNTIME_DIR/wl-test" QT_QPA_PLATFORM=wayland
-          for t in pwm_tests pwm_brush_tests pwm_preview_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests; do
+          for t in pwm_tests pwm_brush_tests pwm_preview_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests pwm_gpu_tests; do
             echo "== $t"
             ./build/$t > "$t.log" 2>&1 || { cat "$t.log"; exit 1; }
             tail -1 "$t.log"

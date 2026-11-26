@@ -11,9 +11,12 @@
 #include <QPainterPath>
 #include <QElapsedTimer>
 #include "core/nudge.h"
+#include "canvas/layergroupcache.h"
 
 class Document;
 class Tool;
+class GpuCanvasView;
+class GpuCompositor;
 
 class CanvasWidget : public QWidget {
     Q_OBJECT
@@ -90,6 +93,20 @@ public:
     bool showRulers() const;
     int rulerSize() const { return m_showRulers ? 20 : 0; }
 
+    // Drawing with the graphics card (OpenGL) or the processor.
+    // applyGpuSetting() follows Settings > Canvas (GpuSupport::wanted); a
+    // canvas made on its own (tests) draws with the processor until then.
+    void applyGpuSetting();
+    void setGpuEnabled(bool on, const QString &why = QString());
+    bool gpuActive() const { return m_gpuView != nullptr; }
+    GpuCanvasView *gpuView() const { return m_gpuView; }
+    // "Graphics card: <name>" or "Processor (<why>)".
+    QString gpuStatus() const;
+    // Called by the GPU view's paintGL: updates the graphics card's copy
+    // (gpu may be null: draw with the processor) and draws the frame. False
+    // if the graphics card failed; this frame was then drawn by the processor.
+    bool paintOnGpuView(GpuCanvasView *view, GpuCompositor *gpu);
+
 signals:
     void zoomChanged(double zoom);
     void cursorPositionChanged(const QPoint &pos);
@@ -97,6 +114,9 @@ signals:
     void deleteSelectionRequested();
     void fillSelectionRequested();
     void selectionContextMenuRequested(const QPoint &globalPos);
+    // The graphics card stopped (reason); the processor draws from now on.
+    void gpuFailed(const QString &reason);
+    void gpuStatusChanged(const QString &status);
     void tabletDetected();   // emitted the first time a stylus is used
     // A tool that paints was used on a text layer and nothing happened.
     void textLayerBlocked(const QString &layerName);
@@ -124,6 +144,14 @@ protected:
 
 private:
     void drawCheckerboard(QPainter &painter, const QRect &rect);
+    QColor checkerColor(bool dark) const;
+    // Everything a frame shows; with `gpu`, the image comes from the
+    // graphics card (drawn in native OpenGL between the painter's marks).
+    void paintScene(QPainter &painter, GpuCompositor *gpu);
+    GpuCanvasView *m_gpuView = nullptr;
+    QString m_gpuWhy;                    // why the processor draws
+    QSize m_gpuViewport;                 // device pixels, for paintScene
+    bool m_gpuConfirmed = false;         // a frame was drawn by the card
     void drawSelectionMarching(QPainter &painter);
     void updateMarchingAnts();
 
@@ -185,6 +213,7 @@ private:
     // Cached render
     QImage m_previewImage;
     QImage m_cachedRender;   // combined layers, reduced by 2^m_cacheShift
+    LayerGroupCache m_groups;   // layers below / above the active one, combined
     int m_cacheShift = 0;
     bool m_cacheValid = false;
     QRegion m_dirtyRender;

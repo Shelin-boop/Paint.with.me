@@ -10,6 +10,7 @@
 #include "desktopintegration.h"
 #include "displayserver.h"
 #include "instancelink.h"
+#include "canvas/gpusupport.h"
 #include <QJsonObject>
 #include <QTimer>
 
@@ -26,6 +27,7 @@ int main(int argc, char *argv[]) {
     // "--take <socket> <image>": then take over that image from the window
     // listening there ("Move to New Window").
     bool newWindow = false;
+    bool noGpu = false;   // "--no-gpu": draw with the processor this time
     QString takeSocket, takeImage;
     QStringList files;
     for (int i = 1; i < argc; ++i) {
@@ -35,6 +37,8 @@ int main(int argc, char *argv[]) {
         } else if (arg == "--take" && i + 2 < argc) {
             takeSocket = QString::fromLocal8Bit(argv[++i]);
             takeImage = QString::fromLocal8Bit(argv[++i]);
+        } else if (arg == "--no-gpu") {
+            noGpu = true;
         } else if (arg == "-platform" || arg == "--platform") {
             ++i;   // Qt's own option and its value
         } else if (!arg.startsWith('-')) {
@@ -52,6 +56,9 @@ int main(int argc, char *argv[]) {
     // QT_QPA_PLATFORM or -platform, when given, always wins.
     DisplayServer::applyAtStartup(argc, argv);
 
+    // The canvas may draw with OpenGL; panels with their own OpenGL views can
+    // then move between windows.
+    QCoreApplication::setAttribute(Qt::AA_ShareOpenGLContexts);
     QApplication app(argc, argv);
     // No organization name, so the data folder is ~/.local/share/paint-with-me.
     app.setApplicationName(AppInfo::kId);
@@ -63,6 +70,7 @@ int main(int argc, char *argv[]) {
     // Restore the saved color scheme before any UI is built.
     Theme::loadFromSettings();
 
+    if (noGpu) GpuSupport::disableForThisRun();
     MainWindow window;
     // Listens for other Paint.with.me windows (files, moved images).
     InstanceLink link;

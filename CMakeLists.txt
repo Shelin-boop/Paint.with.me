@@ -7,7 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui PrintSupport Concurrent Network)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui PrintSupport Concurrent Network OpenGL OpenGLWidgets)
 # zlib inflates the gzip-compressed layer chunks of Paint.NET .pdn files.
 find_package(ZLIB REQUIRED)
 
@@ -44,6 +44,10 @@ set(CORE_SOURCES
 
 set(CANVAS_SOURCES
     src/canvas/canvaswidget.cpp
+    src/canvas/layergroupcache.cpp
+    src/canvas/gpusupport.cpp
+    src/canvas/gpucompositor.cpp
+    src/canvas/gpucanvasview.cpp
 )
 
 set(TOOLS_SOURCES
@@ -200,6 +204,8 @@ target_link_libraries(pwm_app PUBLIC
     Qt6::PrintSupport
     Qt6::Concurrent
     Qt6::Network
+    Qt6::OpenGL
+    Qt6::OpenGLWidgets
     Qt6::Core
     Qt6::Gui
     ZLIB::ZLIB
@@ -231,6 +237,7 @@ pwm_test(pwm_text_tests tests/test_text.cpp)
 pwm_test(pwm_pdfpictures_tests tests/test_pdfpictures.cpp)
 pwm_test(pwm_rotation_tests tests/test_rotation.cpp)
 pwm_test(pwm_shortcuts_tests tests/test_shortcuts.cpp)
+pwm_test(pwm_gpu_tests tests/test_gpu.cpp)
 # Starts the app itself as a second window, so it is built first.
 pwm_test(pwm_windows_tests tests/test_windows.cpp)
 target_compile_definitions(pwm_windows_tests PRIVATE PWM_APP_PATH="$<TARGET_FILE:paint-with-me>")
@@ -253,6 +260,7 @@ add_test(NAME pdf_pictures COMMAND pwm_pdfpictures_tests)
 add_test(NAME view_rotation COMMAND pwm_rotation_tests)
 add_test(NAME keyboard_shortcuts COMMAND pwm_shortcuts_tests)
 add_test(NAME images_and_windows COMMAND pwm_windows_tests)
+add_test(NAME layer_combining COMMAND pwm_gpu_tests)
 set_tests_properties(functional brush_regression paste_regression adjustment_preview tools_panel psd_format pdf_export perspective print_units text_frames pdf_pictures
                      PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 

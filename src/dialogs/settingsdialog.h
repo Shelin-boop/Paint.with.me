@@ -33,6 +33,11 @@ signals:
     void historySettingsChanged();
     // Antialiasing, pressure curve or tilt changed (Tools page).
     void toolSettingsChanged();
+    // Graphics card or processor (Canvas page, GpuSupport::mode()).
+    void gpuSettingsChanged();
+public:
+    // What draws the image now (CanvasWidget::gpuStatus), on the Canvas page.
+    void setGpuStatus(const QString &status);
 
 private:
     QWidget *buildUserInterfacePage();
@@ -48,6 +53,7 @@ private:
 
     QComboBox *m_schemeCombo;
     QSlider *m_checkerSlider;
+    QLabel *m_gpuStatus = nullptr;
     QSpinBox *m_historyLimit = nullptr;
     QLabel *m_historyUsage = nullptr;
     bool m_restartRequested = false;
