@@ -122,8 +122,14 @@ QString desktopFileContent(const Environment &env) {
     s += QStringLiteral("Categories=Graphics;2DGraphics;RasterGraphics;\n");
     s += QStringLiteral("MimeType=image/vnd.adobe.photoshop;image/png;image/jpeg;image/bmp;image/gif;image/tiff;image/webp;\n");
     s += QStringLiteral("Keywords=paint;image;editor;photo;draw;pdn;\n");
+    // Right-click on the menu entry: a window of its own (otherwise a running
+    // window takes new images).
+    s += QStringLiteral("Actions=new-window;\n");
     s += kMarkerKey + QStringLiteral("=true\n");
     s += QStringLiteral("X-PaintWithMe-Version=") + escapeValue(env.version) + QLatin1Char('\n');
+    s += QStringLiteral("\n[Desktop Action new-window]\n");
+    s += QStringLiteral("Name=New Window\n");
+    s += QStringLiteral("Exec=") + execQuote(env.appImagePath) + QStringLiteral(" --new-window\n");
     return s;
 }
 

@@ -77,8 +77,8 @@ void GradientTool::applyGradient(CanvasWidget &canvas) {
     painter.setOpacity(m_opacity / 100.0);
 
     // Right-button drag swaps the primary/secondary roles, like the other tools.
-    QColor base = m_useRight ? doc->secondaryColor() : doc->primaryColor();
-    QColor other = m_useRight ? doc->primaryColor() : doc->secondaryColor();
+    QColor base = doc->paintColor(m_useRight);
+    QColor other = doc->otherPaintColor(m_useRight);
 
     QColor c1, c2;
     if (m_transparencyMode) {

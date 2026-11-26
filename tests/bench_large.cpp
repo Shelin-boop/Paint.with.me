@@ -16,6 +16,8 @@
 #include <QAction>
 #include <QApplication>
 #include <QDir>
+#include <QKeyEvent>
+#include <QDirIterator>
 #include <QElapsedTimer>
 #include <QFile>
 #include <QFileInfo>
@@ -398,6 +400,43 @@ int main(int argc, char **argv) {
         }
     }
 
+    // ---- Arrow keys move a selection (2026-11-26) ----
+    {
+        std::printf("\nMove a 1000 x 1000 px selection with the arrow keys (the selected pixels)\n");
+        doc->selection().selectRect(QRect(gSize / 4, gSize / 4, 1000, 1000));
+        emit doc->selectionChanged();
+        canvas->setFocus();
+        busyFor(300);
+        QElapsedTimer t;
+        int before = paints.paints;
+        t.start();
+        QKeyEvent first(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier);
+        QApplication::sendEvent(canvas, &first);
+        waitForPaint(paints, before);
+        const double firstMs = ms(t);
+        std::vector<double> steps;
+        for (int i = 0; i < 20; ++i) {
+            before = paints.paints;
+            t.restart();
+            QKeyEvent repeat(QEvent::KeyPress, Qt::Key_Right, Qt::NoModifier, QString(), true);
+            QApplication::sendEvent(canvas, &repeat);
+            waitForPaint(paints, before);
+            steps.push_back(ms(t));
+        }
+        t.restart();
+        QKeyEvent up(QEvent::KeyRelease, Qt::Key_Right, Qt::NoModifier);
+        QApplication::sendEvent(canvas, &up);
+        const double release = ms(t);
+        const Busy after = busyFor(1500);
+        row("first key press, until the canvas shows it", firstMs);
+        row("each repeat of the held key, median", median(steps));
+        row("  = steps per second", 1000.0 / median(steps), "/s");
+        row("key let go (one undo step), window blocked", release + after.total);
+        doc->selection().clear();
+        emit doc->selectionChanged();
+        busyFor(300);
+    }
+
     // ---- Autosave ----
     if (autosave) {
         std::printf("\nAutosave (runs every 60 s while the image has unsaved changes)\n");
@@ -420,8 +459,13 @@ int main(int argc, char **argv) {
         const double first = busy.total;
         row("window blocked by one autosave", first + after.total);
         // The layered .psd is written in the background; wait for it.
-        const QString recovery = QDir(home.path()).filePath(QStringLiteral("data/paint-with-me-bench/recovery/autosave.psd"));
-        while (!QFile::exists(recovery) && t.elapsed() < 120000) busyFor(100);
+        // In the window's own folder under recovery/ (one per window).
+        const QString root = QDir(home.path()).filePath(QStringLiteral("data/paint-with-me-bench/recovery"));
+        auto written = [&root]() {
+            QDirIterator it(root, {QStringLiteral("autosave.psd")}, QDir::Files, QDirIterator::Subdirectories);
+            return it.hasNext();
+        };
+        while (!written() && t.elapsed() < 120000) busyFor(100);
         row("  autosave written (in the background, layers kept)", ms(t));
     }
 

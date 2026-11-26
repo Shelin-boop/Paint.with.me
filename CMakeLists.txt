@@ -7,7 +7,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui PrintSupport Concurrent)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Core Gui PrintSupport Concurrent Network)
 # zlib inflates the gzip-compressed layer chunks of Paint.NET .pdn files.
 find_package(ZLIB REQUIRED)
 
@@ -39,6 +39,7 @@ set(CORE_SOURCES
     src/core/units.cpp
     src/core/textframe.cpp
     src/core/pdfpictures.cpp
+    src/core/nudge.cpp
 )
 
 set(CANVAS_SOURCES
@@ -174,6 +175,8 @@ set(APP_SOURCES
     src/mainwindow_effects.cpp
     src/desktopintegration.cpp
     src/displayserver.cpp
+    src/instancelink.cpp
+    src/mainwindow_instances.cpp
     src/toolicons.cpp
     src/commandicons.cpp
     src/shortcuts.cpp
@@ -196,6 +199,7 @@ target_link_libraries(pwm_app PUBLIC
     Qt6::Widgets
     Qt6::PrintSupport
     Qt6::Concurrent
+    Qt6::Network
     Qt6::Core
     Qt6::Gui
     ZLIB::ZLIB
@@ -227,6 +231,10 @@ pwm_test(pwm_text_tests tests/test_text.cpp)
 pwm_test(pwm_pdfpictures_tests tests/test_pdfpictures.cpp)
 pwm_test(pwm_rotation_tests tests/test_rotation.cpp)
 pwm_test(pwm_shortcuts_tests tests/test_shortcuts.cpp)
+# Starts the app itself as a second window, so it is built first.
+pwm_test(pwm_windows_tests tests/test_windows.cpp)
+target_compile_definitions(pwm_windows_tests PRIVATE PWM_APP_PATH="$<TARGET_FILE:paint-with-me>")
+add_dependencies(pwm_windows_tests paint-with-me)
 target_compile_definitions(pwm_pdfpictures_tests PRIVATE PWM_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 target_compile_definitions(pwm_psd_tests PRIVATE PWM_TEST_DATA_DIR="${CMAKE_CURRENT_SOURCE_DIR}/tests/data")
 
@@ -244,6 +252,7 @@ add_test(NAME text_frames COMMAND pwm_text_tests)
 add_test(NAME pdf_pictures COMMAND pwm_pdfpictures_tests)
 add_test(NAME view_rotation COMMAND pwm_rotation_tests)
 add_test(NAME keyboard_shortcuts COMMAND pwm_shortcuts_tests)
+add_test(NAME images_and_windows COMMAND pwm_windows_tests)
 set_tests_properties(functional brush_regression paste_regression adjustment_preview tools_panel psd_format pdf_export perspective print_units text_frames pdf_pictures
                      PROPERTIES ENVIRONMENT "QT_QPA_PLATFORM=offscreen")
 

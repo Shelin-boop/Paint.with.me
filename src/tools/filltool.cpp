@@ -22,7 +22,7 @@ void FillTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, Can
     if (!layer->image().valid(pos)) return;
 
     QImage before = layer->image().copy();
-    QColor fillColor = (event->button() == Qt::LeftButton) ? doc->primaryColor() : doc->secondaryColor();
+    QColor fillColor = doc->paintColor(event->button() != Qt::LeftButton);
     fillColor.setAlphaF(fillColor.alphaF() * (m_opacity / 100.0));
 
     // The region (which pixels to fill) is decided from the sampled source:

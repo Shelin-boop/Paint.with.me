@@ -24,6 +24,25 @@ upstream repository. It only reads from it.
 
 ## What differs from upstream
 
+### 2026-11-26: several images and windows, secondary color, arrow keys
+
+- Files opened from outside (file manager, application menu, command line)
+  go to the Paint.with.me window used last (`src/instancelink.*`, local
+  sockets in `$XDG_RUNTIME_DIR/paint-with-me`); `--new-window`, File > New
+  Window and a menu-entry action start a window of its own.
+- Images move between windows: drag a thumbnail into another window, or
+  "Move to New Window" (layered .psd handed over; `src/mainwindow_instances.cpp`).
+- Open-images strip: x to close, right-click menu, drag to reorder. A
+  middle-click used to close two images (the strip was wired twice).
+- Crash recovery: a snapshot folder per window, locked while it is open
+  (before, one window quitting deleted another's snapshot).
+- The color chosen in the Colors panel (primary or secondary) is what the
+  left mouse button paints with; colors carry over between images.
+- Layer thumbnails in the image's shape, at the screen's pixel density.
+- Copy takes only the selected area and remembers its place; Paste puts it
+  back there; File > New starts at the clipboard picture's size.
+- Arrow keys move the selection (`src/core/nudge.*`).
+
 ### 2026-11-06: smudge and blur brush, pen extras, command icons
 
 - New tools: Smudge (drags color like wet paint) and Blur Brush, key U

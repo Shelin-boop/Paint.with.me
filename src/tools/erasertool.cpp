@@ -76,11 +76,11 @@ void EraserTool::compositeErase(Document *doc, Layer *layer, CanvasWidget &canva
     }
     clipToSelection(painter, doc);
     // Both buttons erase to transparency; the right button scales the erase by
-    // the secondary colour's alpha, matching Paint.NET (left uses the primary
-    // colour's alpha — full here, since the eraser ignores primary RGB).
+    // the alpha of the color it would paint with (the secondary, unless the
+    // Colors panel has the secondary chosen), matching Paint.NET.
     double strength = (m_opacity / 100.0);
     if (m_toSecondary)
-        strength *= doc->secondaryColor().alphaF();
+        strength *= doc->paintColor(true).alphaF();
     painter.setOpacity(strength);
     // DestinationOut subtracts (strokeCoverage * strength) of alpha.
     painter.setCompositionMode(QPainter::CompositionMode_DestinationOut);

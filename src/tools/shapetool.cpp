@@ -284,8 +284,8 @@ void ShapeTool::commit(CanvasWidget &canvas) {
     painter.setOpacity(m_opacity / 100.0);
     painter.setWorldTransform(rotationTransform(m_rect, m_angle), true);
 
-    const QColor primary = m_useRight ? doc->secondaryColor() : doc->primaryColor();
-    const QColor secondary = m_useRight ? doc->primaryColor() : doc->secondaryColor();
+    const QColor primary = doc->paintColor(m_useRight);
+    const QColor secondary = doc->otherPaintColor(m_useRight);
     paintShape(painter, primary, secondary, m_rect);
     painter.end();
 
@@ -303,8 +303,8 @@ void ShapeTool::drawOverlay(QPainter &painter, const CanvasWidget &canvas) {
     if (rect.width() < kMinSize || rect.height() < kMinSize) return;
 
     auto *doc = canvas.document();
-    const QColor primary = m_useRight ? doc->secondaryColor() : doc->primaryColor();
-    const QColor secondary = m_useRight ? doc->primaryColor() : doc->secondaryColor();
+    const QColor primary = doc->paintColor(m_useRight);
+    const QColor secondary = doc->otherPaintColor(m_useRight);
 
     // Build the canvas→widget affine, then compose rotation-about-centre on top, so
     // a path built in canvas coords renders rotated and zoomed in widget space —

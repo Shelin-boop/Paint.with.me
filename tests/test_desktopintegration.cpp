@@ -77,6 +77,10 @@ static void firstLaunchInstalls() {
     CHECK(desktop.contains("Name=Paint.with.me\n"));
     CHECK(desktop.contains("Exec=\"" + f.env.appImagePath + "\" %F\n"));
     CHECK(desktop.contains("TryExec=" + f.env.appImagePath + "\n"));
+    // Right-click on the menu entry: a window of its own.
+    CHECK(desktop.contains("Actions=new-window;\n"));
+    CHECK(desktop.contains("[Desktop Action new-window]\nName=New Window\nExec=\"" + f.env.appImagePath
+                           + "\" --new-window\n"));
     CHECK(desktop.contains(QString("Icon=") + AppInfo::kDesktopId + "\n"));
     CHECK(desktop.contains("X-PaintWithMe-AppImage=true\n"));
     CHECK(desktopFilePath(f.env) == f.env.dataHome + "/applications/" + AppInfo::kDesktopId + ".desktop");

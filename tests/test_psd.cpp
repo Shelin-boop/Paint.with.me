@@ -13,6 +13,7 @@
 #include <functional>
 #include <QBuffer>
 #include <QDir>
+#include <QDirIterator>
 #include <QFile>
 #include <QFileInfo>
 #include <QPainter>
@@ -352,7 +353,17 @@ static void waitFor(const std::function<bool()> &done, int ms = 20000) {
 static void mainWindow() {
     std::printf("== Main window: open, save, autosave, recovery ==\n");
     QTemporaryDir dir;
-    const QString recovery = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/recovery/autosave.psd";
+    // Each window keeps its snapshot in a folder of its own (2026-11-26).
+    const QString root = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/recovery";
+    auto findSnapshot = [root]() {
+        QDirIterator it(root, {QStringLiteral("autosave.psd")}, QDir::Files, QDirIterator::Subdirectories);
+        return it.hasNext() ? it.next() : QString();
+    };
+    auto snapshotInfo = [](const QString &file) {
+        return QFileInfo(file).path() + QStringLiteral("/info.ini");
+    };
+    QDir(root).removeRecursively();
+    QString recovery;
     {
         QSettings(AppInfo::kId, AppInfo::kId).remove("recovery");
         MainWindow window;
@@ -392,11 +403,15 @@ static void mainWindow() {
             if (t->interval() == 60 * 1000) autosave = t;
         CHECK(autosave != nullptr);
         if (autosave) QMetaObject::invokeMethod(autosave, "timeout");
-        waitFor([&]() { return QSettings(AppInfo::kId, AppInfo::kId).value("recovery/pending").toBool(); });
+        waitFor([&]() {
+            const QString f = findSnapshot();
+            return !f.isEmpty() && QSettings(snapshotInfo(f), QSettings::IniFormat).value("recovery/pending").toBool();
+        });
+        recovery = findSnapshot();
         CHECK(QFile::exists(recovery));
         Document snapshot;
         CHECK(snapshot.load(recovery) && snapshot.layerCount() == 4);
-        CHECK(QSettings(AppInfo::kId, AppInfo::kId).value("recovery/origPath").toString() == path);
+        CHECK(QSettings(snapshotInfo(recovery), QSettings::IniFormat).value("recovery/origPath").toString() == path);
         doc->setModified(false);   // closing must not ask
     }
     {
@@ -413,9 +428,11 @@ static void mainWindow() {
         CHECK(doc->filePath() == dir.path() + "/cover.psd" && doc->isModified());
         CHECK(QMetaObject::invokeMethod(&window, "saveDocument"));
         CHECK(!doc->isModified());
-        // Saved: the recovery snapshot is no longer needed.
+        // Saved: the recovery snapshot is no longer needed; the old window's
+        // folder went once it was recovered.
         CHECK(!QFile::exists(recovery));
-        CHECK(!QSettings(AppInfo::kId, AppInfo::kId).value("recovery/pending").toBool());
+        CHECK(findSnapshot().isEmpty());
+        CHECK(!QDir(QFileInfo(recovery).path()).exists());
     }
 }
 

@@ -13,22 +13,22 @@ void RecolorTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, 
     m_drawing = true;
     m_beforeImage = layer->image().copy();
 
-    // Decide the recolor target. Paint in the primary colour with the left
-    // button, the secondary with the right — Paint.NET reverses the roles of the
-    // two colours on right-click.
+    // Decide the recolor target. Paint in the chosen colour (Colors panel) with
+    // the left button, the other one with the right — Paint.NET reverses the
+    // roles of the two colours on right-click.
     const bool rightButton = event->button() == Qt::RightButton;
     auto *doc = canvas.document();
     if (m_sampleSecondary) {
-        // Target is a fixed colour (the secondary), not the clicked pixel. On
-        // right-click the roles reverse: target becomes the primary.
-        m_targetColor = rightButton ? doc->primaryColor() : doc->secondaryColor();
+        // Target is a fixed colour (the one not painted with), not the
+        // clicked pixel. On right-click the roles reverse.
+        m_targetColor = doc->otherPaintColor(rightButton);
     } else {
         QPoint c = toPixelPos(imagePoint(canvasPos, doc));
         QImage &img = layer->image();
         m_targetColor = img.rect().contains(c) ? img.pixelColor(c)
-                                               : (rightButton ? doc->primaryColor() : doc->secondaryColor());
+                                               : doc->otherPaintColor(rightButton);
     }
-    m_replaceColor = rightButton ? doc->secondaryColor() : doc->primaryColor();
+    m_replaceColor = doc->paintColor(rightButton);
     recolorAt(canvasPos, canvas);
 }
 

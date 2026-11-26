@@ -26,8 +26,9 @@ void ColorPickerTool::pickColor(const QPointF &canvasPos, QMouseEvent *event, Ca
     if (pos.x() < 0 || pos.y() < 0 || pos.x() >= src.width() || pos.y() >= src.height()) return;
 
     QColor color = src.pixelColor(pos);
+    // Left: into the color chosen in the Colors panel; right: the other one.
     if (event->buttons() & Qt::LeftButton)
-        doc->setPrimaryColor(color);
+        doc->setPaintColor(false, color);
     else if (event->buttons() & Qt::RightButton)
-        doc->setSecondaryColor(color);
+        doc->setPaintColor(true, color);
 }

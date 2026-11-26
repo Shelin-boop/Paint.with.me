@@ -17,8 +17,10 @@
 #include <QApplication>
 
 namespace {
-// Item data: content version (QImage::cacheKey) the row's thumbnail shows.
+// Item data: the thumbnailKey() the row's thumbnail shows.
 constexpr int kThumbKeyRole = Qt::UserRole + 1;
+// Size of the picture box of each row (logical pixels).
+constexpr QSize kThumbBox(48, 36);
 
 // Neutral "ink" colour and layer-fill colour that adapt to the active theme so
 // the icons stay visible on both light and dark panels.
@@ -126,7 +128,7 @@ LayersPanel::LayersPanel(QWidget *parent) : QWidget(parent) {
     m_layerList = new QListWidget;
     m_layerList->setSelectionMode(QAbstractItemView::SingleSelection);
     m_layerList->setDragDropMode(QAbstractItemView::InternalMove);
-    m_layerList->setIconSize(QSize(50, 36));
+    m_layerList->setIconSize(kThumbBox);
     m_layerList->setContextMenuPolicy(Qt::CustomContextMenu);
     connect(m_layerList, &QListWidget::customContextMenuRequested,
             this, &LayersPanel::showLayerContextMenu);
@@ -258,38 +260,82 @@ void LayersPanel::setDocument(Document *doc) {
     }
 }
 
-QIcon LayersPanel::makeThumbnail(const QImage &image, bool text) const {
+QString LayersPanel::thumbnailKey(const Layer &layer) const {
+    const QSize doc = m_document ? m_document->size() : layer.image().size();
+    return QStringLiteral("%1|%2,%3|%4x%5|%6|%7")
+        .arg(layer.image().cacheKey()).arg(layer.offset().x()).arg(layer.offset().y())
+        .arg(doc.width()).arg(doc.height()).arg(m_layerList->devicePixelRatioF())
+        .arg(layer.isTextLayer() ? 1 : 0);
+}
+
+QIcon LayersPanel::makeThumbnail(const Layer &layer) const {
     // Remembered per content version: unchanged layers cost nothing.
-    const qint64 cacheKey = qint64(quint64(image.cacheKey()) * 2u + (text ? 1u : 0u));
-    auto it = m_iconCache.constFind(cacheKey);
+    const QString key = thumbnailKey(layer);
+    auto it = m_iconCache.constFind(key);
     if (it != m_iconCache.constEnd()) return it.value();
-    const QImage thumb = Thumbnails::cached(image, QSize(40, 30));
-    QPixmap pm(40, 30);
-    pm.fill(Qt::white);
-    QPainter tp(&pm);
-    // Checkerboard behind, so transparency reads.
-    for (int y2 = 0; y2 < 30; y2 += 5)
-        for (int x2 = 0; x2 < 40; x2 += 5)
-            tp.fillRect(x2, y2, 5, 5, ((x2/5 + y2/5) % 2 == 0) ? QColor(204,204,204) : Qt::white);
-    tp.drawImage((40 - thumb.width()) / 2, (30 - thumb.height()) / 2, thumb);
-    if (text) {
+
+    // The image's own shape inside the box, one pixel left free all round for
+    // the frame. Before, the whole 40 x 30 box was filled with the
+    // checkerboard: an image of another shape left an empty band at the
+    // bottom that looked like part of every layer.
+    const qreal dpr = m_layerList->devicePixelRatioF();
+    const QSize docSize = m_document ? m_document->size() : layer.image().size();
+    const QSize box = kThumbBox;
+    QSize shown = QSize(qRound((box.width() - 2) * dpr), qRound((box.height() - 2) * dpr));
+    if (!docSize.isEmpty()) shown = docSize.scaled(shown, Qt::KeepAspectRatio).expandedTo(QSize(1, 1));
+    // Whole device pixels, centered, so the frame and the picture stay sharp.
+    const QSize full(qRound(box.width() * dpr), qRound(box.height() * dpr));
+    const QRect area(QPoint((full.width() - shown.width()) / 2, (full.height() - shown.height()) / 2), shown);
+
+    QImage canvas(full, QImage::Format_ARGB32_Premultiplied);
+    canvas.fill(Qt::transparent);
+    QPainter tp(&canvas);
+    // Checkerboard behind, so transparency reads (cells of 5 logical pixels).
+    const int cell = std::max(2, qRound(5 * dpr));
+    tp.save();
+    tp.setClipRect(area);
+    for (int y = 0; y < area.height(); y += cell)
+        for (int x = 0; x < area.width(); x += cell)
+            tp.fillRect(area.x() + x, area.y() + y, cell, cell,
+                        ((x / cell + y / cell) % 2 == 0) ? QColor(255, 255, 255) : QColor(204, 204, 204));
+    // The layer where it sits on the image (it may be moved or reach past it).
+    if (!docSize.isEmpty() && !layer.image().isNull()) {
+        const double sx = double(shown.width()) / docSize.width();
+        const double sy = double(shown.height()) / docSize.height();
+        const QSize small(std::max(1, int(std::lround(layer.width() * sx))),
+                          std::max(1, int(std::lround(layer.height() * sy))));
+        const QImage thumb = Thumbnails::cached(layer.image(), small);
+        const QRectF target(area.x() + layer.offset().x() * sx, area.y() + layer.offset().y() * sy,
+                            layer.width() * sx, layer.height() * sy);
+        tp.setRenderHint(QPainter::SmoothPixmapTransform);
+        tp.drawImage(target, thumb);
+    }
+    tp.restore();
+    // A thin frame around the image's edge.
+    tp.setPen(QPen(QColor(128, 128, 128), 1));
+    tp.setBrush(Qt::NoBrush);
+    tp.drawRect(area.adjusted(-1, -1, 0, 0));
+    if (layer.isTextLayer()) {
         // A text layer: a small "T" in the corner.
-        const QRectF badge(27, 17, 13, 13);
+        const qreal b = 13 * dpr;
+        const QRectF badge(area.right() + 1 - b, area.bottom() + 1 - b, b, b);
         tp.setRenderHint(QPainter::Antialiasing);
-        tp.setPen(QPen(QColor(40, 40, 40), 1));
+        tp.setPen(QPen(QColor(40, 40, 40), dpr));
         tp.setBrush(QColor(255, 255, 255, 235));
-        tp.drawRoundedRect(badge.adjusted(0.5, 0.5, -0.5, -0.5), 2, 2);
+        tp.drawRoundedRect(badge.adjusted(0.5, 0.5, -0.5, -0.5), 2 * dpr, 2 * dpr);
         QFont f = tp.font();
-        f.setPixelSize(10);
+        f.setPixelSize(qRound(10 * dpr));
         f.setBold(true);
         tp.setFont(f);
         tp.drawText(badge, Qt::AlignCenter, QStringLiteral("T"));
     }
     tp.end();
+    QPixmap pm = QPixmap::fromImage(canvas);
+    pm.setDevicePixelRatio(dpr);
     const QIcon icon(pm);
     if (m_iconCache.size() > 4 * std::max(16, m_document ? m_document->layerCount() : 0))
         m_iconCache.clear();
-    m_iconCache.insert(cacheKey, icon);
+    m_iconCache.insert(key, icon);
     return icon;
 }
 
@@ -305,8 +351,8 @@ void LayersPanel::updateLayerList() {
         item->setFlags(item->flags() | Qt::ItemIsUserCheckable);
         item->setData(Qt::UserRole, i);  // remember which layer this row shows
         item->setCheckState(layer->isVisible() ? Qt::Checked : Qt::Unchecked);
-        item->setIcon(makeThumbnail(layer->image(), layer->isTextLayer()));
-        item->setData(kThumbKeyRole, layer->image().cacheKey());
+        item->setIcon(makeThumbnail(*layer));
+        item->setData(kThumbKeyRole, thumbnailKey(*layer));
         if (layer->isTextLayer())
             item->setToolTip(QStringLiteral("Text layer: click its text with the Text tool to edit it"));
         if (!layer->isVisible())
@@ -332,9 +378,9 @@ void LayersPanel::refreshThumbnails() {
         auto *layer = m_document->layerAt(idx);
         if (!layer) continue;
         if (item->text() != layer->name()) item->setText(layer->name());   // text layers rename as you type
-        const qint64 key = layer->image().cacheKey();
-        if (item->data(kThumbKeyRole).toLongLong() == key) continue;   // unchanged
-        item->setIcon(makeThumbnail(layer->image(), layer->isTextLayer()));
+        const QString key = thumbnailKey(*layer);
+        if (item->data(kThumbKeyRole).toString() == key) continue;   // unchanged
+        item->setIcon(makeThumbnail(*layer));
         item->setData(kThumbKeyRole, key);
     }
 }

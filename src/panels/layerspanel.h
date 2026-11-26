@@ -43,13 +43,20 @@ private slots:
     void syncOrderFromList();
     void showLayerContextMenu(const QPoint &pos);
     void mergeWithChoice(int topIndex);
-    // `text`: a text layer, marked with a T.
-    QIcon makeThumbnail(const QImage &image, bool text = false) const;
+
+public:
+    // The thumbnail of a layer: the image's shape (not stretched to fill the
+    // row's picture box), the layer drawn where it sits on the image, a
+    // checkerboard where it is transparent, a T on text layers. Drawn at the
+    // screen's pixel density.
+    QIcon makeThumbnail(const class Layer &layer) const;
+    // Changes whenever the thumbnail would look different.
+    QString thumbnailKey(const class Layer &layer) const;
 
 private:
     Document *m_document = nullptr;
     class QTimer *m_thumbRefreshTimer = nullptr;
-    mutable QHash<qint64, QIcon> m_iconCache;   // QImage::cacheKey() -> thumbnail
+    mutable QHash<QString, QIcon> m_iconCache;   // thumbnailKey() -> thumbnail
     QListWidget *m_layerList;
     QSlider *m_opacitySlider;
     QLabel *m_opacityLabel;

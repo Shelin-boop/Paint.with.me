@@ -231,7 +231,7 @@ int Document::addLayer(const QImage &image, const QString &name) {
     return index;
 }
 
-int Document::pasteImage(const QImage &image, const QString &name, bool expandCanvas) {
+int Document::pasteImage(const QImage &image, const QString &name, bool expandCanvas, QPoint at) {
     m_history.finishPendingEdit();   // an open text frame is recorded first
     if (image.isNull()) return -1;
     if (expandCanvas) {
@@ -264,9 +264,10 @@ int Document::pasteImage(const QImage &image, const QString &name, bool expandCa
             layer->setImage(padded);
         }
     }
+    if (expandCanvas || !QRect(QPoint(), size()).contains(QRect(at, image.size()))) at = QPoint();
     QImage pasted(size().expandedTo(image.size()), QImage::Format_ARGB32_Premultiplied);
     pasted.fill(Qt::transparent);
-    { QPainter painter(&pasted); painter.drawImage(0, 0, image); }
+    { QPainter painter(&pasted); painter.drawImage(at, image); }
     const int index = m_activeLayer + 1;
     auto layer = std::make_shared<Layer>(pasted, name);
     layer->setRetainsOffCanvasPixels(!expandCanvas && image.size().expandedTo(oldSize) != oldSize);
@@ -988,6 +989,17 @@ void Document::setPrimaryColor(const QColor &color) {
 void Document::setSecondaryColor(const QColor &color) {
     m_secondaryColor = color;
     emit secondaryColorChanged(color);
+}
+
+void Document::setSecondaryActive(bool secondary) {
+    if (m_secondaryActive == secondary) return;
+    m_secondaryActive = secondary;
+    emit secondaryActiveChanged(secondary);
+}
+
+void Document::setPaintColor(bool rightButton, const QColor &color) {
+    if (rightButton != m_secondaryActive) setSecondaryColor(color);
+    else setPrimaryColor(color);
 }
 
 void Document::swapColors() {

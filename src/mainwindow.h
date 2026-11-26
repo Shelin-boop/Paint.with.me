@@ -16,6 +16,8 @@
 #include <QFuture>
 #include <functional>
 #include <memory>
+#include <QLockFile>
+#include <QJsonObject>
 #include <vector>
 #include "tools/tool.h"
 #include "core/pdfexport.h"
@@ -32,6 +34,7 @@ class ToolOptionsPanel;
 class PluginManager;
 class PluginEffect;
 class QMoveEvent;
+class QMimeData;
 class QResizeEvent;
 
 class MainWindow : public QMainWindow {
@@ -42,6 +45,28 @@ public:
 
     // Open a file into the image list (used for command-line arguments).
     void openFile(const QString &filePath);
+
+    // Other Paint.with.me windows (main() makes the link; without one, as in
+    // most tests, the window works alone). See mainwindow_instances.cpp.
+    void setInstanceLink(class InstanceLink *link);
+    // Moves an image here from another window. `from`: the drag data of its
+    // thumbnail ({"socket", "doc", "title"}). False if it did not work.
+    bool receiveImage(const QJsonObject &from);
+    // The drag data of an image's thumbnail (nullptr without a link).
+    QMimeData *imageDragData(int index);
+    // Starts the moved-image drag of the image at `index`.
+    void startImageDrag(int index, const QPixmap &picture);
+    // Starts a new window, which takes the image at `index` over.
+    void moveImageToNewWindow(int index);
+    // The image at `from` gets the place `to` in the image list.
+    void reorderImage(int from, int to);
+    // The number another window asks for this image by.
+    static quint64 imageId(Document *doc);
+    Document *documentWithId(quint64 id) const;
+    // Comes to the front (`activationToken`: from the desktop, Wayland).
+    void bringToFront(const QString &activationToken);
+    int imageCount() const { return int(m_documents.size()); }
+    Document *imageAt(int index) const { return index >= 0 && index < m_documents.size() ? m_documents[index] : nullptr; }
 
     // Restart asked for (Settings, after a change of window system) and the
     // window closed: main() starts the app again with these files.
@@ -75,9 +100,11 @@ protected:
     void dropEvent(QDropEvent *event) override;
 
 private slots:
-    // While a text frame is being edited, a new primary color colors its
-    // selected text.
+    // While a text frame is being edited, a new color colors its selected
+    // text: the primary, or the secondary while it is chosen in the Colors
+    // panel.
     void onPrimaryColorChanged(const QColor &color);
+    void onSecondaryColorChanged(const QColor &color);
     // A painting tool was used on a text layer: say why nothing happened.
     void onTextLayerBlocked(const QString &layerName);
     void onApplicationStateChanged(Qt::ApplicationState state);
@@ -113,7 +140,12 @@ private slots:
     void paste();
     void pasteIntoNewLayer();
     void pasteIntoNewImage();   // clipboard image -> its own document (Ctrl+Alt+V)
-    void fillSelection();       // fill the selection with the primary colour (Backspace)
+public:
+    // The size of the picture on the clipboard (empty: none); its resolution
+    // in `dpi` when it was copied in Paint.with.me (0: unknown).
+    static QSize clipboardPictureSize(double *dpi = nullptr);
+private slots:
+    void fillSelection();       // fill the selection with the chosen colour (Backspace)
     void selectAll();
     void deselectAll();
     void growSelection();       // expand the selection outward by N px
@@ -251,6 +283,12 @@ private:
     void setActiveDocument(int index);
     void closeDocument(int index);
     void updateImageList();
+    // Closes without asking (the image moved to another window).
+    void removeDocumentQuietly(Document *doc);
+    // A pristine untitled image next to one just opened goes away.
+    void dropPristineUntitled();
+    void handleInstanceRequest(const QJsonObject &request, class QLocalSocket *socket);
+    class InstanceLink *m_instanceLink = nullptr;
 
     // Autosave / crash recovery.
     void performAutosave();
@@ -258,7 +296,17 @@ private:
     bool m_discardAutosave = false;   // saved meanwhile: drop the running snapshot
     QPointer<Document> m_autosaveDocument;   // the image the snapshot is of
     void clearAutosave();
-    QString recoveryFile() const;   // the autosave file, if there is one
+    // The autosave file in `dir`, if there is one.
+    static QString recoveryFile(const QString &dir);
+    // Snapshots of all windows: <app data>/recovery; this window's folder in it.
+    static QString recoveryRoot();
+    QString m_recoveryId;                       // <process id>-<start time>
+    std::unique_ptr<QLockFile> m_recoveryLock;  // held while this window is open
+    bool prepareAutosaveDir();                  // made and locked on first use
+public:
+    // Removes this window's snapshot folder (clean exit).
+    void releaseAutosaveDir();
+private:
     // Saves the active document to `filePath`, warning first about what a
     // .psd cannot keep; shows errors. quality: see Document::save.
     bool writeDocument(const QString &filePath, int quality);
@@ -270,6 +318,9 @@ private:
     QString autosaveDir() const;
 
     Document *m_document = nullptr;   // == m_documents[m_activeDocIndex]
+    // While no image is in view (one was just closed): the image whose colors
+    // the next one takes over.
+    QPointer<Document> m_colorSource;
     QVector<Document*> m_documents;
     int m_activeDocIndex = -1;
     class ImageListBar *m_imageListBar = nullptr;

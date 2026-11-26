@@ -15,6 +15,7 @@
 #include <QSettings>
 #include "appinfo.h"
 #include "displayserver.h"
+#include "instancelink.h"
 #include "core/history.h"
 #include "core/pensettings.h"
 #include "dialogs/penwidgets.h"
@@ -116,6 +117,17 @@ QWidget *SettingsDialog::buildUserInterfacePage() {
         emit panelBehaviorChanged();
     });
     layout->addWidget(hidePanels);
+
+    // Starting Paint.with.me again, or opening an image from the file
+    // manager, adds the image to the open window (InstanceLink).
+    auto *singleWindow = new QCheckBox(QStringLiteral("Open images in the window used last"));
+    singleWindow->setObjectName("singleWindow");
+    singleWindow->setToolTip(QStringLiteral(
+        "Images opened from the file manager or the application menu are added to the Paint.with.me window "
+        "used last, so you can switch and copy between them. Off: each one gets a window of its own."));
+    singleWindow->setChecked(InstanceLink::handOverEnabled());
+    connect(singleWindow, &QCheckBox::toggled, this, [](bool checked) { InstanceLink::setHandOverEnabled(checked); });
+    layout->addWidget(singleWindow);
 
     // Wayland leaves window placement to the desktop.
     const QString platform = QGuiApplication::platformName();

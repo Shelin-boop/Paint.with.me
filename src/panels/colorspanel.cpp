@@ -178,6 +178,9 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
     primaryCombo->addItem(QStringLiteral("Primary"));
     primaryCombo->addItem(QStringLiteral("Secondary"));
     primaryCombo->setFixedHeight(20);
+    primaryCombo->setObjectName(QStringLiteral("colorSlot"));
+    primaryCombo->setToolTip(QStringLiteral(
+        "The color the left mouse button paints with; the right button paints with the other one (key C)"));
     headerLayout->addWidget(primaryCombo);
     headerLayout->addStretch();
     auto *moreBtn = new QPushButton(QStringLiteral("More >>"));
@@ -200,12 +203,16 @@ ColorsPanel::ColorsPanel(QWidget *parent) : QWidget(parent) {
     m_primarySwatch->setGeometry(0, 0, 32, 32);
     m_primarySwatch->setStyleSheet("background-color: black; border: 2px solid white;");
     m_primarySwatch->setCursor(Qt::PointingHandCursor);
+    m_primarySwatch->setObjectName(QStringLiteral("primarySwatch"));
+    m_primarySwatch->setToolTip(QStringLiteral("Primary color: click to paint with it"));
     m_primarySwatch->installEventFilter(this);
     // Secondary swatch: smaller, behind and offset
     m_secondarySwatch = new QLabel(swatchContainer);
     m_secondarySwatch->setGeometry(16, 16, 32, 32);
     m_secondarySwatch->setStyleSheet("background-color: white; border: 2px solid #808080;");
     m_secondarySwatch->setCursor(Qt::PointingHandCursor);
+    m_secondarySwatch->setObjectName(QStringLiteral("secondarySwatch"));
+    m_secondarySwatch->setToolTip(QStringLiteral("Secondary color: click to paint with it"));
     m_secondarySwatch->installEventFilter(this);
     // Raise primary on top
     m_primarySwatch->raise();
@@ -397,10 +404,12 @@ bool ColorsPanel::eventFilter(QObject *obj, QEvent *event) {
 }
 
 void ColorsPanel::setDocument(Document *doc) {
+    if (m_document) disconnect(m_document, nullptr, this, nullptr);
     m_document = doc;
     if (doc) {
         connect(doc, &Document::primaryColorChanged, this, &ColorsPanel::updateFromDocument);
         connect(doc, &Document::secondaryColorChanged, this, &ColorsPanel::updateFromDocument);
+        connect(doc, &Document::secondaryActiveChanged, this, &ColorsPanel::updateFromDocument);
         updateFromDocument();
     }
 }
@@ -422,18 +431,23 @@ void ColorsPanel::swapPrimaryAndSecondaryColors() {
     onSwapClicked();
 }
 
+// Choosing a color here also chooses what the tools paint with: the
+// document keeps the choice (Document::secondaryActive), so the left mouse
+// button paints with the chosen color and the right button with the other one.
+// Before, choosing "Secondary" only changed which color the wheel edited, and
+// the tools kept painting with the primary.
 // Both slot selectors funnel through updateFromDocument(), which is the single
 // place that refreshes the swatch borders, the combo, the wheel, the RGB/HSV
-// sliders and the hex field. Previously onSecondaryClicked() skipped the border
-// and combo refresh, so the panel kept showing the primary slot as active while
-// you were actually editing the secondary one.
+// sliders and the hex field.
 void ColorsPanel::onPrimaryClicked() {
     m_editingPrimary = true;
+    if (m_document) m_document->setSecondaryActive(false);
     updateFromDocument();
 }
 
 void ColorsPanel::onSecondaryClicked() {
     m_editingPrimary = false;
+    if (m_document) m_document->setSecondaryActive(true);
     updateFromDocument();
 }
 
@@ -504,6 +518,7 @@ void ColorsPanel::onHexChanged() {
 void ColorsPanel::updateFromDocument() {
     if (!m_document) return;
     m_updating = true;
+    m_editingPrimary = !m_document->secondaryActive();
     QColor primary = m_document->primaryColor();
     QColor secondary = m_document->secondaryColor();
 
@@ -729,7 +744,7 @@ void ColorsPanel::rebuildSwatchGrid() {
                                    " max-width: %2px; max-height: %2px; }")
                                .arg(hex).arg(kSwatch - 2));
         btn->setToolTip(QString("<b>%1</b><br>%2")
-            .arg(hex, QStringLiteral("Click: primary color · Right-click: secondary color")));
+            .arg(hex, QStringLiteral("Click: the chosen color · Right-click: the other color")));
         connect(btn, &QToolButton::clicked, this, [this, c]() { onSwatchClicked(c); });
 
         // Right-click assigns the swatch to the *other* slot, like paint.net.

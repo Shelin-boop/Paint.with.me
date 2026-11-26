@@ -446,8 +446,12 @@ static void imageList() {
     if (!bar) return;
     QList<QToolButton *> thumbs;
     for (QToolButton *b : bar->findChildren<QToolButton *>())
-        if (b->isVisible()) thumbs << b;
+        if (b->isVisible() && b->objectName() == "imageThumbnail") thumbs << b;
     CHECK(thumbs.size() == 1);
+    // The image in view shows its x (close) in the top right corner.
+    auto *close = thumbs.isEmpty() ? nullptr : thumbs[0]->findChild<QToolButton *>("imageClose");
+    CHECK(close && close->isVisible());
+    if (close) CHECK(close->geometry().right() < thumbs[0]->width() && close->geometry().top() <= 2);
     if (thumbs.size() != 1) return;
     const QRect r(thumbs[0]->mapTo(&window, QPoint(0, 0)), thumbs[0]->size());
     CHECK(std::abs(r.center().x() - window.width() / 2) <= 3);

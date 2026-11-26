@@ -41,7 +41,8 @@ public:
     int addLayer(const QString &name = QString());
     int addLayer(const QImage &image, const QString &name = QString());
     // One undoable clipboard paste; canvas growth does not resample artwork.
-    int pasteImage(const QImage &image, const QString &name, bool expandCanvas);
+    // `at`: where the picture's top left goes (ignored when the canvas grows).
+    int pasteImage(const QImage &image, const QString &name, bool expandCanvas, QPoint at = QPoint());
     void removeLayer(int index);
     void moveLayer(int fromIndex, int toIndex);
     void duplicateLayer(int index);
@@ -159,6 +160,19 @@ public:
     void setPrimaryColor(const QColor &color);
     void setSecondaryColor(const QColor &color);
     void swapColors();
+    // Which of the two colors is chosen in the Colors panel ("Primary" or
+    // "Secondary"). The left mouse button paints with the chosen color, the
+    // right button with the other one.
+    bool secondaryActive() const { return m_secondaryActive; }
+    void setSecondaryActive(bool secondary);
+    // The color a press of this button paints with, and the other one (for
+    // tools that use both: shapes, gradients, recolor).
+    QColor paintColor(bool rightButton) const {
+        return (rightButton != m_secondaryActive) ? m_secondaryColor : m_primaryColor;
+    }
+    QColor otherPaintColor(bool rightButton) const { return paintColor(!rightButton); }
+    // Sets the color that paintColor(rightButton) gives (the Color Picker).
+    void setPaintColor(bool rightButton, const QColor &color);
 
 signals:
     void layersChanged();
@@ -172,6 +186,7 @@ signals:
     void editScopeChanged(bool editAllLayers);
     void primaryColorChanged(const QColor &color);
     void secondaryColorChanged(const QColor &color);
+    void secondaryActiveChanged(bool secondaryActive);
     void sizeChanged(int width, int height);
 
 private:
@@ -193,4 +208,5 @@ private:
     bool m_editAllLayers = false;
     QColor m_primaryColor = Qt::black;
     QColor m_secondaryColor = Qt::white;
+    bool m_secondaryActive = false;
 };

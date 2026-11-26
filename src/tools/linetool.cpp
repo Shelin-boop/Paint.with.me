@@ -107,8 +107,7 @@ void LineTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, Can
 
     m_state = State::Dragging;
     m_activeNode = -1;
-    m_color = (event->button() == Qt::LeftButton) ? canvas.document()->primaryColor()
-                                                  : canvas.document()->secondaryColor();
+    m_color = canvas.document()->paintColor(event->button() != Qt::LeftButton);
     m_beforeImage = layer->image().copy();
     setStraight(canvasPos, canvasPos);
     canvas.update();

@@ -15,9 +15,7 @@ void PencilTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, C
     m_beforeImage = layer->image().copy();
 
     // Draw single pixel
-    QColor color = (event->button() == Qt::LeftButton)
-        ? canvas.document()->primaryColor()
-        : canvas.document()->secondaryColor();
+    QColor color = canvas.document()->paintColor(event->button() != Qt::LeftButton);
     QImage &img = layer->image();
     if (img.rect().contains(m_lastPos)
         && imageSelectionAllows(canvas.document(), m_lastPos.x(), m_lastPos.y()))
@@ -42,9 +40,7 @@ void PencilTool::mouseMoveEvent(const QPointF &canvasPos, QMouseEvent *event, Ca
     if (!m_drawing || !canvas.document() || !canvas.document()->activeLayer()) return;
 
     auto *layer = canvas.document()->activeLayer();
-    QColor color = (event->buttons() & Qt::LeftButton)
-        ? canvas.document()->primaryColor()
-        : canvas.document()->secondaryColor();
+    QColor color = canvas.document()->paintColor(!(event->buttons() & Qt::LeftButton));
 
     QPoint pos = toPixelPos(imagePoint(canvasPos, canvas.document()));
     // Bresenham line for 1px aliased drawing

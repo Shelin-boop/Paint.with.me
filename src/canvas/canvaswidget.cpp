@@ -15,6 +15,7 @@
 #include <cmath>
 #include "appinfo.h"
 #include "core/pensettings.h"
+#include "core/layer.h"
 
 // The key combination of a key event as a shortcut would see it: keypad
 // digits count as digits.
@@ -45,6 +46,11 @@ bool CanvasWidget::event(QEvent *event)
             event->accept();
             return true;
         }
+        // Arrow keys move the selection, even if a command was given one.
+        if (nudgeApplies(ke)) {
+            event->accept();
+            return true;
+        }
         // The held keys reach keyPressEvent whatever they are.
         const QKeySequence pressed = pressedKey(ke);
         if (!m_currentTool->wantsKeyInput()
@@ -72,6 +78,7 @@ CanvasWidget::CanvasWidget(QWidget *parent)
 }
 
 void CanvasWidget::setDocument(Document *doc) {
+    m_nudge.finish();   // arrow-key moves belong to the image they were made in
     // An unfinished edit (text frame, line) belongs to the image it was made in.
     if (m_currentTool && doc != m_document) m_currentTool->deactivate(*this);
     m_previewImage = QImage();
@@ -87,6 +94,7 @@ void CanvasWidget::setDocument(Document *doc) {
 }
 
 void CanvasWidget::setCurrentTool(Tool *tool) {
+    if (m_currentTool != tool) m_nudge.finish();
     if (m_currentTool && m_currentTool != tool)
         m_currentTool->deactivate(*this);   // commit any pending edit before switching
     m_currentTool = tool;
@@ -290,6 +298,8 @@ void CanvasWidget::endHolds() {
 void CanvasWidget::focusOutEvent(QFocusEvent *event) {
     // The key-up goes to another widget now; a hold must not stick.
     endHolds();
+    m_nudge.finish();
+    m_nudgeHeld.invalidate();
     QWidget::focusOutEvent(event);
 }
 
@@ -644,6 +654,7 @@ void CanvasWidget::updateMarchingAnts() {
 
 void CanvasWidget::mousePressEvent(QMouseEvent *event) {
     m_buttonsDown = event->buttons();
+    m_nudge.finish();   // arrow-key moves so far: one undo step
     // Pan with the middle button, or with the left button while Space is held —
     // Paint.NET's shortcut. Alt is deliberately NOT a pan modifier: it is the
     // selection-subtract key and the two would collide.
@@ -870,6 +881,25 @@ void CanvasWidget::keyPressEvent(QKeyEvent *event) {
         event->accept();
         return;
     }
+    // Arrow keys move the selection: one pixel per press; held for more than
+    // three seconds, 1% of the image's width or height per step. With Move
+    // Selection only the outline moves, otherwise the selected pixels.
+    if (nudgeApplies(event)) {
+        if (!event->isAutoRepeat() || !m_nudgeHeld.isValid()) m_nudgeHeld.start();
+        const bool outline = m_currentTool && m_currentTool->type() == ToolType::MoveSelection;
+        const Layer *layer = m_document->activeLayer();
+        if (!outline && layer && layer->isTextLayer()) {
+            if (!event->isAutoRepeat()) emit textLayerBlocked(layer->name());
+        } else {
+            const QPoint delta = Nudge::stepFor(event->key(), m_nudgeHeld.elapsed(), m_document->size());
+            const QRect changed = m_nudge.step(*m_document, outline ? Nudge::Mode::Outline : Nudge::Mode::Pixels,
+                                               delta);
+            if (!changed.isEmpty()) updateCanvasRegion(changed);
+            update();
+        }
+        event->accept();
+        return;
+    }
     if (event->key() == Qt::Key_Delete && m_document && m_document->selection().hasSelection()
         && !(m_currentTool && m_currentTool->wantsKeyInput())) {
         emit deleteSelectionRequested();
@@ -914,7 +944,33 @@ QVariant CanvasWidget::inputMethodQuery(Qt::InputMethodQuery query) const {
     return QWidget::inputMethodQuery(query);
 }
 
+bool CanvasWidget::nudgeApplies(const QKeyEvent *event) const {
+    switch (event->key()) {
+    case Qt::Key_Left: case Qt::Key_Right: case Qt::Key_Up: case Qt::Key_Down: break;
+    default: return false;
+    }
+    if (event->modifiers() & (Qt::ControlModifier | Qt::AltModifier | Qt::MetaModifier)) return false;
+    if (!m_document || !m_document->selection().hasSelection()) return false;
+    if (m_buttonsDown != Qt::NoButton) return false;   // in the middle of a drag
+    // Typing, or a shape or line being edited, use the arrow keys themselves.
+    if (m_currentTool && (m_currentTool->wantsKeyInput() || m_currentTool->wantsCommitKey(event->key())))
+        return false;
+    return true;
+}
+
 void CanvasWidget::keyReleaseEvent(QKeyEvent *event) {
+    switch (event->key()) {
+    case Qt::Key_Left: case Qt::Key_Right: case Qt::Key_Up: case Qt::Key_Down:
+        if (!event->isAutoRepeat() && m_nudge.active()) {
+            m_nudge.finish();   // the moves of this key press: one undo step
+            m_nudgeHeld.invalidate();
+            event->accept();
+            return;
+        }
+        break;
+    default:
+        break;
+    }
     // A hold ends when its key comes up, whatever modifiers are still down.
     auto mainKey = [](const QKeySequence &seq) { return seq.isEmpty() ? 0 : int(seq[0].key()); };
     if (!event->isAutoRepeat() && m_pickKeyDown && event->key() == mainKey(m_pickKey)) {

@@ -54,7 +54,11 @@ QString html(const Shortcuts *shortcuts) {
     table += row(keys("painting.lastTool", "N"), QStringLiteral("Back to the painting tool used last"));
     table += row(keys("painting.eraserToggle", "Shift+E"), QStringLiteral("Eraser; again: back to the painting tool"));
     table += row(keys("colors.swap", "X"), QStringLiteral("Swap primary and secondary color"));
-    table += row(keys("colors.toggle", "C"), QStringLiteral("Switch which color the palette edits"));
+    table += row(keys("colors.toggle", "C"), QStringLiteral("Paint with the other color (primary or secondary)"));
+    table += QStringLiteral("<tr><td colspan='2'><i>Selection</i></td></tr>");
+    table += row(QStringLiteral("\u2190 \u2191 \u2192 \u2193"),
+                 QStringLiteral("Move the selected pixels one pixel (with Move Selection: only the outline); "
+                                "held for more than 3 seconds: 1% of the image's width or height per step"));
     table += QStringLiteral("<tr><td colspan='2'><i>View</i></td></tr>");
     table += row(both(keys("View > Zoom In", "Ctrl++"), keys("View > Zoom Out", "Ctrl+-")),
                  QStringLiteral("Zoom in, out (or the mouse wheel)"));

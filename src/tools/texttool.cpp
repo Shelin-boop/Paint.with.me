@@ -117,7 +117,7 @@ void TextTool::startNewFrame(CanvasWidget &canvas, const QPointF &at) {
     m_geometry.defaultFont = font;
     openDocument(m_geometry);
 
-    const QTextCharFormat format = newTextFormat(doc->primaryColor());
+    const QTextCharFormat format = newTextFormat(doc->paintColor(false));   // the chosen color
     QTextBlockFormat block;
     block.setAlignment(qtAlignment(m_align));
     m_cursor.setBlockFormat(block);

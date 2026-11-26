@@ -21,6 +21,8 @@ built natively in C++17 and Qt 6. No Wine, no .NET runtime.
 - Text in frames that stays editable until you turn it into pixels.
 - Sizes in millimeters, centimeters or inches at a chosen resolution.
 - Turn the view like a sheet of paper, and choose your own keyboard shortcuts.
+- Several images in one window; move an image to another window by dragging
+  its thumbnail.
 
 ## Install
 
@@ -69,6 +71,24 @@ then follow the guide they start along; the tool options set the number of
 lines, snapping to horizontal and vertical, and "Guides to New Layer" draws
 the lines into a layer of their own. View > Perspective Guides and Snap to
 Perspective switch them on and off while you paint.
+
+**Several images** open side by side in one window, shown as thumbnails at the
+top (the x on a thumbnail closes that image; a middle-click does too). Images
+opened from the file manager or the application menu are added to the window
+used last, so you can switch between them and copy from one into another.
+Drag a thumbnail along the row to reorder, or into another Paint.with.me
+window to move the image there with its layers; right-click > Move to New
+Window opens it in a window of its own (File > New Window starts an empty one).
+Settings > User Interface > "Open images in the window used last" turns the
+adding off. With a picture on the clipboard, File > New starts at its size.
+
+**Primary and secondary color**: the left mouse button paints with the color
+chosen in the Colors panel (click its swatch, or the list above, or press C),
+the right button with the other one.
+
+**Arrow keys** move a selection: one pixel per press, and after three seconds
+of holding a key, 1% of the image's width or height per step. With Move
+Selection only the outline moves; with every other tool the selected pixels.
 
 **Rotate the view** like a sheet of paper on a desk: View > Rotate View, or
 the keys 4 and 6 (5 turns it back). Only the view turns; the image, saving and
@@ -154,11 +174,14 @@ CCITT fax, nor protected (encrypted) PDFs.
 7. Smudge tool and blur brush (done)
 8. Editable text frames, print sizes in mm/cm/in with dpi, pictures from PDFs (done)
 9. Rotating the view, keyboard shortcuts of your own (done)
+10. Several images and windows: thumbnails with a close button, moving images
+    between windows, files opened into the running window; secondary color,
+    arrow keys for selections, File > New from the clipboard (done)
 
 ## Build from source
 
 Requirements: a C++17 compiler, CMake 3.16 or newer, Qt 6.4 or newer
-(Widgets, Gui, Core, PrintSupport, Concurrent) and zlib.
+(Widgets, Gui, Core, PrintSupport, Concurrent, Network) and zlib.
 
 ```bash
 # Debian / Ubuntu / Kubuntu / Linux Mint

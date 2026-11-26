@@ -10,3 +10,8 @@ Terminal=false
 Categories=Graphics;2DGraphics;RasterGraphics;
 MimeType=image/vnd.adobe.photoshop;image/png;image/jpeg;image/bmp;image/gif;image/tiff;image/webp;
 Keywords=paint;image;editor;photo;draw;pdn;
+Actions=new-window;
+
+[Desktop Action new-window]
+Name=New Window
+Exec=paint-with-me --new-window

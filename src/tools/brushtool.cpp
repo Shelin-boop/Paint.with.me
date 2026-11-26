@@ -11,7 +11,8 @@ void BrushTool::mousePressEvent(const QPointF &canvasPos, QMouseEvent *event, Ca
     auto *layer = doc->activeLayer();
     if (!layer || layer->isLocked()) return;
 
-    const QColor col = (event->button() == Qt::LeftButton) ? doc->primaryColor() : doc->secondaryColor();
+    // Left: the color chosen in the Colors panel; right: the other one.
+    const QColor col = doc->paintColor(event->button() == Qt::RightButton);
 
     // A second draw-button pressed mid-stroke switches the colour without breaking
     // the line, rather than stopping or restarting the stroke (issue #17).
@@ -74,8 +75,7 @@ void BrushTool::mouseReleaseEvent(const QPointF &, QMouseEvent *event, CanvasWid
     // the still-held button's colour (issue #17).
     if (event->buttons() & (Qt::LeftButton | Qt::RightButton)) {
         if (layer) {
-            const QColor col = (event->buttons() & Qt::LeftButton) ? doc->primaryColor()
-                                                                   : doc->secondaryColor();
+            const QColor col = doc->paintColor(!(event->buttons() & Qt::LeftButton));
             if (col != m_strokeColor) switchColour(doc, layer, col);
         }
         return;

@@ -58,6 +58,16 @@ void MainWindow::createMenus() {
     auto *fileMenu = menuBar()->addMenu(QStringLiteral("&File"));
     fileMenu->addAction(QStringLiteral("&New..."), QKeySequence::New, this, &MainWindow::newDocument);
     fileMenu->addAction(QStringLiteral("&Open..."), QKeySequence::Open, this, &MainWindow::openDocument);
+    // Images opened from outside come to the window used last; this one
+    // starts a window of its own (images move between them by dragging their
+    // thumbnails).
+    auto *newWindowAction = fileMenu->addAction(QStringLiteral("New &Window"), this, [this]() {
+        if (!DisplayServer::relaunch({QStringLiteral("--new-window")}))
+            QMessageBox::warning(this, QStringLiteral("New Window"),
+                                 QStringLiteral("A new Paint.with.me window could not be started."));
+    });
+    newWindowAction->setToolTip(QStringLiteral(
+        "Starts another Paint.with.me window. Drag an image's thumbnail into it to move the image there."));
     auto *extractAction = fileMenu->addAction(QStringLiteral("Extract Picture from P&DF..."), this,
                                               [this]() { extractPictureFromPdf(); });
     extractAction->setToolTip(QStringLiteral(
@@ -642,7 +652,7 @@ void MainWindow::createKeyboardShortcuts() {
             {QKeySequence("X")}, singleKey([this]() {
                 if (m_colorsPanel) m_colorsPanel->swapPrimaryAndSecondaryColors();
             }));
-    command(QStringLiteral("colors.toggle"), painting, QStringLiteral("Switch Which Color the Palette Edits"),
+    command(QStringLiteral("colors.toggle"), painting, QStringLiteral("Switch Between Primary and Secondary Color"),
             {QKeySequence("C")}, singleKey([this]() {
                 if (m_colorsPanel) m_colorsPanel->toggleActiveColorSlot();
             }));
@@ -855,6 +865,13 @@ void MainWindow::populateFixedToolbar() {
     m_imageListBar = new ImageListBar(this);
     connect(m_imageListBar, &ImageListBar::imageSelected, this, &MainWindow::setActiveDocument);
     connect(m_imageListBar, &ImageListBar::imageCloseRequested, this, &MainWindow::closeDocument);
+    connect(m_imageListBar, &ImageListBar::imageMoveToNewWindowRequested, this, &MainWindow::moveImageToNewWindow);
+    connect(m_imageListBar, &ImageListBar::imageDragStarted, this, &MainWindow::startImageDrag);
+    connect(m_imageListBar, &ImageListBar::imageReordered, this, &MainWindow::reorderImage);
+    connect(m_imageListBar, &ImageListBar::foreignImageDropped, this, [this](const QJsonObject &from) {
+        // After the drop has finished, so the other window is not kept waiting.
+        QTimer::singleShot(0, this, [this, from]() { receiveImage(from); });
+    });
     toolbar->addWidget(m_imageListBar);
     updateImageList();
 

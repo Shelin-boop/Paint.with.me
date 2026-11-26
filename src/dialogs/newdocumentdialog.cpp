@@ -39,6 +39,9 @@ const Preset kPresets[] = {
     {"Photo 13 x 18 cm", 13, 18, int(Units::Length::Centimeter)},
 };
 
+// Preset item data of the clipboard picture's size.
+constexpr int kClipboardPreset = -2;
+
 }  // namespace
 
 NewDocumentDialog::NewDocumentDialog(QWidget *parent) : QDialog(parent) {
@@ -101,8 +104,35 @@ int NewDocumentDialog::imageWidth() const { return m_fields->pixelSize().width()
 int NewDocumentDialog::imageHeight() const { return m_fields->pixelSize().height(); }
 double NewDocumentDialog::resolution() const { return m_fields->dpi(); }
 
+void NewDocumentDialog::setClipboardPicture(QSize size, double dpi) {
+    if (size.isEmpty()) return;
+    m_clipboardSize = size;
+    m_clipboardDpi = dpi;
+    const QString label = QStringLiteral("Clipboard (%1 x %2)").arg(size.width()).arg(size.height());
+    int at = m_presetCombo->findData(kClipboardPreset);
+    if (at < 0) {
+        m_presetCombo->insertItem(1, label, kClipboardPreset);
+        at = 1;
+    } else {
+        m_presetCombo->setItemText(at, label);
+    }
+    if (m_presetCombo->currentIndex() == at) onPresetChanged(at);
+    else m_presetCombo->setCurrentIndex(at);
+}
+
 void NewDocumentDialog::onPresetChanged(int index) {
     const int i = m_presetCombo->itemData(index).toInt();
+    if (i == kClipboardPreset) {
+        m_applyingPreset = true;
+        m_fields->setPixelSize(m_clipboardSize);
+        if (m_clipboardDpi > 0) {
+            // Shown in the unit the dialog uses; the pixel size stays.
+            const Units::Resolution unit = m_fields->resolutionUnit();
+            m_fields->setResolution(Units::fromDpi(m_clipboardDpi, unit), unit);
+        }
+        m_applyingPreset = false;
+        return;
+    }
     if (i < 0 || i >= int(std::size(kPresets)) || !kPresets[i].label) return;
     const Preset &p = kPresets[i];
     m_applyingPreset = true;
@@ -115,6 +145,7 @@ void NewDocumentDialog::onPresetChanged(int index) {
 
 bool NewDocumentDialog::matchesPreset() const {
     const int i = m_presetCombo->currentData().toInt();
+    if (i == kClipboardPreset) return m_fields->pixelSize() == m_clipboardSize;
     if (i < 0 || i >= int(std::size(kPresets)) || !kPresets[i].label) return false;
     const Preset &p = kPresets[i];
     if (p.unit < 0)

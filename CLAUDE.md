@@ -57,6 +57,28 @@ Claude sessions and milestones, not in hours of human work.
   be changed in Settings > Keyboard. New extra keys: last used painting tool
   (N), Eraser and back (Shift+E), Color Picker while held (I). Tools given the
   same key take turns. Keys while typing in a text frame stay fixed.
+- Several images and windows (2026-11-26): files opened from outside go to
+  the window used last (each window is its own process; `InstanceLink`,
+  sockets in `$XDG_RUNTIME_DIR/paint-with-me`, setting `ui/singleWindow`,
+  Settings > User Interface). `--new-window`, File > New Window and the menu
+  entry's "New Window" action start a window of its own. Images move between
+  windows by dragging a thumbnail or "Move to New Window" (a layered .psd is
+  handed over; undo history stays behind). Thumbnails have an x to close,
+  a right-click menu, and can be dragged to reorder.
+- Colors (2026-11-26): the color chosen in the Colors panel (primary or
+  secondary, `Document::secondaryActive`) is what the left mouse button
+  paints with, the right button the other one (owner's wish; Paint.NET only
+  edits the chosen one). Tools ask `Document::paintColor(rightButton)`. The
+  colors and the choice carry over to the image switched to.
+- Clipboard (2026-11-26): Copy takes the selection's bounding area only, with
+  its place and the image's dpi in private data; Paste puts it back in place
+  if it fits; File > New starts at the clipboard picture's size.
+- Arrow keys (2026-11-26, owner's wish): with a selection, one pixel per
+  press; held over 3 s, 1% of the image's width or height per step. Move
+  Selection moves the outline, every other tool the selected pixels. One
+  undo step per key press.
+- Crash recovery (2026-11-26): one snapshot folder per window under
+  `recovery/<pid>-<start ms>/`, locked (QLockFile) while the window is open.
 - The AppImage carries a PNG `.DirIcon`, so file managers can show its icon
   (Dolphin: Configure Dolphin > Previews > "AppImage").
 - Clean up code that is badly structured, as part of the work.
@@ -85,10 +107,14 @@ Claude sessions and milestones, not in hours of human work.
    from PDF, AppImage file icon. Done 2026-11-06.
 9. Rotating the view with a chosen step; keyboard shortcuts of one's own.
    Done 2026-11-06.
+10. Owner's list of 2026-11-26: layer thumbnails without the empty band;
+    images opened into the running window; New sized from the clipboard;
+    secondary color; x on thumbnails; moving images between windows; arrow
+    keys move selections. Done 2026-11-26.
 
 ### Ideas for later (owner's list; ask which comes next)
 
-- (empty: rotation and own shortcuts were done on 2026-11-06)
+- (empty: the 2026-11-26 list is done)
 - Found, not asked for yet: Canvas Size says the new space gets the secondary
   color, but it stays transparent (inherited).
 
@@ -107,14 +133,14 @@ Claude sessions and milestones, not in hours of human work.
 - Keep `tests/data/pdn/LICENSE-pypdn` with the pypdn test files.
 - Write documentation and UI text in American English. Dates as yyyy-mm-dd,
   times in 24-hour format, SI units. Menus use "..." (three dots), not "…".
-- Every change keeps all fourteen test suites passing; new behavior gets a test.
+- Every change keeps all fifteen test suites passing; new behavior gets a test.
 
 ## Build and test
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests
+cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests pwm_windows_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
@@ -218,6 +244,13 @@ explicitly (the command above), or old test programs run.
 | Keyboard shortcuts: list, defaults, saved keys, clashes | `src/shortcuts.cpp` (`Shortcuts`) |
 | Commands without a menu entry, tool keys, last painting tool, held picker | `MainWindow::createKeyboardShortcuts`, `applyShortcutKeys` in `src/mainwindow_menus.cpp` |
 | Settings > Keyboard page | `src/dialogs/keyboardpage.cpp` |
+| Other windows: sockets, hand-over at startup, requests | `src/instancelink.cpp` (`InstanceLink`), `main()` |
+| Requests from other windows; moving images; drag data; reorder | `src/mainwindow_instances.cpp` |
+| Colors: chosen slot, the color a button paints | `Document::secondaryActive`, `paintColor`, `ColorsPanel::onSecondaryClicked` |
+| Copy with place data, paste in place, clipboard size for New | `putOnClipboard`, `clipboardPlace`, `MainWindow::clipboardPictureSize` in `src/mainwindow_edit.cpp` |
+| Arrow keys move the selection | `src/core/nudge.cpp`, `CanvasWidget::nudgeApplies` |
+| Layer thumbnails (image's shape, layer offset, pixel density) | `LayersPanel::makeThumbnail` |
+| Crash recovery folders per window | `MainWindow::recoveryRoot`, `prepareAutosaveDir`, `checkForRecovery` |
 | Tests (custom harness, not QTest) | `tests/` |
 
 ### Adding a tool
@@ -342,6 +375,22 @@ mouse move. `tests/test_brush.cpp` compares such tools against a full redraw.
   as `dbus-run-session -- ./kwin_wayland --virtual --socket kwin-test`. The
   paste suite (keyboard focus in dialogs that were never activated) and the
   panel suites (window placement) are expected to fail there.
+
+### Other windows
+
+- `main()` hands files to a running window before Qt starts (`InstanceLink::handOver`,
+  plain POSIX sockets, no QApplication needed); the receiver ignores
+  requests older than the sender waits (`kOpenTimeoutMs`), so files never
+  open twice. Wayland: the sender passes its `XDG_ACTIVATION_TOKEN`; the
+  receiver puts it in its environment before `activateWindow()`, which Qt
+  then uses.
+- Moving an image: the receiving window asks "take" (the giving one writes
+  `move-<pid>-<id>.psd` in the socket folder), opens it, then sends "taken"
+  (the giver closes it without asking). Calls are blocking: never call
+  the own process's socket (it would wait on itself).
+- `pwm_windows_tests` starts the built app (`PWM_APP_PATH`) as a second
+  window; `PWM_INSTANCE_DIR` keeps the sockets out of the real runtime folder.
+- The restart after a window-system change starts with `--new-window`.
 
 ### Settings
 

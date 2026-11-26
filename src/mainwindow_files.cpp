@@ -45,6 +45,8 @@
 #include <QClipboard>
 #include <QTimer>
 #include "appinfo.h"
+#include "instancelink.h"
+#include <QJsonDocument>
 #include <QMenu>
 
 void MainWindow::wireDocumentSignals() {
@@ -56,6 +58,8 @@ void MainWindow::wireDocumentSignals() {
     connect(m_document, &Document::documentChanged, this, &MainWindow::updateTitle);
     connect(m_document, &Document::documentChanged, this, &MainWindow::updateImageList);
     connect(m_document, &Document::primaryColorChanged, this, &MainWindow::onPrimaryColorChanged,
+            Qt::UniqueConnection);
+    connect(m_document, &Document::secondaryColorChanged, this, &MainWindow::onSecondaryColorChanged,
             Qt::UniqueConnection);
     connect(m_document, &Document::sizeChanged, this, [this](int w, int h) {
         m_sizeLabel->setText(QString("%1 × %2").arg(w).arg(h));
@@ -76,6 +80,15 @@ void MainWindow::wireDocumentSignals() {
 
 // ---- Multi-document ----
 
+// The two colors and which one is chosen belong to the window, as in
+// Paint.NET: the image switched to (or a new one) takes them over.
+static void takeColors(Document *to, const Document *from) {
+    if (!to || !from || to == from) return;
+    to->setPrimaryColor(from->primaryColor());
+    to->setSecondaryColor(from->secondaryColor());
+    to->setSecondaryActive(from->secondaryActive());
+}
+
 void MainWindow::addDocument(Document *doc) {
     m_documents.append(doc);
     setActiveDocument(m_documents.size() - 1);
@@ -87,7 +100,9 @@ void MainWindow::setActiveDocument(int index) {
     if (m_document) disconnect(m_document, nullptr, this, nullptr);
 
     m_activeDocIndex = index;
+    takeColors(m_documents[index], m_document ? m_document : m_colorSource.data());
     m_document = m_documents[index];
+    m_colorSource = nullptr;
     wireDocumentSignals();
 
     // Refresh undo/redo enablement for the newly active document.
@@ -107,6 +122,8 @@ void MainWindow::closeDocument(int index) {
     if (!maybeSaveDocument(doc)) return;
 
     if (m_document == doc) disconnect(m_document, nullptr, this, nullptr);
+    // The image shown next takes over the colors of the one in view.
+    m_colorSource = m_document ? m_document : doc;
     m_documents.removeAt(index);
     doc->deleteLater();
 
@@ -161,6 +178,12 @@ bool MainWindow::maybeSaveAll() {
 
 void MainWindow::newDocument() {
     NewDocumentDialog dlg(this);
+    dlg.setObjectName(QStringLiteral("newDocumentDialog"));
+    // A picture on the clipboard: start at its size (and resolution, when it
+    // was copied in Paint.with.me), like Paint.NET.
+    double clipDpi = 0;
+    const QSize clip = clipboardPictureSize(&clipDpi);
+    if (!clip.isEmpty()) dlg.setClipboardPicture(clip, clipDpi);
     if (dlg.exec() == QDialog::Accepted) {
         auto *newDoc = new Document(dlg.imageWidth(), dlg.imageHeight(), this);
         newDoc->setDpi(dlg.resolution());
@@ -181,10 +204,33 @@ void MainWindow::openDocument() {
         loadDocumentInto(f);
 }
 
-QString MainWindow::autosaveDir() const {
+// Crash recovery: each window keeps its snapshot in a folder of its own,
+// recovery/<process id>-<start time>, locked (QLockFile) while the window is
+// open. Before 2026-11-26 all windows shared recovery/autosave.psd, so one
+// window quitting deleted the snapshot of another.
+QString MainWindow::recoveryRoot() {
     QString base = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
     if (base.isEmpty()) base = QDir::homePath() + "/." + AppInfo::kId;
     return base + "/recovery";
+}
+
+QString MainWindow::autosaveDir() const {
+    return recoveryRoot() + '/' + m_recoveryId;
+}
+
+bool MainWindow::prepareAutosaveDir() {
+    if (m_recoveryLock && m_recoveryLock->isLocked()) return true;
+    if (!QDir().mkpath(autosaveDir())) return false;
+    m_recoveryLock = std::make_unique<QLockFile>(autosaveDir() + "/lock");
+    m_recoveryLock->setStaleLockTime(0);
+    return m_recoveryLock->tryLock(0);
+}
+
+void MainWindow::releaseAutosaveDir() {
+    if (!m_recoveryLock) return;
+    m_recoveryLock->unlock();
+    m_recoveryLock.reset();
+    QDir(autosaveDir()).removeRecursively();
 }
 
 void MainWindow::extractPictureFromPdf(const QString &givenPath) {
@@ -256,7 +302,7 @@ void MainWindow::extractPictureFromPdf(const QString &givenPath) {
 void MainWindow::performAutosave() {
     if (!m_document || !m_document->isModified()) return;
     if (m_autosaveJob.isRunning()) return;   // the previous one is still writing
-    QDir().mkpath(autosaveDir());
+    if (!prepareAutosaveDir()) return;
     // A layered .psd recovery snapshot, plus settings recording the original
     // path so it can be labelled and saved there again on recovery. The layer
     // copies share their pixels with the document (nothing is copied here);
@@ -292,8 +338,8 @@ void MainWindow::performAutosave() {
             return;
         }
         // Not if the snapshot was discarded meanwhile (clean exit, recovery).
-        if (!watcher->result() || recoveryFile().isEmpty()) return;
-        QSettings s(AppInfo::kId, AppInfo::kId);
+        if (!watcher->result() || recoveryFile(autosaveDir()).isEmpty()) return;
+        QSettings s(autosaveDir() + "/info.ini", QSettings::IniFormat);
         s.setValue("recovery/pending", true);
         s.setValue("recovery/origPath", origPath);
         s.setValue("recovery/when", QDateTime::currentDateTime().toString(Qt::ISODate));
@@ -301,69 +347,108 @@ void MainWindow::performAutosave() {
     watcher->setFuture(m_autosaveJob);
 }
 
-QString MainWindow::recoveryFile() const {
+QString MainWindow::recoveryFile(const QString &dir) {
     // autosave.psd keeps the layers; the .png forms are flattened (an image
     // too large for .psd, or an autosave from before layered autosave).
     for (const char *name : {"/autosave.psd", "/autosave.psd.png", "/autosave.png"}) {
-        const QString path = autosaveDir() + QLatin1String(name);
+        const QString path = dir + QLatin1String(name);
         if (QFile::exists(path)) return path;
     }
     return QString();
 }
 
 void MainWindow::clearAutosave() {
-    for (const char *name : {"/autosave.psd", "/autosave.psd.png", "/autosave.png"})
+    for (const char *name : {"/autosave.psd", "/autosave.psd.png", "/autosave.png", "/info.ini"})
         QFile::remove(autosaveDir() + QLatin1String(name));
-    QSettings s(AppInfo::kId, AppInfo::kId);
-    s.remove("recovery/pending");
-    s.remove("recovery/origPath");
-    s.remove("recovery/when");
+}
+
+namespace {
+// A snapshot left behind by a window that did not close normally.
+struct Snapshot {
+    QString file;
+    QString origPath;
+    QString when;
+    QString dir;                       // its folder, removed once dealt with
+    std::shared_ptr<QLockFile> lock;   // held while it is dealt with
+    bool legacy = false;               // the shared layout from before 2026-11-26
+};
 }
 
 void MainWindow::checkForRecovery() {
-    QSettings s(AppInfo::kId, AppInfo::kId);
-    if (!s.value("recovery/pending", false).toBool()) return;
-    const QString file = recoveryFile();
-    if (file.isEmpty()) { clearAutosave(); return; }
-
-    const QString orig = s.value("recovery/origPath").toString();
-    const QString when = s.value("recovery/when").toString();
-    const QString what = orig.isEmpty() ? QStringLiteral("an untitled document") : QFileInfo(orig).fileName();
-
-    auto r = QMessageBox::question(this, QStringLiteral("Recovery"),
-        QStringLiteral("An autosave was found (%1, %2).\nDo you want to recover it?").arg(what, when),
-        QMessageBox::Yes | QMessageBox::No);
-    if (r != QMessageBox::Yes) {
-        clearAutosave();
-        return;
+    QList<Snapshot> found;
+    const QString root = recoveryRoot();
+    {
+        // Left by a version before 2026-11-26 (one snapshot for all windows).
+        QSettings s(AppInfo::kId, AppInfo::kId);
+        const QString file = recoveryFile(root);
+        if (s.value("recovery/pending", false).toBool() && !file.isEmpty())
+            found.append({file, s.value("recovery/origPath").toString(), s.value("recovery/when").toString(),
+                          root, nullptr, true});
+        else if (!file.isEmpty() || s.contains("recovery/pending")) {
+            for (const char *name : {"/autosave.psd", "/autosave.psd.png", "/autosave.png"})
+                QFile::remove(root + QLatin1String(name));
+            s.remove("recovery");
+        }
     }
-    auto *doc = new Document(1, 1, this);
-    if (!doc->load(file)) {
-        delete doc;
-        QMessageBox::warning(this, QStringLiteral("Recovery"), QStringLiteral("The autosave could not be opened."));
-        return;
+    const QFileInfoList dirs = QDir(root).entryInfoList(QDir::Dirs | QDir::NoDotAndDotDot, QDir::Time);
+    for (const QFileInfo &info : dirs) {
+        if (info.fileName() == m_recoveryId) continue;
+        // Locked: that window is still open (another Paint.with.me).
+        auto lock = std::make_shared<QLockFile>(info.absoluteFilePath() + "/lock");
+        lock->setStaleLockTime(0);
+        if (!lock->tryLock(0)) continue;
+        const QString file = recoveryFile(info.absoluteFilePath());
+        QSettings s(info.absoluteFilePath() + "/info.ini", QSettings::IniFormat);
+        if (file.isEmpty() || !s.value("recovery/pending", false).toBool()) {
+            lock->unlock();
+            QDir(info.absoluteFilePath()).removeRecursively();
+            continue;
+        }
+        found.append({file, s.value("recovery/origPath").toString(), s.value("recovery/when").toString(),
+                      info.absoluteFilePath(), lock, false});
     }
-    // Saving goes to the original file again (or asks, for an untitled one).
-    doc->setFilePath(orig);
-    doc->setModified(true);   // force a re-save so it isn't lost again
-    addDocument(doc);
-    m_autosaveDocument = doc;   // saving it makes the snapshot unnecessary
-    updateTitle();
+
+    for (const Snapshot &snapshot : found) {
+        auto forget = [&snapshot]() {
+            if (snapshot.legacy) {
+                for (const char *name : {"/autosave.psd", "/autosave.psd.png", "/autosave.png"})
+                    QFile::remove(snapshot.dir + QLatin1String(name));
+                QSettings(AppInfo::kId, AppInfo::kId).remove("recovery");
+                return;
+            }
+            snapshot.lock->unlock();
+            QDir(snapshot.dir).removeRecursively();
+        };
+        const QString what = snapshot.origPath.isEmpty() ? QStringLiteral("an untitled image")
+                                                         : QFileInfo(snapshot.origPath).fileName();
+        const auto r = QMessageBox::question(this, QStringLiteral("Recovery"),
+            QStringLiteral("An autosave was found (%1, %2).\nDo you want to recover it?").arg(what, snapshot.when),
+            QMessageBox::Yes | QMessageBox::No);
+        if (r != QMessageBox::Yes) {
+            forget();
+            continue;
+        }
+        auto *doc = new Document(1, 1, this);
+        if (!doc->load(snapshot.file)) {
+            delete doc;
+            QMessageBox::warning(this, QStringLiteral("Recovery"), QStringLiteral("The autosave could not be opened."));
+            continue;   // kept, so it can be tried again next time
+        }
+        // Saving goes to the original file again (or asks, for an untitled one).
+        doc->setFilePath(snapshot.origPath);
+        doc->setModified(true);   // force a re-save so it isn't lost again
+        addDocument(doc);
+        updateTitle();
+        // This window's own snapshot takes over at once, then the old one goes.
+        performAutosave();
+        m_autosaveJob.waitForFinished();
+        forget();
+    }
 }
 
 void MainWindow::openFile(const QString &filePath) {
     loadDocumentInto(filePath);
-    // If the only other image is a pristine untitled one, drop it — paint.net
-    // doesn't leave an empty canvas hanging around when you open a file.
-    if (m_documents.size() == 2) {
-        Document *first = m_documents[0];
-        if (first->filePath().isEmpty() && !first->isModified() && first != m_document) {
-            m_documents.removeAt(0);
-            first->deleteLater();
-            m_activeDocIndex = 0;
-            updateImageList();
-        }
-    }
+    dropPristineUntitled();
 }
 
 void MainWindow::loadDocumentInto(const QString &filePath) {
@@ -591,8 +676,21 @@ bool MainWindow::exportPdfTo(const QString &filePath, PdfExport::Options options
     return true;
 }
 
+// The thumbnail of an image in another Paint.with.me window: its drag data.
+static QJsonObject foreignImage(const QMimeData *mime) {
+    if (!mime->hasFormat(InstanceLink::imageMimeType())) return {};
+    const QJsonObject from = QJsonDocument::fromJson(mime->data(InstanceLink::imageMimeType())).object();
+    if (qint64(from.value("pid").toDouble()) == QCoreApplication::applicationPid()) return {};
+    return from;
+}
+
 void MainWindow::dragEnterEvent(QDragEnterEvent *event)
 {
+    if (!foreignImage(event->mimeData()).isEmpty()) {
+        event->setDropAction(Qt::MoveAction);
+        event->accept();
+        return;
+    }
     if (event->mimeData()->hasUrls()) {
         const QList<QUrl> urls = event->mimeData()->urls();
         for (const QUrl &url : urls) {
@@ -610,11 +708,28 @@ void MainWindow::dragEnterEvent(QDragEnterEvent *event)
 
 void MainWindow::dragMoveEvent(QDragMoveEvent *event)
 {
+    if (!foreignImage(event->mimeData()).isEmpty()) {
+        event->setDropAction(Qt::MoveAction);
+        event->accept();
+        return;
+    }
+    if (event->mimeData()->hasFormat(InstanceLink::imageMimeType())) {
+        event->ignore();   // this window's own image: only the strip takes it
+        return;
+    }
     event->acceptProposedAction();
 }
 
 void MainWindow::dropEvent(QDropEvent *event)
 {
+    // An image from another Paint.with.me window moves here.
+    if (const QJsonObject from = foreignImage(event->mimeData()); !from.isEmpty()) {
+        event->setDropAction(Qt::MoveAction);
+        event->accept();
+        // After the drop has finished, so the other window is not kept waiting.
+        QTimer::singleShot(0, this, [this, from]() { receiveImage(from); });
+        return;
+    }
     // A dropped .pdn keeps its layers, so open it as its own image rather
     // than flattening it into a layer of the current one.
     if (event->mimeData()->hasUrls() && !event->mimeData()->urls().isEmpty()) {

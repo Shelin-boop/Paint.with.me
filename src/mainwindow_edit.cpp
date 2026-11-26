@@ -35,6 +35,9 @@
 #include "tools/texttool.h"
 #include <QApplication>
 #include <QMimeData>
+#include <QJsonDocument>
+#include <QJsonObject>
+#include "core/selection.h"
 #include <QUrl>
 #include <QInputDialog>
 #include <QSlider>
@@ -145,22 +148,80 @@ void MainWindow::cut() {
     deleteSelectionContents();
 }
 
-void MainWindow::copy() {
-    if (!m_document->activeLayer()) return;
-    QImage img = m_document->activeLayer()->image();
-    if (m_document->selection().hasSelection()) {
-        img = m_document->selection().getMaskedImage(img, m_document->activeLayer()->offset());
+// Next to a picture copied from Paint.with.me, the clipboard carries where it
+// came from in its image and the image's resolution (JSON). Paste puts it back
+// in the same place when it fits; File > New takes its size and resolution.
+static const QString kClipboardPlace = QStringLiteral("application/x-paint-with-me-place");
+
+namespace {
+struct ClipboardPlace {
+    bool valid = false;
+    QPoint at;
+    QSize size;
+    double dpi = 0;
+};
+}
+
+static void putOnClipboard(const QImage &image, QPoint at, double dpi) {
+    auto *mime = new QMimeData;
+    mime->setImageData(image);
+    const QJsonObject place{{"x", at.x()}, {"y", at.y()}, {"width", image.width()},
+                            {"height", image.height()}, {"dpi", dpi}};
+    mime->setData(kClipboardPlace, QJsonDocument(place).toJson(QJsonDocument::Compact));
+    QApplication::clipboard()->setMimeData(mime);
+}
+
+static ClipboardPlace clipboardPlace() {
+    ClipboardPlace place;
+    const QMimeData *mime = QApplication::clipboard()->mimeData();
+    if (!mime || !mime->hasFormat(kClipboardPlace)) return place;
+    const QJsonObject o = QJsonDocument::fromJson(mime->data(kClipboardPlace)).object();
+    place.at = QPoint(o.value("x").toInt(), o.value("y").toInt());
+    place.size = QSize(o.value("width").toInt(), o.value("height").toInt());
+    place.dpi = o.value("dpi").toDouble();
+    place.valid = !place.size.isEmpty();
+    return place;
+}
+
+QSize MainWindow::clipboardPictureSize(double *dpi) {
+    if (dpi) *dpi = 0;
+    const QMimeData *mime = QApplication::clipboard()->mimeData();
+    if (!mime || !mime->hasImage()) return QSize();   // picture data only, not copied files
+    const ClipboardPlace place = clipboardPlace();
+    if (place.valid) {
+        if (dpi) *dpi = place.dpi;
+        return place.size;
     }
-    QApplication::clipboard()->setImage(img);
+    return qvariant_cast<QImage>(mime->imageData()).size();
+}
+
+// Copy takes only the selected part (its bounding rectangle, outside the
+// selection transparent), like Paint.NET; before, the whole layer was copied
+// with everything outside the selection made transparent.
+void MainWindow::copy() {
+    const Layer *layer = m_document ? m_document->activeLayer() : nullptr;
+    if (!layer) return;
+    const Selection &selection = m_document->selection();
+    QRect area = layer->image().rect();   // in the layer's own pixels
+    if (selection.hasSelection())
+        area = selection.boundingRect().translated(-layer->offset()).intersected(area);
+    if (area.isEmpty()) return;   // nothing of this layer is selected
+    QImage img = layer->image().copy(area);
+    const QPoint at = area.topLeft() + layer->offset();
+    if (selection.hasSelection()) selection.applyToImage(img, at);
+    putOnClipboard(img, at, m_document->dpi());
 }
 
 void MainWindow::copyMerged() {
     if (!m_document) return;
-    // Copy the flattened (all visible layers) image, cropped to the selection.
-    QImage img = m_document->flatten();
-    if (m_document->selection().hasSelection())
-        img = m_document->selection().getMaskedImage(img);
-    QApplication::clipboard()->setImage(img);
+    // The flattened (all visible layers) image, cropped to the selection.
+    const Selection &selection = m_document->selection();
+    QRect area(QPoint(), m_document->size());
+    if (selection.hasSelection()) area = selection.boundingRect().intersected(area);
+    if (area.isEmpty()) return;
+    QImage img = m_document->flatten().copy(area);
+    if (selection.hasSelection()) selection.applyToImage(img, area.topLeft());
+    putOnClipboard(img, area.topLeft(), m_document->dpi());
 }
 
 // Clipboard image data wins over file references. Only absolute local files are
@@ -218,7 +279,10 @@ void MainWindow::paste() {
     // Finish any pending Line/Shape edit on its original layer, not the newly
     // pasted layer. This must remain after the dialog's cancellation boundary.
     selectTool(ToolType::Move);
-    m_document->pasteImage(img, QStringLiteral("Pasted Layer"), expand);
+    // Copied in Paint.with.me: back in its place, if it fits (top left if not).
+    const ClipboardPlace place = clipboardPlace();
+    const QPoint at = (place.valid && place.size == img.size()) ? place.at : QPoint();
+    m_document->pasteImage(img, QStringLiteral("Pasted Layer"), expand, at);
     m_canvas->updateCanvas();
 }
 
@@ -235,6 +299,8 @@ void MainWindow::pasteIntoNewImage() {
     if (img.isNull()) return;
     auto *doc = new Document(img.width(), img.height(), this);
     doc->activeLayer()->setImage(img.convertToFormat(QImage::Format_ARGB32_Premultiplied));
+    const ClipboardPlace place = clipboardPlace();
+    if (place.valid && place.size == img.size() && place.dpi > 0) doc->setDpi(place.dpi);
     doc->setModified(false);
     addDocument(doc);
 }
@@ -253,11 +319,11 @@ void MainWindow::fillSelection() {
     if (m_document->selection().hasSelection()) {
         // Paint only where the selection mask is set, honouring the layer offset.
         QImage fill(layer->image().size(), QImage::Format_ARGB32_Premultiplied);
-        fill.fill(m_document->primaryColor());
+        fill.fill(m_document->paintColor(false));
         fill = m_document->selection().getMaskedImage(fill, layer->offset());
         p.drawImage(0, 0, fill);
     } else {
-        p.fillRect(layer->image().rect(), m_document->primaryColor());
+        p.fillRect(layer->image().rect(), m_document->paintColor(false));
     }
     p.end();
 
@@ -709,6 +775,13 @@ TextTool *MainWindow::textTool() const {
 }
 
 void MainWindow::onPrimaryColorChanged(const QColor &color) {
+    if (!m_document || m_document->secondaryActive()) return;
+    TextTool *text = textTool();
+    if (text && text->isEditing() && text->editedDocument() == m_document) text->setColor(color);
+}
+
+void MainWindow::onSecondaryColorChanged(const QColor &color) {
+    if (!m_document || !m_document->secondaryActive()) return;
     TextTool *text = textTool();
     if (text && text->isEditing() && text->editedDocument() == m_document) text->setColor(color);
 }

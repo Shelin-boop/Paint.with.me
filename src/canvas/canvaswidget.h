@@ -9,6 +9,8 @@
 #include <QTransform>
 #include <QKeySequence>
 #include <QPainterPath>
+#include <QElapsedTimer>
+#include "core/nudge.h"
 
 class Document;
 class Tool;
@@ -156,6 +158,10 @@ private:
     bool m_pickReleasePending = false;   // key up while a button was down
     Qt::MouseButtons m_buttonsDown;      // as of the last press or release
     void endHolds();                     // focus lost: no key-up will come
+    // Arrow keys: moving the selection (outline or pixels).
+    bool nudgeApplies(const QKeyEvent *event) const;
+    Nudge m_nudge;
+    QElapsedTimer m_nudgeHeld;           // since the arrow key went down
     void handleMouseRelease(QMouseEvent *event);
     bool m_isRotating = false;
     QPointF m_lastRotatePos;

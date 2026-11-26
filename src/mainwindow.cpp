@@ -36,6 +36,8 @@
 #include "appinfo.h"
 #include "desktopintegration.h"
 #include <QApplication>
+#include <QDateTime>
+#include "instancelink.h"
 #include <QGuiApplication>
 #include "panels/tooloptionspanel.h"
 
@@ -110,6 +112,8 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
     connect(m_document, &Document::documentChanged, this, &MainWindow::updateImageList);
     connect(m_document, &Document::primaryColorChanged, this, &MainWindow::onPrimaryColorChanged,
             Qt::UniqueConnection);
+    connect(m_document, &Document::secondaryColorChanged, this, &MainWindow::onSecondaryColorChanged,
+            Qt::UniqueConnection);
     connect(m_canvas, &CanvasWidget::textLayerBlocked, this, &MainWindow::onTextLayerBlocked);
     connect(m_document, &Document::sizeChanged, this, [this](int w, int h) {
         m_sizeLabel->setText(QString("%1 × %2").arg(w).arg(h));
@@ -123,11 +127,9 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
         if (m_redoToolbarAction) m_redoToolbarAction->setEnabled(canRedo);
     });
 
-    // Image list (thumbnail tabs) wiring
-    if (m_imageListBar) {
-        connect(m_imageListBar, &ImageListBar::imageSelected, this, &MainWindow::setActiveDocument);
-        connect(m_imageListBar, &ImageListBar::imageCloseRequested, this, &MainWindow::closeDocument);
-    }
+    // The image list (thumbnail tabs) is wired where it is made, in
+    // createToolBar(); wiring it here again made a middle-click close two
+    // images.
     updateImageList();
 
     // Select brush tool by default
@@ -160,7 +162,10 @@ MainWindow::MainWindow(QWidget *parent) : QMainWindow(parent) {
             this, &MainWindow::syncUtilityWindowsToMainState);
     utilityWindowStateWatch->start();
 
-    // Autosave every 60s so a crash doesn't lose everything.
+    // Autosave every 60s so a crash doesn't lose everything (into a folder of
+    // this window's own, see recoveryRoot()).
+    m_recoveryId = QStringLiteral("%1-%2").arg(QCoreApplication::applicationPid())
+                       .arg(QDateTime::currentMSecsSinceEpoch());
     auto *autosaveTimer = new QTimer(this);
     autosaveTimer->setInterval(60 * 1000);
     connect(autosaveTimer, &QTimer::timeout, this, &MainWindow::performAutosave);
@@ -384,7 +389,7 @@ void MainWindow::closeEvent(QCloseEvent *event) {
     if (maybeSaveAll()) {
         saveUiState();
         m_autosaveJob.waitForFinished();   // let a running autosave finish first
-        clearAutosave();   // clean exit -> discard the recovery snapshot
+        releaseAutosaveDir();   // clean exit -> discard the recovery snapshot
         event->accept();
     } else {
         event->ignore();
@@ -394,6 +399,9 @@ void MainWindow::closeEvent(QCloseEvent *event) {
 void MainWindow::changeEvent(QEvent *event) {
     if (event->type() == QEvent::WindowStateChange)
         syncUtilityWindowsToMainState();
+    // Files opened from outside go to the window used last.
+    if (event->type() == QEvent::ActivationChange && isActiveWindow() && m_instanceLink)
+        m_instanceLink->markActive();
     QMainWindow::changeEvent(event);
 }
 
