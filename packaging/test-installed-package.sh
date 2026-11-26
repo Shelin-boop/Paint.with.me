@@ -57,7 +57,9 @@ test -f "/usr/share/icons/hicolor/256x256/apps/$APP_ID.png" || fail "no icon"
 test -f "/usr/share/metainfo/$APP_ID.metainfo.xml" || fail "no AppStream data"
 
 # Qt plugins the program loads at run time (installed as dependencies).
-plugin() { find /usr/lib /usr/lib64 -path "*qt6/plugins/$1" 2> /dev/null | grep -q .; }
+# Found by the shell itself: some minimal systems have no `find`.
+# /usr/lib*/qt6: Fedora, openSUSE, Arch; /usr/lib/*/qt6: Debian, Ubuntu.
+plugin() { compgen -G "/usr/lib*/qt6/plugins/$1" > /dev/null || compgen -G "/usr/lib/*/qt6/plugins/$1" > /dev/null; }
 plugin 'imageformats/libqwebp.so' || fail "no WebP support"
 plugin 'imageformats/libqtiff.so' || fail "no TIFF support"
 plugin 'platforms/libqwayland*.so' || fail "no Wayland support"
