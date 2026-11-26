@@ -43,6 +43,18 @@ upstream repository. It only reads from it.
   back there; File > New starts at the clipboard picture's size.
 - Arrow keys move the selection (`src/core/nudge.*`).
 
+### 2026-11-26: download buttons and installers
+
+- Download buttons at the top of the README, linking straight to the newest
+  files (`docs/download/`).
+- Installers next to the AppImage: `.deb` (Debian 12 and newer, Ubuntu 24.04
+  and newer, Mint 22 and newer), `.rpm` for Fedora and for openSUSE, and an
+  Arch Linux package, each built and tested with that system's own Qt
+  (`packaging/`, `.github/workflows/release.yml`, replacing `appimage.yml`
+  and the hand-run `package.yml`). The inherited `.deb` was built on Ubuntu
+  24.04 and needed glibc 2.38, so it did not install on Debian 12.
+- Release files keep the same names in every build; one `SHA256SUMS`.
+
 ### 2026-11-26: faster drawing with many layers, canvas on the graphics card
 
 - While painting, the layers below the active one are kept combined, and so

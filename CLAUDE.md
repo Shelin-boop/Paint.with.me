@@ -15,8 +15,12 @@ Claude sessions and milestones, not in hours of human work.
 - Stack: C++17, Qt 6 Widgets, CMake. Keep it; do not port to another toolkit.
 - Distribution: public and meant for other people too, so license and branding
   must be clean.
-- Delivery: an AppImage that adds a start-menu entry on first launch. A `.deb`
-  is built on demand as well.
+- Delivery (2026-11-26, owner's wish "download button, installers for common
+  Linux systems"): an AppImage that adds a start-menu entry on first launch,
+  plus installers built with each system's own Qt: `.deb` (Debian, Ubuntu,
+  Kubuntu, Mint), `.rpm` for Fedora and for openSUSE, an Arch package. File
+  names stay the same from build to build; the README's download buttons
+  link to them in the `continuous` release. The repository is public.
 - Target desktop of the owner: Kubuntu, KDE Plasma, Wayland session.
 - Interface: English only. No translation system.
 - File formats: no format of our own. Layered: open `.pdn` (Paint.NET), open
@@ -120,12 +124,16 @@ Claude sessions and milestones, not in hours of human work.
     keys move selections. Done 2026-11-26.
 11. Faster drawing with many layers: combined layer groups on the processor
     and an OpenGL canvas. Done 2026-11-26.
+12. Download buttons on the main page; installers for Debian/Ubuntu, Fedora,
+    openSUSE and Arch Linux. Done 2026-11-26.
 
 ### Ideas for later (owner's list; ask which comes next)
 
 - (empty: the 2026-11-26 list is done)
 - Found, not asked for yet: Canvas Size says the new space gets the secondary
   color, but it stays transparent (inherited).
+- Possible later, each needs the owner's own account: Flathub (Flatpak), the
+  AUR (Arch), a package repository with a signing key (automatic updates).
 
 ## Rules
 
@@ -149,7 +157,7 @@ Claude sessions and milestones, not in hours of human work.
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests pwm_windows_tests pwm_gpu_tests
+cmake --build build --target pwm_all_tests      # every test program (not the benchmark)
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
@@ -184,20 +192,43 @@ PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_rotation_tests
 PWM_SCREENSHOT_DIR=/tmp/shots QT_QPA_PLATFORM=offscreen build/pwm_shortcuts_tests    # Settings > Keyboard
 ```
 
-Note: `cmake --build build` builds only the app; build the test targets
-explicitly (the command above), or old test programs run.
+Note: `cmake --build build` builds only the app; build `pwm_all_tests`
+(the command above), or old test programs run. A new test program made with
+`pwm_test()` joins `pwm_all_tests` by itself.
 
 ## Releases
 
-- `.github/workflows/appimage.yml`, started by hand (Actions tab, or
-  `gh api repos/Shelin-boop/Paint.with.me/actions/workflows/appimage.yml/dispatches -f ref=main`),
-  replaces the rolling `continuous` pre-release ("Latest build").
-- Pushing a tag `vX.Y.Z` creates a normal release.
-- The AppImage uses Qt 6.12.0 (pinned in the workflow; the input "latest" tries
-  the newest Qt 6). It needs glibc 2.35 or newer (Ubuntu 22.04 and later).
+- `.github/workflows/release.yml`, started by hand (Actions tab, or
+  `gh api repos/Shelin-boop/Paint.with.me/actions/workflows/release.yml/dispatches -f ref=main`;
+  add `-F 'inputs[publish]=false'` to only build and test), replaces the
+  rolling `continuous` pre-release ("Latest build"). Pushing a tag `vX.Y.Z`
+  creates a normal release with the same files.
+- Jobs: AppImage (Ubuntu 22.04 runner, Qt 6.12.0 from aqt, pinned; the input
+  "latest" tries the newest Qt 6; needs glibc 2.35+); `.deb` built in
+  `debian:12`; `.rpm` in the older of Fedora's two supported releases
+  (worked out from `fedora:latest`) and in `OPENSUSE_LEAP` (env, 16.0: move it
+  on at its end of life); Arch in `archlinux:latest`. Each package job runs
+  `pwm_all_tests` on that system first. Then `packaging/test-installed-package.sh`
+  installs, starts and removes each package on fresh systems (Debian 12 and
+  13, Ubuntu 24.04, latest and rolling, both Fedoras, Leap and Tumbleweed,
+  Arch). Publishing waits for all of it, writes `SHA256SUMS`, and checks that
+  every file and every download link in README.md answers.
+- File names never change (download buttons): `Paint.with.me-x86_64.AppImage`,
+  `paint-with-me_amd64.deb`, `paint-with-me-fedora.x86_64.rpm`,
+  `paint-with-me-opensuse.x86_64.rpm`, `paint-with-me-arch-x86_64.pkg.tar.zst`.
+  Release notes: `packaging/release-notes.md` (placeholders `@VER@` ...).
+- Packages are built against the oldest supported release of each system,
+  so they install there and on newer ones (Qt and glibc are only asked for
+  in the versions used). A `.deb` built on Ubuntu 24.04 would need glibc 2.38
+  and not install on Debian 12; Ubuntu's `t64` Qt packages also provide the
+  Debian names, so the Debian 12 build installs on Ubuntu.
+- The scripts run in any container: `docker run --rm -v "$PWD:/src" -w /src
+  debian:12 packaging/build-deb.sh <version> dist` (likewise `build-rpm.sh`,
+  `build-arch.sh`). Claude's sandbox cannot pull from Docker Hub, so other
+  systems are tested through the workflow (`publish=false`).
 - Version shown to users: `<project major.minor>.<commit count>`, for example 0.1.115.
-- The CI workflow (`ci.yml`) runs on every push; the AppImage workflow does not,
-  to save build minutes on the private repository.
+- The CI workflow (`ci.yml`) runs on every push; the release workflow only by
+  hand or on a tag, so "Latest build" changes only when wanted.
 
 ## Code map
 
@@ -264,6 +295,8 @@ explicitly (the command above), or old test programs run.
 | OpenGL: probe, setting, crash guard | `src/canvas/gpusupport.cpp` (`GpuSupport`) |
 | OpenGL: layer textures, combining in shaders, drawing the view | `src/canvas/gpucompositor.cpp` |
 | OpenGL widget over the canvas; canvas side | `src/canvas/gpucanvasview.cpp`, `CanvasWidget::paintOnGpuView`, `paintScene`, `setGpuEnabled` |
+| Installers: build scripts, Arch PKGBUILD, install test, release notes | `packaging/` |
+| Download buttons in the README (SVG) | `docs/download/` |
 | Tests (custom harness, not QTest) | `tests/` |
 
 ### Adding a tool
