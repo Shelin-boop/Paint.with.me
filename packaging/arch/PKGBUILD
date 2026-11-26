@@ -1,0 +1,39 @@
+# Maintainer: Shelin <Shelin-boop@users.noreply.github.com>
+#
+# Builds Paint.with.me from a source archive next to this file;
+# packaging/build-arch.sh makes the archive and passes the version
+# (PWM_VERSION) and the Qt version it was built with (PWM_QT_MIN).
+
+pkgname=paint-with-me
+pkgver=${PWM_VERSION:-0.1.0}
+pkgrel=1
+pkgdesc="Image editor for Linux in the style of Paint.NET (C++/Qt 6)"
+arch=('x86_64')
+url="https://github.com/Shelin-boop/Paint.with.me"
+license=('MIT')
+# qt6-imageformats: WebP and TIFF; qt6-wayland: native Wayland. Both are
+# loaded at run time. The program needs at least the Qt it was built with.
+depends=("qt6-base>=${PWM_QT_MIN:-6.4}" 'qt6-imageformats' 'qt6-wayland'
+         'zlib' 'hicolor-icon-theme' 'gcc-libs' 'glibc')
+makedepends=('cmake' 'ninja')
+checkdepends=('ttf-dejavu')
+options=('!debug' '!lto')
+source=("$pkgname-$pkgver.tar.gz")
+sha256sums=('SKIP')
+
+build() {
+    cmake -B build -S "$pkgname-$pkgver" -G Ninja \
+        -DCMAKE_BUILD_TYPE=None -DCMAKE_INSTALL_PREFIX=/usr \
+        -DPWM_VERSION="$pkgver" -Wno-dev
+    cmake --build build
+}
+
+check() {
+    cmake --build build --target pwm_all_tests
+    QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+}
+
+package() {
+    DESTDIR="$pkgdir" cmake --install build
+    install -Dm644 "$pkgname-$pkgver/LICENSE" "$pkgdir/usr/share/licenses/$pkgname/LICENSE"
+}

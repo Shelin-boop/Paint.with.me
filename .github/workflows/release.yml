@@ -1,43 +1,96 @@
-name: AppImage
+name: Release
 
-# Builds a portable AppImage: download, make executable, run. On its first
-# start it adds itself to the application menu.
+# Builds every download and publishes them together:
 #
-#   - Version tag (v*): creates a GitHub Release with the AppImage.
+#   - AppImage: runs on almost any 64-bit Linux and brings its own Qt.
+#   - .deb (Debian, Ubuntu, Kubuntu, Linux Mint), .rpm (Fedora, openSUSE) and an
+#     Arch Linux package: each built on the oldest supported release of its
+#     system with that system's own Qt, after all test suites passed there.
+#
+# Every installer is then installed, started and removed again on fresh
+# systems (oldest and newest supported release). Only when all of that passed
+# are the files published:
+#
+#   - Version tag (v*): a GitHub Release with all files.
 #   - Manual run (Actions tab, "Run workflow"): replaces the rolling
-#     "continuous" pre-release, so there is always one current download.
+#     "continuous" pre-release ("Latest build"). The file names stay the same
+#     from build to build, so the download buttons in the README always fetch
+#     the newest files.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
     inputs:
       qt_version:
-        description: 'Qt version (empty = the tested default below; "latest" = newest Qt 6)'
+        description: 'Qt version for the AppImage (empty = the tested default below; "latest" = newest Qt 6)'
         required: false
         default: ''
+      publish:
+        description: 'Publish the files (off: only build and test them)'
+        type: boolean
+        default: true
 
 permissions:
-  contents: write   # create the release and upload the AppImage
+  contents: write   # create the release and upload the files
 
 concurrency:
-  group: appimage-${{ github.ref }}
+  group: release-${{ github.ref }}
   cancel-in-progress: false
 
 env:
   APP_ID: io.github.shelin_boop.PaintWithMe
   # Run the build tools (themselves AppImages) without needing FUSE.
   APPIMAGE_EXTRACT_AND_RUN: 1
+  # openSUSE Leap release the .rpm is built on (Leap has no "oldest" tag).
+  # Move it on when this release reaches its end of life.
+  OPENSUSE_LEAP: opensuse/leap:16.0
 
 jobs:
-  appimage:
-    # Oldest Ubuntu LTS runner still offered, so the AppImage does not need a
-    # newer C library (glibc) than most users' distributions have.
-    runs-on: ubuntu-22.04
+  setup:
+    name: Version and systems
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      fedora_old: ${{ steps.systems.outputs.fedora_old }}
+      fedora_old_number: ${{ steps.systems.outputs.fedora_old_number }}
+      opensuse_leap: ${{ steps.systems.outputs.opensuse_leap }}
     steps:
       - name: Checkout
         uses: actions/checkout@v5
         with:
           fetch-depth: 0   # full history, so the version (commit count) is real
+
+      - name: Version
+        id: version
+        run: |
+          MM=$(grep -oP 'project\(PaintWithMe VERSION \K[0-9]+\.[0-9]+' CMakeLists.txt)
+          echo "version=${MM}.$(git rev-list --count HEAD)" | tee -a "$GITHUB_OUTPUT"
+
+      - name: Systems to build on
+        id: systems
+        run: |
+          # Fedora supports its two newest releases: build on the older one,
+          # so the package installs on both.
+          N=$(docker run --rm fedora:latest sh -c '. /etc/os-release; echo $VERSION_ID')
+          echo "Newest Fedora: $N"
+          echo "fedora_old=fedora:$((N - 1))" | tee -a "$GITHUB_OUTPUT"
+          echo "fedora_old_number=$((N - 1))" | tee -a "$GITHUB_OUTPUT"
+          echo "opensuse_leap=$OPENSUSE_LEAP" | tee -a "$GITHUB_OUTPUT"
+
+  appimage:
+    name: AppImage
+    needs: setup
+    # Oldest Ubuntu LTS runner still offered, so the AppImage does not need a
+    # newer C library (glibc) than most users' distributions have.
+    runs-on: ubuntu-22.04
+    outputs:
+      qt_version: ${{ steps.summary.outputs.qt_version }}
+      glibc: ${{ steps.summary.outputs.glibc }}
+    env:
+      VER: ${{ needs.setup.outputs.version }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
 
       - name: Install build dependencies
         run: |
@@ -77,9 +130,6 @@ jobs:
 
       - name: Build and install into an AppDir
         run: |
-          MM=$(grep -oP 'project\(PaintWithMe VERSION \K[0-9]+\.[0-9]+' CMakeLists.txt)
-          VER="${MM}.$(git rev-list --count HEAD)"
-          echo "VER=$VER" >> "$GITHUB_ENV"
           cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release \
             -DPWM_VERSION="$VER" -DCMAKE_INSTALL_PREFIX=/usr \
             -DCMAKE_PREFIX_PATH="$QT_ROOT"
@@ -90,7 +140,7 @@ jobs:
         env:
           QT_QPA_PLATFORM: offscreen
         run: |
-          cmake --build build -j --target pwm_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_panel_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests pwm_windows_tests pwm_gpu_tests
+          cmake --build build -j --target pwm_all_tests
           export LD_LIBRARY_PATH="$QT_ROOT/lib:$LD_LIBRARY_PATH"
           ./build/pwm_integration_tests
           ./build/pwm_tests
@@ -145,9 +195,9 @@ jobs:
           cp "AppDir/usr/share/icons/hicolor/256x256/apps/$APP_ID.png" AppDir/.DirIcon
           wget -q https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool-x86_64.AppImage
-          FILE="Paint.with.me-${VER}-x86_64.AppImage"
+          # The same name in every release, so download links stay valid.
+          FILE="Paint.with.me-x86_64.AppImage"
           ./appimagetool-x86_64.AppImage AppDir "$FILE"
-          sha256sum "$FILE" > "$FILE.sha256"
           echo "FILE=$FILE" >> "$GITHUB_ENV"
 
       - name: Smoke test the AppImage
@@ -191,58 +241,198 @@ jobs:
           fi
 
       - name: Summary
+        id: summary
         run: |
           RUNTIME=$(head -c 2000000 "$FILE" > runtime.bin; file runtime.bin)
           GLIBC=$(find AppDir -type f \( -name '*.so*' -o -perm -u+x \) -exec objdump -T {} + 2>/dev/null \
             | grep -oE 'GLIBC_[0-9]+\.[0-9]+' | sort -Vu | tail -1)
           {
-            echo "### $FILE"
+            echo "### $FILE ($VER)"
             echo ""
             echo "| | |"
             echo "|---|---|"
             echo "| Qt | $QT_VERSION |"
             echo "| Needs glibc | ${GLIBC#GLIBC_} or newer |"
             echo "| Size | $(du -h "$FILE" | cut -f1) |"
-            echo "| SHA-256 | \`$(cut -d' ' -f1 "$FILE.sha256")\` |"
+            echo "| SHA-256 | \`$(sha256sum "$FILE" | cut -d' ' -f1)\` |"
             echo "| Runtime | ${RUNTIME#runtime.bin: } |"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "GLIBC_MIN=${GLIBC#GLIBC_}" >> "$GITHUB_ENV"
+          echo "glibc=${GLIBC#GLIBC_}" >> "$GITHUB_OUTPUT"
+          echo "qt_version=$QT_VERSION" >> "$GITHUB_OUTPUT"
 
       - name: Upload as a workflow artifact
         uses: actions/upload-artifact@v4
         with:
           name: appimage
-          path: |
-            Paint.with.me-*-x86_64.AppImage
-            Paint.with.me-*-x86_64.AppImage.sha256
+          path: Paint.with.me-x86_64.AppImage
+
+  deb:
+    name: .deb (Debian 12)
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build and test on Debian 12
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src debian:12 \
+            packaging/build-deb.sh "${{ needs.setup.outputs.version }}" dist
+
+      - name: Upload as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: deb
+          path: dist/
+
+  rpm:
+    name: .rpm (${{ matrix.system }})
+    needs: setup
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - system: fedora
+            image: ${{ needs.setup.outputs.fedora_old }}
+          - system: opensuse
+            image: ${{ needs.setup.outputs.opensuse_leap }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build and test on ${{ matrix.image }}
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src "${{ matrix.image }}" \
+            packaging/build-rpm.sh "${{ needs.setup.outputs.version }}" dist
+
+      - name: Upload as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: rpm-${{ matrix.system }}
+          path: dist/
+
+  arch:
+    name: Arch Linux package
+    needs: setup
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Build and test on Arch Linux
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src archlinux:latest \
+            packaging/build-arch.sh "${{ needs.setup.outputs.version }}" dist
+
+      - name: Upload as a workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: arch
+          path: dist/
+
+  install-test:
+    name: Install on ${{ matrix.image }}
+    needs: [setup, deb, rpm, arch]
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { artifact: deb, file: paint-with-me_amd64.deb, image: 'debian:12' }
+          - { artifact: deb, file: paint-with-me_amd64.deb, image: 'debian:13' }
+          - { artifact: deb, file: paint-with-me_amd64.deb, image: 'ubuntu:24.04' }
+          - { artifact: deb, file: paint-with-me_amd64.deb, image: 'ubuntu:latest' }
+          - { artifact: deb, file: paint-with-me_amd64.deb, image: 'ubuntu:rolling' }
+          - { artifact: rpm-fedora, file: paint-with-me-fedora.x86_64.rpm, image: '${{ needs.setup.outputs.fedora_old }}' }
+          - { artifact: rpm-fedora, file: paint-with-me-fedora.x86_64.rpm, image: 'fedora:latest' }
+          - { artifact: rpm-opensuse, file: paint-with-me-opensuse.x86_64.rpm, image: '${{ needs.setup.outputs.opensuse_leap }}' }
+          - { artifact: rpm-opensuse, file: paint-with-me-opensuse.x86_64.rpm, image: 'opensuse/tumbleweed' }
+          - { artifact: arch, file: paint-with-me-arch-x86_64.pkg.tar.zst, image: 'archlinux:latest' }
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download the package
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist
+
+      - name: Install, start and remove it
+        run: |
+          docker run --rm -v "$PWD:/src" -w /src "${{ matrix.image }}" \
+            packaging/test-installed-package.sh "dist/${{ matrix.file }}"
+
+  publish:
+    name: Publish
+    needs: [setup, appimage, install-test]
+    if: github.event_name == 'push' || inputs.publish
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      VER: ${{ needs.setup.outputs.version }}
+      QT_VERSION: ${{ needs.appimage.outputs.qt_version }}
+      GLIBC_MIN: ${{ needs.appimage.outputs.glibc }}
+      FEDORA: ${{ needs.setup.outputs.fedora_old_number }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Download all files
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Checksums and release notes
+        run: |
+          FILES="Paint.with.me-x86_64.AppImage paint-with-me_amd64.deb
+                 paint-with-me-fedora.x86_64.rpm paint-with-me-opensuse.x86_64.rpm
+                 paint-with-me-arch-x86_64.pkg.tar.zst"
+          (cd dist && sha256sum $FILES > SHA256SUMS && cat SHA256SUMS)
+          echo "FILES=$(echo $FILES) SHA256SUMS" >> "$GITHUB_ENV"
+          LEAP=$(echo "$OPENSUSE_LEAP" | sed 's/.*://')
+          BUILT=$(for f in deb fedora opensuse arch; do echo "- \`$f\`: $(cat dist/$f.txt)"; done)
+          sed -e "s/@VER@/$VER/g" -e "s/@SHA@/${GITHUB_SHA:0:7}/g" -e "s/@QT@/$QT_VERSION/g" \
+              -e "s/@GLIBC@/$GLIBC_MIN/g" -e "s/@FEDORA@/$FEDORA/g" -e "s/@LEAP@/$LEAP/g" \
+              packaging/release-notes.md > notes.md
+          printf '\nBuilt and tested:\n%s\n' "$BUILT" >> notes.md
+          cat notes.md
 
       - name: Publish the release
-        env:
-          GH_TOKEN: ${{ github.token }}
         run: |
-          cat > notes.md <<EOF
-          **Paint.with.me $VER**, built from \`${GITHUB_SHA:0:7}\` with Qt $QT_VERSION.
-
-          How to use it:
-          1. Download \`$FILE\`.
-          2. Make it executable: right-click, Properties, Permissions, "Is executable",
-             or \`chmod +x $FILE\` in a terminal.
-          3. Start it. On the first start it adds itself to your application menu
-             (Help > Remove from application menu takes it out again).
-
-          Needs a 64-bit Linux with glibc $GLIBC_MIN or newer, for example
-          Ubuntu/Kubuntu 22.04 or newer. No other installation is needed.
-
-          Check the download: \`sha256sum -c $FILE.sha256\`
-          EOF
+          cd dist
           if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
             TAG="${GITHUB_REF#refs/tags/}"
-            gh release create "$TAG" "$FILE" "$FILE.sha256" \
-              --title "Paint.with.me $TAG" --notes-file notes.md --verify-tag
+            gh release create "$TAG" $FILES --repo "$GITHUB_REPOSITORY" \
+              --title "Paint.with.me $TAG" --notes-file ../notes.md --verify-tag
           else
+            TAG=continuous
             # Rolling pre-release: replace it, moving its tag to this commit.
-            gh release delete continuous --yes --cleanup-tag || true
-            gh release create continuous "$FILE" "$FILE.sha256" \
+            gh release delete continuous --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+            gh release create continuous $FILES --repo "$GITHUB_REPOSITORY" \
               --prerelease --target "$GITHUB_SHA" \
-              --title "Latest build ($VER)" --notes-file notes.md
+              --title "Latest build ($VER)" --notes-file ../notes.md
           fi
+          echo "TAG=$TAG" >> "$GITHUB_ENV"
+
+      - name: Check the download links
+        run: |
+          # Every published file, and every download link in the README
+          # (they point to the "continuous" release), must answer.
+          check() {
+            code=$(curl -sSL -o /dev/null -w '%{http_code}' --retry 3 --retry-all-errors "$1")
+            echo "$code $1"
+            [ "$code" = 200 ]
+          }
+          ok=true
+          for f in $FILES; do
+            check "https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/$f" || ok=false
+          done
+          if [ "$TAG" = continuous ]; then
+            for url in $(grep -oE "https://github.com/$GITHUB_REPOSITORY/releases/download/continuous/[^\")> ]+" README.md | sort -u); do
+              check "$url" || ok=false
+            done
+          fi
+          $ok
