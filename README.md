@@ -4,6 +4,19 @@ A free, open-source raster image editor for Linux with the familiar look and
 workflow of Paint.NET: layers, blend modes, selections, adjustments and effects,
 built natively in C++17 and Qt 6. No Wine, no .NET runtime.
 
+<p align="center">
+  <a href="https://github.com/Shelin-boop/Paint.with.me/releases/download/continuous/Paint.with.me-x86_64.AppImage"><img src="docs/download/download-appimage.svg" alt="Download for Linux (AppImage, runs on most 64-bit systems)" height="64"></a>
+</p>
+<p align="center">
+  <a href="https://github.com/Shelin-boop/Paint.with.me/releases/download/continuous/paint-with-me_amd64.deb"><img src="docs/download/download-deb.svg" alt="Ubuntu, Debian, Linux Mint (.deb package)" height="48"></a>
+  <a href="https://github.com/Shelin-boop/Paint.with.me/releases/download/continuous/paint-with-me-fedora.x86_64.rpm"><img src="docs/download/download-fedora.svg" alt="Fedora (.rpm package)" height="48"></a>
+  <a href="https://github.com/Shelin-boop/Paint.with.me/releases/download/continuous/paint-with-me-opensuse.x86_64.rpm"><img src="docs/download/download-opensuse.svg" alt="openSUSE (.rpm package)" height="48"></a>
+  <a href="https://github.com/Shelin-boop/Paint.with.me/releases/download/continuous/paint-with-me-arch-x86_64.pkg.tar.zst"><img src="docs/download/download-arch.svg" alt="Arch Linux (pacman package)" height="48"></a>
+</p>
+<p align="center"><sub>Free, for 64-bit Linux. Always the newest build. Which one to pick and how to
+install it: <a href="#install">Install</a>. All files and checksums:
+<a href="https://github.com/Shelin-boop/Paint.with.me/releases">Releases</a>.</sub></p>
+
 ![Paint.with.me with an image open](docs/screenshot.png)
 
 > **Status: early development.** Paint.with.me is a fork of
@@ -16,7 +29,8 @@ built natively in C++17 and Qt 6. No Wine, no .NET runtime.
 - Look and feel close to Paint.NET, on Linux.
 - Open Paint.NET `.pdn` files with their layers.
 - Keep layered work in common formats only, no format of its own.
-- A portable AppImage that adds itself to the start menu.
+- A portable AppImage that adds itself to the start menu, and installers for
+  Debian, Ubuntu, Linux Mint, Fedora, openSUSE and Arch Linux.
 - New tools Paint.NET does not have: a smudge tool and a blur brush.
 - Text in frames that stays editable until you turn it into pixels.
 - Sizes in millimeters, centimeters or inches at a chosen resolution.
@@ -26,20 +40,63 @@ built natively in C++17 and Qt 6. No Wine, no .NET runtime.
 
 ## Install
 
-1. Download the newest `Paint.with.me-*-x86_64.AppImage` from the
-   [Releases](https://github.com/Shelin-boop/Paint.with.me/releases) page
-   ("Latest build" is always the most recent one).
+Use the buttons at the top, or pick the file here. All of them are for 64-bit
+PCs (x86-64) and always the newest build.
+
+| Your system | Download | |
+|---|---|---|
+| Any 64-bit Linux, also older ones such as Ubuntu 22.04 or Linux Mint 21 | [Paint.with.me-x86_64.AppImage](https://github.com/Shelin-boop/Paint.with.me/releases/download/continuous/Paint.with.me-x86_64.AppImage) | needs no installation |
+| Ubuntu 24.04 or newer, Kubuntu, Linux Mint 22 or newer, Debian 12 or newer | [paint-with-me_amd64.deb](https://github.com/Shelin-boop/Paint.with.me/releases/download/continuous/paint-with-me_amd64.deb) | installer |
+| Fedora (the two newest releases) | [paint-with-me-fedora.x86_64.rpm](https://github.com/Shelin-boop/Paint.with.me/releases/download/continuous/paint-with-me-fedora.x86_64.rpm) | installer |
+| openSUSE Leap 16 or newer, openSUSE Tumbleweed | [paint-with-me-opensuse.x86_64.rpm](https://github.com/Shelin-boop/Paint.with.me/releases/download/continuous/paint-with-me-opensuse.x86_64.rpm) | installer |
+| Arch Linux, EndeavourOS | [paint-with-me-arch-x86_64.pkg.tar.zst](https://github.com/Shelin-boop/Paint.with.me/releases/download/continuous/paint-with-me-arch-x86_64.pkg.tar.zst) | installer |
+
+**AppImage or installer?** The AppImage is one file that brings everything it
+needs and runs without being installed. The installers put the program into
+your system like any other program and use the system's own Qt; on KDE Plasma
+they also take on the desktop's look. Both work the same otherwise.
+
+### AppImage (any distribution)
+
+1. Download `Paint.with.me-x86_64.AppImage`.
 2. Make it executable: right-click it, Properties, Permissions, "Is executable",
-   or run `chmod +x Paint.with.me-*-x86_64.AppImage`.
+   or run `chmod +x Paint.with.me-x86_64.AppImage`.
 3. Start it. On the first start it adds itself to your application menu.
    **Help > Remove from application menu** takes it out again.
 
 Moving the file or replacing it with a newer version is fine: the menu entry is
-updated the next time you start it from its new place.
+updated the next time you start it from its new place. It needs glibc 2.35 or
+newer (Ubuntu 22.04 and every distribution of 2022 or later); no other
+installation is needed, not even libfuse2.
 
-It needs a 64-bit Linux, such as Ubuntu or Kubuntu 22.04 or newer; the release
-notes name the exact glibc version. No other installation is needed, not even
-libfuse2.
+### Installers
+
+Open the downloaded file with your software installer (Discover on KDE,
+Software on GNOME; often a double-click does it), or run the command in a
+terminal in the folder where the file is:
+
+| System | Install | Remove |
+|---|---|---|
+| Ubuntu, Kubuntu, Linux Mint, Debian | `sudo apt install ./paint-with-me_amd64.deb` | `sudo apt remove paint-with-me` |
+| Fedora | `sudo dnf install ./paint-with-me-fedora.x86_64.rpm` | `sudo dnf remove paint-with-me` |
+| openSUSE | `sudo zypper install --allow-unsigned-rpm ./paint-with-me-opensuse.x86_64.rpm` | `sudo zypper remove paint-with-me` |
+| Arch Linux, EndeavourOS | `sudo pacman -U ./paint-with-me-arch-x86_64.pkg.tar.zst` | `sudo pacman -R paint-with-me` |
+
+The package manager also installs what the program needs from your system
+(Qt and its plugins). The program then appears in the application menu.
+
+**Updates** do not arrive by themselves yet: download the newer file and
+install it the same way; your settings stay. Help > About shows the version
+you have.
+
+Ubuntu 22.04 and Linux Mint 21 have a Qt that is too old for the `.deb`, so
+it does not install there; use the AppImage instead.
+
+Checksums of all files are in `SHA256SUMS` on the
+[Releases](https://github.com/Shelin-boop/Paint.with.me/releases) page:
+`sha256sum -c --ignore-missing SHA256SUMS`.
+
+## Using it
 
 On a Wayland desktop (KDE Plasma, GNOME) it runs natively on Wayland. If that
 causes trouble, choose **XWayland** in Settings > User Interface; it offers to
@@ -194,7 +251,7 @@ Requirements: a C++17 compiler, CMake 3.16 or newer, Qt 6.4 or newer
 and zlib.
 
 ```bash
-# Debian / Ubuntu / Kubuntu / Linux Mint
+# Debian / Ubuntu / Kubuntu / Linux Mint (Debian 12: add libqt6opengl6-dev)
 sudo apt install build-essential cmake ninja-build qt6-base-dev \
   qt6-image-formats-plugins libgl1-mesa-dev zlib1g-dev
 
@@ -206,11 +263,7 @@ cmake --build build
 Run the headless test suite:
 
 ```bash
-cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests \
-  pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests \
-  pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests \
-  pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests \
-  pwm_windows_tests pwm_gpu_tests
+cmake --build build --target pwm_all_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
@@ -220,6 +273,19 @@ renderer on a virtual X display (`sudo apt install xvfb libgl1-mesa-dri`):
 
 ```bash
 xvfb-run -a env QT_QPA_PLATFORM=xcb PWM_REQUIRE_GPU=1 ./build/pwm_gpu_tests
+```
+
+The installers are built inside a container of each system, after all test
+suites have passed there (Docker or Podman; the comment at the top of each
+script names the system to use):
+
+```bash
+docker run --rm -v "$PWD:/src" -w /src debian:12 packaging/build-deb.sh 0.1.0 dist
+docker run --rm -v "$PWD:/src" -w /src fedora:43 packaging/build-rpm.sh 0.1.0 dist
+docker run --rm -v "$PWD:/src" -w /src opensuse/leap:16.0 packaging/build-rpm.sh 0.1.0 dist
+docker run --rm -v "$PWD:/src" -w /src archlinux:latest packaging/build-arch.sh 0.1.0 dist
+docker run --rm -v "$PWD:/src" -w /src ubuntu:24.04 \
+  packaging/test-installed-package.sh dist/paint-with-me_amd64.deb
 ```
 
 
