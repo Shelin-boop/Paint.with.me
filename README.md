@@ -45,6 +45,12 @@ On a Wayland desktop (KDE Plasma, GNOME) it runs natively on Wayland. If that
 causes trouble, choose **XWayland** in Settings > User Interface; it offers to
 restart right away. Help > About shows which one is in use.
 
+The canvas is drawn by the graphics card (OpenGL) when it has a suitable
+driver, and by the processor otherwise. Settings > Canvas > Drawing the Image
+shows which one is in use and lets you choose; `paint-with-me --no-gpu` starts
+once without the graphics card. If the program closes unexpectedly while
+starting the graphics card, the next start uses the processor and says so.
+
 Graphics tablets: pressing harder can change the brush size, its opacity or
 both (the **Pressure** list in the tool bar, shown once a pen has been used).
 Settings > Tools has a pressure curve, an option for pen tilt and a pad to
@@ -177,11 +183,15 @@ CCITT fax, nor protected (encrypted) PDFs.
 10. Several images and windows: thumbnails with a close button, moving images
     between windows, files opened into the running window; secondary color,
     arrow keys for selections, File > New from the clipboard (done)
+11. Faster drawing on images with many layers: layers below and above the one
+    being painted are kept combined; the canvas is drawn by the graphics card
+    (done)
 
 ## Build from source
 
 Requirements: a C++17 compiler, CMake 3.16 or newer, Qt 6.4 or newer
-(Widgets, Gui, Core, PrintSupport, Concurrent, Network) and zlib.
+(Widgets, Gui, Core, PrintSupport, Concurrent, Network, OpenGL, OpenGLWidgets)
+and zlib.
 
 ```bash
 # Debian / Ubuntu / Kubuntu / Linux Mint
@@ -199,8 +209,17 @@ Run the headless test suite:
 cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests \
   pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests \
   pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests \
-  pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests
+  pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests \
+  pwm_windows_tests pwm_gpu_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
+```
+
+The offscreen run has no OpenGL, so the graphics card part of `pwm_gpu_tests`
+is skipped there. To run it without a graphics card, use Mesa's software
+renderer on a virtual X display (`sudo apt install xvfb libgl1-mesa-dri`):
+
+```bash
+xvfb-run -a env QT_QPA_PLATFORM=xcb PWM_REQUIRE_GPU=1 ./build/pwm_gpu_tests
 ```
 
 

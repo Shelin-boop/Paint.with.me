@@ -43,6 +43,23 @@ upstream repository. It only reads from it.
   back there; File > New starts at the clipboard picture's size.
 - Arrow keys move the selection (`src/core/nudge.*`).
 
+### 2026-11-26: faster drawing with many layers, canvas on the graphics card
+
+- While painting, the layers below the active one are kept combined, and so
+  are the layers above it when there are at least two in Normal mode
+  (`src/canvas/layergroupcache.*`, `Document::compositeInto` with
+  `CompositeParts`). A stroke then costs about as much as on a single layer.
+- The canvas can be drawn with OpenGL: layers are textures, the graphics card
+  combines them (all blend modes, in shaders) and does zoom, rotation and the
+  checkerboard (`src/canvas/gpu*.{h,cpp}`). Automatic choice uses it only
+  with a hardware driver; the processor path stays as the fallback and for
+  any failure (graphics memory, driver error, a crash while starting).
+- The Paint.NET-style blend modes Glow, Negation, Reflect and Xor now
+  unpremultiply with an own integer formula instead of Qt's conversion,
+  whose rounding differs between processors; results can differ by 1/255.
+- Selection::translate copies rows directly (arrow-key moves about 40 %
+  faster).
+
 ### 2026-11-06: smudge and blur brush, pen extras, command icons
 
 - New tools: Smudge (drags color like wet paint) and Blur Brush, key U

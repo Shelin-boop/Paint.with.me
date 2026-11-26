@@ -79,6 +79,13 @@ Claude sessions and milestones, not in hours of human work.
   undo step per key press.
 - Crash recovery (2026-11-26): one snapshot folder per window under
   `recovery/<pid>-<start ms>/`, locked (QLockFile) while the window is open.
+- Drawing speed (2026-11-26, owner's choice "combine 1 and 2"): layers below
+  and above the active one are kept combined (`LayerGroupCache`), and the
+  canvas is drawn by the graphics card with OpenGL (`GpuCompositor`), with
+  the processor as fallback. Setting `canvas/gpu` = `auto` (hardware driver
+  only) / `on` / `off`, Settings > Canvas > Drawing the Image; `--no-gpu`
+  for one start. A crash while starting OpenGL leaves `canvas/gpuStarting`
+  set, and the next start uses the processor. Owner's machine: Quadro P1000.
 - The AppImage carries a PNG `.DirIcon`, so file managers can show its icon
   (Dolphin: Configure Dolphin > Previews > "AppImage").
 - Clean up code that is badly structured, as part of the work.
@@ -111,6 +118,8 @@ Claude sessions and milestones, not in hours of human work.
     images opened into the running window; New sized from the clipboard;
     secondary color; x on thumbnails; moving images between windows; arrow
     keys move selections. Done 2026-11-26.
+11. Faster drawing with many layers: combined layer groups on the processor
+    and an OpenGL canvas. Done 2026-11-26.
 
 ### Ideas for later (owner's list; ask which comes next)
 
@@ -133,14 +142,14 @@ Claude sessions and milestones, not in hours of human work.
 - Keep `tests/data/pdn/LICENSE-pypdn` with the pypdn test files.
 - Write documentation and UI text in American English. Dates as yyyy-mm-dd,
   times in 24-hour format, SI units. Menus use "..." (three dots), not "…".
-- Every change keeps all fifteen test suites passing; new behavior gets a test.
+- Every change keeps all sixteen test suites passing; new behavior gets a test.
 
 ## Build and test
 
 ```bash
 cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 cmake --build build
-cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests pwm_windows_tests
+cmake --build build --target pwm_tests pwm_brush_tests pwm_paste_tests pwm_preview_tests pwm_panel_tests pwm_psd_tests pwm_pdf_tests pwm_perspective_tests pwm_integration_tests pwm_units_tests pwm_text_tests pwm_pdfpictures_tests pwm_rotation_tests pwm_shortcuts_tests pwm_windows_tests pwm_gpu_tests
 QT_QPA_PLATFORM=offscreen ctest --test-dir build --output-on-failure
 ```
 
@@ -251,6 +260,10 @@ explicitly (the command above), or old test programs run.
 | Arrow keys move the selection | `src/core/nudge.cpp`, `CanvasWidget::nudgeApplies` |
 | Layer thumbnails (image's shape, layer offset, pixel density) | `LayersPanel::makeThumbnail` |
 | Crash recovery folders per window | `MainWindow::recoveryRoot`, `prepareAutosaveDir`, `checkForRecovery` |
+| Layers below / above the active one kept combined (tiles, signatures) | `src/canvas/layergroupcache.cpp`, `Document::CompositeParts` |
+| OpenGL: probe, setting, crash guard | `src/canvas/gpusupport.cpp` (`GpuSupport`) |
+| OpenGL: layer textures, combining in shaders, drawing the view | `src/canvas/gpucompositor.cpp` |
+| OpenGL widget over the canvas; canvas side | `src/canvas/gpucanvasview.cpp`, `CanvasWidget::paintOnGpuView`, `paintScene`, `setGpuEnabled` |
 | Tests (custom harness, not QTest) | `tests/` |
 
 ### Adding a tool
@@ -347,6 +360,33 @@ mouse move. `tests/test_brush.cpp` compares such tools against a full redraw.
   another command has Shift+key.
 - Single keys check `allowSingleKeyShortcuts()`; while the Text tool types,
   the canvas takes every key without Ctrl or Alt (ShortcutOverride).
+
+### Graphics card (OpenGL)
+
+- `GpuCanvasView` is a `QOpenGLWidget` child covering the canvas, transparent
+  for the mouse; `CanvasWidget` keeps all events and paints overlays into it
+  with the same `paintScene` as on the processor. Both paths share the
+  cache bookkeeping (`m_cacheValid`, `m_dirtyRender`), reset on a switch.
+- Layers are textures (only their content area when that is under half the
+  layer); changed areas are uploaded with `GL_UNPACK_ROW_LENGTH`. The
+  combined image is an RGBA8 framebuffer at the reduced size (same 2x2
+  averaging as the processor). Normal uses GL blending; other modes copy
+  the target into a scratch texture (unit 1) and run the blend shader.
+- Results must match the processor: `pwm_gpu_tests` checks every blend mode,
+  opacity and reduction level (at most 3/255 apart). The per-pixel modes
+  (Glow, Negation, Reflect, Xor) use the same integer unpremultiply and
+  premultiply in `Layer` and in the shader; Qt's own conversion rounds
+  differently on different processors.
+- Any failure (budget, texture size, GL error) emits `gpuFailed` and switches
+  to the processor for the rest of the run. The budget comes from
+  `GL_NVX_gpu_memory_info` / `GL_ATI_meminfo` (free memory minus 512 MB),
+  else 1536 MB.
+- Offscreen has no OpenGL. Testing in the sandbox: `xvfb-run -a env
+  QT_QPA_PLATFORM=xcb PWM_REQUIRE_GPU=1 build/pwm_gpu_tests` (Mesa
+  llvmpipe; packages `xvfb libgl1-mesa-dri`), or natively on headless
+  Weston with `QT_QPA_PLATFORM=wayland` (EGL). Speed on real graphics cards
+  cannot be measured here (llvmpipe itself runs on the processor).
+- `main()` sets `Qt::AA_ShareOpenGLContexts` before the QApplication.
 
 ### Undo
 
