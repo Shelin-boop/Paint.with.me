@@ -221,6 +221,7 @@ install(TARGETS paint-with-me DESTINATION bin)
 function(pwm_test target)
   add_executable(${target} EXCLUDE_FROM_ALL ${ARGN})
   target_link_libraries(${target} PRIVATE pwm_app)
+  set_property(GLOBAL APPEND PROPERTY PWM_TEST_TARGETS ${target})
 endfunction()
 
 pwm_test(pwm_tests tests/test_all.cpp)
@@ -279,6 +280,12 @@ target_link_libraries(pwm_integration_tests PRIVATE Qt6::Core)
 target_compile_definitions(pwm_integration_tests PRIVATE PWM_VERSION_STR="${PWM_VERSION_STR}")
 add_test(NAME desktop_integration COMMAND pwm_integration_tests)
 
+# `cmake --build build --target pwm_all_tests` builds every test program
+# (not the benchmark), ready for ctest.
+get_property(PWM_ALL_TESTS GLOBAL PROPERTY PWM_TEST_TARGETS)
+list(REMOVE_ITEM PWM_ALL_TESTS pwm_bench)
+add_custom_target(pwm_all_tests DEPENDS ${PWM_ALL_TESTS} pwm_integration_tests)
+
 # ---- Sample plugin (demonstrates the C ABI; built into build/plugins) ----
 # A MODULE library is a shared object meant to be dlopen'd, never linked against.
 add_library(sample_sepia_plugin MODULE plugins/sample/sepia_plugin.c)
@@ -304,39 +311,66 @@ endforeach()
 # (loaded from /usr/lib/paint-with-me/plugins).
 install(TARGETS sample_sepia_plugin LIBRARY DESTINATION lib/paint-with-me/plugins)
 
-# ---- CPack: build a Debian package with `cpack -G DEB` ----
+# ---- CPack: installers built with the system's own Qt ----
+# `cpack -G DEB` (Debian, Ubuntu, Mint) and `cpack -G RPM` (Fedora, openSUSE).
+# The scripts in packaging/ build them inside the oldest supported release of
+# each system, so they install on that release and every newer one; the
+# release workflow then installs and starts each one on a fresh system.
 set(CPACK_PACKAGE_NAME "paint-with-me")
 set(CPACK_PACKAGE_VENDOR "Shelin")
-# CI passes -DPWM_VERSION=<major.minor.commitcount> so every push to main
-# produces a higher version that APT sees as an upgrade; otherwise use PROJECT_VERSION.
+# The release workflow passes -DPWM_VERSION=<major.minor.commitcount>, so every
+# release has a higher version and package managers see it as an update.
 set(CPACK_PACKAGE_VERSION "${PWM_VERSION_STR}")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Image editor for Linux in the style of Paint.NET (C++/Qt 6)")
+set(CPACK_PACKAGE_DESCRIPTION "Paint.with.me is a raster image editor with the look and workflow of
+Paint.NET: layers, blend modes, selections, adjustments and effects, a smudge
+tool and a blur brush, editable text frames, and pen pressure. It opens
+Paint.NET (.pdn) files and opens and saves layered Photoshop (.psd) files.")
 set(CPACK_PACKAGE_HOMEPAGE_URL "https://github.com/Shelin-boop/Paint.with.me")
 set(CPACK_PACKAGE_CONTACT "Shelin <Shelin-boop@users.noreply.github.com>")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
-
 set(CPACK_GENERATOR "DEB")
+# Strip debugging information from the installed program (smaller download).
+set(CPACK_STRIP_FILES ON)
+
+# Debian / Ubuntu
+set(CPACK_DEBIAN_FILE_NAME "DEB-DEFAULT")
 set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Shelin <Shelin-boop@users.noreply.github.com>")
 set(CPACK_DEBIAN_PACKAGE_SECTION "graphics")
 set(CPACK_DEBIAN_PACKAGE_PRIORITY "optional")
 set(CPACK_DEBIAN_PACKAGE_HOMEPAGE "${CPACK_PACKAGE_HOMEPAGE_URL}")
-# Auto-detect the exact Qt/GL runtime dependencies from the built binary. This
-# resolves the correct package names for the build distro (e.g. the libqt6*t64
-# variants on Ubuntu 24.04), so we do not hard-code a fragile fallback list.
+# The libraries the program is linked with (Qt, the C and C++ runtime, zlib)
+# are read off the built program, with the names of the system it is built on.
 set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
-# WebP and TIFF are decoded/encoded by Qt image-format PLUGINS that are loaded at
-# runtime, not linked — so SHLIBDEPS can't see them. Depend on the plugin package
-# explicitly, otherwise those formats appear in Open/Save but silently fail
-# (issue #19).
-set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-image-formats-plugins")
-# Qt renders the standard dialog buttons (OK / Cancel / Yes / No) from its own
-# catalogue, which ships separately. Recommends (installed by default) rather than
-# Depends: without it the app runs fine, those buttons just stay English.
-set(CPACK_DEBIAN_PACKAGE_RECOMMENDS "qt6-translations-l10n")
+# Loaded at run time, so not visible to the step above: the WebP and TIFF
+# plugins (without them those formats fail to open and save) and the native
+# Wayland plugins (the default window system in a Wayland session).
+set(CPACK_DEBIAN_PACKAGE_DEPENDS "qt6-image-formats-plugins, qt6-wayland")
 # Say "not compatible with this system" in plain words rather than leaving the
 # user with a raw dependency error. Only reachable via dpkg -i / double-click:
 # apt refuses before the package is ever unpacked (see the script's comment).
 set(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA
     "${CMAKE_CURRENT_SOURCE_DIR}/packaging/deb-control/preinst")
-set(CPACK_PACKAGE_FILE_NAME "paint-with-me_${CPACK_PACKAGE_VERSION}_amd64")
+
+# Fedora / openSUSE. The library requirements are found automatically (by
+# library name, the same on both); the plugin packages have different names,
+# so packaging/build-rpm.sh passes them as CPACK_RPM_PACKAGE_REQUIRES.
+set(CPACK_RPM_FILE_NAME "RPM-DEFAULT")
+set(CPACK_RPM_PACKAGE_LICENSE "MIT")
+set(CPACK_RPM_PACKAGE_GROUP "Productivity/Graphics/Bitmap Editors")
+set(CPACK_RPM_PACKAGE_URL "${CPACK_PACKAGE_HOMEPAGE_URL}")
+set(CPACK_RPM_PACKAGE_RELEASE "1")
+set(CPACK_RPM_PACKAGE_DESCRIPTION "${CPACK_PACKAGE_DESCRIPTION}")
+set(CPACK_PACKAGE_RELOCATABLE OFF)
+# The sample plugin is for this program only; other packages cannot use it.
+set(CPACK_RPM_SPEC_MORE_DEFINE "%global __provides_exclude_from ^/usr/lib/paint-with-me/.*$")
+# Folders that belong to the system (menu, icon theme, AppStream), not to this package.
+set(CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
+    /usr/share/applications /usr/share/metainfo /usr/share/icons
+    /usr/share/icons/hicolor /usr/share/icons/hicolor/scalable
+    /usr/share/icons/hicolor/scalable/apps)
+foreach(size 16 32 48 64 128 256 512)
+  list(APPEND CPACK_RPM_EXCLUDE_FROM_AUTO_FILELIST_ADDITION
+       /usr/share/icons/hicolor/${size}x${size} /usr/share/icons/hicolor/${size}x${size}/apps)
+endforeach()
 include(CPack)

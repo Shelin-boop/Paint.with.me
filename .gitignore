@@ -28,3 +28,6 @@ ui_*.h
 *.swp
 *~
 .DS_Store
+
+# Installers made by packaging/build-*.sh
+/dist/
